@@ -11,7 +11,6 @@ use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::router::fairing::guard_share::GuardShare;
 use crate::router::selection::{
     SelectionDescriptor, resolve_selection, resolved_selection_is_current,
 };
@@ -278,7 +277,7 @@ pub struct SetAlbumTitle {
 
 #[put("/put/set_album_title", data = "<set_album_title>")]
 pub async fn set_album_title(
-    auth: GuardResult<GuardShare>,
+    auth: GuardResult<GuardAuth>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     set_album_title: Json<SetAlbumTitle>,
 ) -> AppResult<()> {

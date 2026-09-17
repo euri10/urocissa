@@ -651,7 +651,6 @@ impl AbstractData {
         }
     }
 
-    #[cfg(feature = "performance-test")]
     pub fn is_trashed(&self) -> bool {
         match self {
             AbstractData::Image(data) => data.object.is_trashed,

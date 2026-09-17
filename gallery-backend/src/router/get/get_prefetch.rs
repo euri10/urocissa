@@ -694,7 +694,10 @@ pub async fn prefetch(
 ) -> AppResult<Json<PrefetchReturn>> {
     let auth_guard = auth_guard?;
     // Combine album filter (if any) with the client‑supplied query.
-    let client_expression = query_data.map(rocket::serde::json::Json::into_inner);
+    let client_expression = constrain_public_query(
+        query_data.map(rocket::serde::json::Json::into_inner),
+        matches!(auth_guard.claims.role, crate::router::claims::Role::Public),
+    );
     let resolved_share_option = auth_guard.claims.get_share();
     let sort_order = sort
         .as_deref()
@@ -721,6 +724,16 @@ pub async fn prefetch(
     Ok(job_handle)
 }
 
+fn constrain_public_query(query: Option<Expression>, is_public: bool) -> Option<Expression> {
+    if !is_public {
+        return query;
+    }
+    Some(match query {
+        Some(query) => Expression::And(vec![Expression::Trashed(false), query]),
+        None => Expression::Trashed(false),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
@@ -737,6 +750,27 @@ mod tests {
     use crate::public::structure::gallery_sort_order::GallerySortOrder;
     use crate::public::structure::response::row::ScrollBarData;
     use arrayvec::ArrayString;
+
+    #[test]
+    fn public_gallery_queries_cannot_include_trash() {
+        use super::constrain_public_query;
+        assert_eq!(
+            constrain_public_query(None, true),
+            Some(Expression::Trashed(false))
+        );
+        assert_eq!(
+            constrain_public_query(Some(Expression::Trashed(true)), true),
+            Some(Expression::And(vec![
+                Expression::Trashed(false),
+                Expression::Trashed(true)
+            ]))
+        );
+        assert_eq!(constrain_public_query(None, false), None);
+        assert_eq!(
+            constrain_public_query(Some(Expression::Trashed(true)), false),
+            Some(Expression::Trashed(true))
+        );
+    }
 
     fn timestamp(year: i32, month: u32, day: u32) -> i64 {
         Utc.with_ymd_and_hms(year, month, day, 0, 0, 0)

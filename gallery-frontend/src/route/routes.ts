@@ -28,6 +28,7 @@ import {
   saveInitialMainLocateOverride
 } from './initialRouteLocate'
 import { withoutReaderOnlyQuery } from './routeQueryScope'
+import { useConfigStore } from '@/store/configStore'
 
 // ======================================
 // Define Simple Static Routes
@@ -83,6 +84,14 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(),
   routes
+})
+
+router.beforeEach(async (to) => {
+  if (['upload', 'config', 'links', 'trashed'].includes(to.path.split('/')[1] ?? '')) {
+    const configStore = useConfigStore('mainId')
+    await configStore.fetchConfig()
+    if (!configStore.isAdmin) return { name: 'login' }
+  }
 })
 
 // Update the browser tab title based on the current route

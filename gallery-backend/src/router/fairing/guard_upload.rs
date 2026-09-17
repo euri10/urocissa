@@ -16,7 +16,7 @@ impl<'r> FromRequest<'r> for GuardUpload {
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         // Try to authorize upload via share first
-        if try_authorize_upload_via_share(req) {
+        if !super::guard_gallery::public_gallery_enabled() && try_authorize_upload_via_share(req) {
             return Outcome::Success(GuardUpload);
         }
 

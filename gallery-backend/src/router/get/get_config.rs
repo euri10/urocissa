@@ -21,18 +21,25 @@ pub struct PublicConfigResponse {
     pub has_password: bool,
     pub has_discord_hook: bool,
     pub has_auth_key: bool,
+    pub is_admin: bool,
 }
 
 #[get("/get/config")]
 pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<PublicConfigResponse>> {
-    let _ = auth?;
+    let is_admin = auth?.claims.is_admin();
     // Only return the public part
     let config = APP_CONFIG.get().unwrap().read().unwrap();
+    let mut public = config.public.clone();
+    if !is_admin {
+        public.read_only_mode = true;
+        public.sync_paths.clear();
+    }
     let response = PublicConfigResponse {
-        public: config.public.clone(),
+        public,
         has_password: config.private.password.is_some(),
         has_discord_hook: config.private.discord_hook_url.is_some(),
         has_auth_key: config.private.auth_key.is_some(),
+        is_admin,
     };
     Ok(Json(response))
 }
@@ -59,6 +66,7 @@ mod tests {
             has_password: false,
             has_discord_hook: false,
             has_auth_key: false,
+            is_admin: false,
         };
 
         let value = serde_json::to_value(response).unwrap();
