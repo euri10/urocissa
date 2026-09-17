@@ -47,7 +47,6 @@
 import { ref, computed } from 'vue'
 import Cookies from 'js-cookie'
 import axios from 'axios'
-import { useRouter } from 'vue-router'
 import { z } from 'zod'
 import { useRedirectionStore } from '@/store/redirectionStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
@@ -58,7 +57,6 @@ const password = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
 
-const router = useRouter()
 const redirectionStore = useRedirectionStore('mainId')
 const constStore = useConstStore('mainId')
 const vuetifyTheme = useTheme()
@@ -98,24 +96,8 @@ const handleLogin = async () => {
         expires: 14 // Optional: Expires in 1 day
       })
 
-      const redirection = redirectionStore.redirection
-      if (redirection !== null) {
-        // We have a `redirection` value:
-        // This means the user was actually on some app page (e.g. A) and then navigated to `/login`.
-        // At this point, the session history looks like: [..., A, /login]
-        // After a successful login, we simply go back one step to return to A.
-        // This also ensures that when the user presses the browser Back button again,
-        // they will not go back to `/login` but to the page before A.
-        router.back()
-      } else {
-        // No `redirection`:
-        // This means the user opened `/login` directly (not from an internal app page).
-        // In this case, there is no "previous app page" to go back to, so after a successful login
-        // we redirect the user to the home page.
-        // Using `replace` here removes `/login` from the current session history entry,
-        // so the Back button will not return to the login page.
-        await router.replace({ name: 'home' })
-      }
+      // Reload so guest configuration, album lists and worker state cannot survive login.
+      window.location.replace(redirectionStore.redirection ?? '/home')
     })
   } finally {
     loading.value = false

@@ -3,6 +3,7 @@ import { computed, inject, shallowRef, watchEffect, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay, useTheme } from 'vuetify'
 import { useCollectionStore } from '@/store/collectionStore'
+import { useConfigStore } from '@/store/configStore'
 import { useFilterStore } from '@/store/filterStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useConstStore } from '@/store/constStore'
@@ -32,6 +33,7 @@ const albumStore = useAlbumStore('mainId')
 const filterStore = useFilterStore('mainId')
 const constStore = useConstStore('mainId')
 const collectionStore = useCollectionStore('mainId')
+const configStore = useConfigStore('mainId')
 const uploadStore = useUploadStore('mainId')
 const messageStore = useMessageStore('mainId')
 const savedSearchStore = useSavedSearchStore()
@@ -66,7 +68,7 @@ const uploadProgressColor = computed(() =>
 const savedSearchContext = computed(() => getSavedSearchContext(route))
 const currentSortOrder = computed(() => parseGallerySortOrder(route.query.sort))
 const canSaveCurrentSearch = computed(() =>
-  canSaveSearch(savedSearchContext.value, searchQuery.value)
+  configStore.canWrite && canSaveSearch(savedSearchContext.value, searchQuery.value)
 )
 const suggestedSavedSearchName = computed(() =>
   Array.from(pendingSavedSearch.value?.query ?? '')
@@ -225,8 +227,9 @@ watchEffect(() => {
           :aria-label="themeIsLight ? 'Switch to dark theme' : 'Switch to light theme'"
           @click="themeIsLight = !themeIsLight"
         />
-        <BtnCreateAlbum v-if="isLevelOne" v-model="loading" />
-        <div v-if="isLevelOne" class="upload-btn-container">
+        <v-btn v-if="!configStore.isAdmin" to="/login" icon="mdi-login" aria-label="Owner login" />
+        <BtnCreateAlbum v-if="isLevelOne && configStore.canWrite" v-model="loading" />
+        <div v-if="isLevelOne && configStore.canWrite" class="upload-btn-container">
           <v-btn
             icon
             class="upload-btn"

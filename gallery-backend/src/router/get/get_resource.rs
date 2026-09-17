@@ -6,7 +6,7 @@ use crate::public::db::write_behind::WRITE_BEHIND;
 use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::response::database_timestamp::DataBaseTimestampReturn;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
-use crate::router::fairing::guard_auth::GuardAuth;
+use crate::router::fairing::guard_gallery::GuardGallery;
 use crate::router::get::get_prefetch::{
     Prefetch, cache_prefetch, insert_data_into_tree_snapshot, read_current_cached_prefetch,
 };
@@ -133,9 +133,8 @@ fn get_or_create_resource_prefetch(resource_id: &str) -> AppResult<Prefetch> {
     Ok(prefetch)
 }
 
-fn create_resource_snapshot(resource_id: &str) -> AppResult<RouteResourceSnapshot> {
+fn create_resource_snapshot(resource_id: &str, is_admin: bool) -> AppResult<RouteResourceSnapshot> {
     validate_resource_id(resource_id)?;
-    let prefetch = get_or_create_resource_prefetch(resource_id)?;
 
     let durable = TREE
         .store
@@ -154,6 +153,10 @@ fn create_resource_snapshot(resource_id: &str) -> AppResult<RouteResourceSnapsho
             )
         })?;
 
+    if !is_admin && abstract_data.is_trashed() {
+        return Err(AppError::new(ErrorKind::NotFound, "Item not found"));
+    }
+    let prefetch = get_or_create_resource_prefetch(resource_id)?;
     let claims = ClaimsTimestamp::new(None, prefetch.timestamp);
     let token = claims.encode();
     let data =
@@ -168,11 +171,11 @@ fn create_resource_snapshot(resource_id: &str) -> AppResult<RouteResourceSnapsho
 
 #[get("/get/resource/<resource_id>")]
 pub async fn get_resource(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardGallery>,
     resource_id: String,
 ) -> AppResult<Json<RouteResourceSnapshot>> {
-    let _ = auth?;
-    tokio::task::spawn_blocking(move || create_resource_snapshot(&resource_id).map(Json))
+    let is_admin = auth?.claims.is_admin();
+    tokio::task::spawn_blocking(move || create_resource_snapshot(&resource_id, is_admin).map(Json))
         .await
         .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))?
 }

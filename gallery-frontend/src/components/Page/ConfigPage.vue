@@ -63,6 +63,7 @@ const loading = ref(false)
 
 // Local State
 const localSettings = reactive<AppConfig>({
+  isAdmin: false,
   readOnlyMode: false,
   disableImg: false,
   hasPassword: false,
