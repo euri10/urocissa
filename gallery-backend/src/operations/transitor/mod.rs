@@ -48,6 +48,8 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
             }
         }
         AbstractData::Album(album) => {
+            // Share credentials belong only in the owner-only album management response.
+            album.metadata.share_list.clear();
             if !show_metadata {
                 album.object.tags.clear();
             }

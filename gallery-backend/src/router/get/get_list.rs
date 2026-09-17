@@ -2,7 +2,7 @@ use crate::public::db::tree::TREE;
 use crate::public::db::tree::read_tags::SearchFacets;
 use crate::public::error::AppError; // Import AppError
 use crate::public::structure::album::Share;
-use crate::router::fairing::guard_auth::GuardAuth;
+use crate::router::fairing::guard_gallery::GuardGallery;
 use crate::router::{AppResult, GuardResult};
 use arrayvec::ArrayString;
 use rocket::serde::json::Json;
@@ -12,10 +12,14 @@ use std::time::Instant;
 
 #[get("/get/get-search-facets?<trashed>")]
 pub async fn get_search_facets(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardGallery>,
     trashed: Option<bool>,
 ) -> AppResult<Json<SearchFacets>> {
-    let _ = auth?;
+    let trashed = if auth?.claims.is_admin() {
+        trashed
+    } else {
+        Some(false)
+    };
     tokio::task::spawn_blocking(move || -> AppResult<Json<SearchFacets>> {
         let start_time = Instant::now();
         let facets = match trashed {
@@ -42,17 +46,22 @@ pub struct AlbumInfo {
 }
 
 #[get("/get/get-albums")]
-pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<AlbumInfo>>> {
-    let _ = auth?;
+pub async fn get_albums(auth: GuardResult<GuardGallery>) -> AppResult<Json<Vec<AlbumInfo>>> {
+    let is_admin = auth?.claims.is_admin();
     tokio::task::spawn_blocking(move || -> AppResult<Json<Vec<AlbumInfo>>> {
         let start_time = Instant::now();
         let album_list = TREE.read_albums();
         let album_info_list: Vec<AlbumInfo> = album_list
             .into_iter()
+            .filter(|album| is_admin || !album.object.is_trashed)
             .map(|album| AlbumInfo {
                 album_id: album.object.id.to_string(),
                 album_name: album.metadata.title,
-                share_list: album.metadata.share_list,
+                share_list: if is_admin {
+                    album.metadata.share_list
+                } else {
+                    HashMap::new()
+                },
             })
             .collect();
         crate::perf_timing!(

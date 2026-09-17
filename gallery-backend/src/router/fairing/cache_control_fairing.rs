@@ -3,6 +3,9 @@ use rocket::fairing::AdHoc;
 pub fn cache_control_fairing() -> AdHoc {
     AdHoc::on_response("Add Cache-Control header", |req, res| {
         Box::pin(async move {
+            if req.uri().path().starts_with("/get") || req.uri().path().starts_with("/post") {
+                res.set_raw_header("Cache-Control", "no-store");
+            }
             // Check if the response status is successful (2xx status codes)
             if res.status().code >= 200 && res.status().code < 300 {
                 // Apply cache control headers based on the request path
