@@ -7,8 +7,8 @@ use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
 use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
 use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::object::next_mutation_timestamp;
+use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
-use crate::router::fairing::guard_share::GuardShare;
 use crate::router::selection::{
     SelectionDescriptor, resolve_selection, resolved_selection_is_current,
 };
@@ -29,7 +29,7 @@ pub struct SetUserDefinedDescription {
     data = "<set_user_defined_description>"
 )]
 pub async fn set_user_defined_description(
-    auth: GuardResult<GuardShare>,
+    auth: GuardResult<GuardAuth>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     set_user_defined_description: Json<SetUserDefinedDescription>,
 ) -> AppResult<()> {

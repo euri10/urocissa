@@ -1,12 +1,8 @@
 use rocket::Request;
-use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
 
-use super::VALIDATION;
-use super::auth_utils::{
-    try_jwt_cookie_auth, try_resolve_share_from_headers, try_resolve_share_from_query,
-};
-use crate::public::error::{AppError, ErrorKind};
+use super::auth_utils::{try_resolve_share_from_headers, try_resolve_share_from_query};
+use super::guard_gallery::GuardGallery;
 use crate::router::GuardError;
 use crate::router::claims::claims::Claims;
 
@@ -40,14 +36,10 @@ impl<'r> FromRequest<'r> for GuardShare {
         }
 
         // Fall back to JWT cookie authentication (Admin)
-        match try_jwt_cookie_auth(req, &VALIDATION) {
-            Ok(claims) => return Outcome::Success(GuardShare { claims }),
-            Err(err) => {
-                return Outcome::Error((
-                    Status::Unauthorized,
-                    AppError::from_err(ErrorKind::Auth, err).context("Authentication error"),
-                ));
-            }
-        }
+        GuardGallery::from_request(req)
+            .await
+            .map(|guard| GuardShare {
+                claims: guard.claims,
+            })
     }
 }

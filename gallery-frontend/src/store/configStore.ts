@@ -23,7 +23,9 @@ export const useConfigStore = (isolationId: IsolationId) =>
       showFilenameChip: false
     }),
     getters: {
-      disableImg: (state) => state.config?.disableImg ?? false
+      disableImg: (state) => state.config?.disableImg ?? false,
+      isAdmin: (state) => state.config?.isAdmin ?? false,
+      canWrite: (state) => state.config?.isAdmin === true && !state.config.readOnlyMode
     },
     actions: {
       async fetchConfig() {

@@ -8,7 +8,23 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub enum Role {
     Admin,
+    Public,
     Share(Box<ResolvedShare>),
+}
+
+#[cfg(test)]
+mod public_gallery_tests {
+    use super::Claims;
+
+    #[test]
+    fn public_gallery_claims_never_grant_owner_access() {
+        let claims = Claims::new_public();
+        assert!(!claims.is_admin());
+        let value = serde_json::to_value(&claims).unwrap();
+        assert_eq!(value["role"], "public");
+        assert!(claims.get_share().is_none());
+        assert!(Claims::new_admin().is_admin());
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,6 +35,13 @@ pub struct Claims {
 }
 
 impl Claims {
+    pub fn new_public() -> Self {
+        Self {
+            role: Role::Public,
+            exp: 0,
+        }
+    }
+
     pub fn new_admin() -> Self {
         #[allow(clippy::cast_sign_loss)]
         let exp = (Utc::now().timestamp_millis() / 1000) as u64 + 14 * 86_400; // 14 days
@@ -44,7 +67,7 @@ impl Claims {
     pub fn get_share(self) -> Option<ResolvedShare> {
         match self.role {
             Role::Share(share) => Some(*share),
-            Role::Admin => None,
+            Role::Admin | Role::Public => None,
         }
     }
 

@@ -15,6 +15,7 @@ export interface AppConfig {
 
   // App settings
   readOnlyMode: boolean
+  isAdmin: boolean
   disableImg: boolean
   writeBehind: WriteBehindConfig
   // password is handled separately now

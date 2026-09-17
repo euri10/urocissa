@@ -1,21 +1,29 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, type Ref } from 'vue'
+import { computed, inject, watch, type Ref } from 'vue'
+import Cookies from 'js-cookie'
 import { useRoute } from 'vue-router'
 import SavedSearchSection from '@/components/SavedSearch/SavedSearchSection.vue'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useModalStore } from '@/store/modalStore'
 import { useSavedSearchStore } from '@/store/savedSearchStore'
+import { useConfigStore } from '@/store/configStore'
 
 const showDrawer = inject<Ref<boolean>>('showDrawer')
 const route = useRoute()
 const modalStore = useModalStore('mainId')
 const initializedStore = useInitializedStore('mainId')
 const savedSearchStore = useSavedSearchStore()
+const configStore = useConfigStore('mainId')
 const hasSavedSearches = computed(() => savedSearchStore.searches.length > 0)
 
-onMounted(() => {
-  void savedSearchStore.loadOnce()
-})
+watch(() => configStore.isAdmin, (isAdmin) => {
+  if (isAdmin) void savedSearchStore.loadOnce()
+}, { immediate: true })
+
+function logout() {
+  Cookies.remove('jwt')
+  window.location.replace('/home')
+}
 </script>
 
 <template>
@@ -30,7 +38,7 @@ onMounted(() => {
         prepend-icon="mdi-archive-arrow-down"
         title="Archived"
       ></v-list-item>
-      <v-list-item slim to="/trashed" prepend-icon="mdi-trash-can" title="Trashed"></v-list-item>
+      <v-list-item v-if="configStore.isAdmin" slim to="/trashed" prepend-icon="mdi-trash-can" title="Trashed"></v-list-item>
       <v-list-item slim to="/all" prepend-icon="mdi-expand-all" title="All"></v-list-item>
       <v-divider></v-divider>
       <v-list-item slim to="/albums" prepend-icon="mdi-image-album" title="Albums"></v-list-item>
@@ -42,12 +50,12 @@ onMounted(() => {
       ></v-list-item>
       <v-divider></v-divider>
       <v-list-item slim to="/tags" prepend-icon="mdi-tag-multiple" title="Tags"></v-list-item>
-      <v-list-item slim to="/links" prepend-icon="mdi-link" title="Links"></v-list-item>
+      <v-list-item v-if="configStore.isAdmin" slim to="/links" prepend-icon="mdi-link" title="Links"></v-list-item>
     </v-list>
 
     <v-divider />
     <SavedSearchSection
-      v-if="hasSavedSearches"
+      v-if="configStore.isAdmin && hasSavedSearches"
       :disabled="!initializedStore.initialized"
     />
     <v-divider v-if="hasSavedSearches" />
@@ -63,7 +71,9 @@ onMounted(() => {
 
     <template #append>
       <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized">
-        <v-list-item slim to="/config" prepend-icon="mdi-tune" title="Config"></v-list-item>
+        <v-list-item v-if="configStore.isAdmin" slim to="/config" prepend-icon="mdi-tune" title="Config"></v-list-item>
+        <v-list-item v-if="configStore.isAdmin" slim prepend-icon="mdi-logout" title="Log out" @click="logout" />
+        <v-list-item v-else slim to="/login" prepend-icon="mdi-login" title="Owner login" />
       </v-list>
     </template>
   </v-navigation-drawer>
