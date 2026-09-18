@@ -53,6 +53,17 @@ class FakeCacheStorage implements ThumbnailCacheStorage {
 const hash = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 
 describe('ThumbnailBlobCache', () => {
+  it('does not retain a no-store fallback before same-version backfill', async () => {
+    const storage = new FakeCacheStorage()
+    const cache = new ThumbnailBlobCache(storage)
+    await cache.put(hash, 7, new Blob(['viewer']), 'thumbnail', 'no-store')
+    expect(await cache.get(hash, 7, 'thumbnail')).toBeUndefined()
+    expect(await new ThumbnailBlobCache(storage).get(hash, 7, 'thumbnail')).toBeUndefined()
+    await cache.put(hash, 7, new Blob(['grid']), 'thumbnail', 'max-age=31536000, public')
+    expect(await (await cache.get(hash, 7, 'thumbnail'))?.text()).toBe('grid')
+    expect(await (await new ThumbnailBlobCache(storage).get(hash, 7, 'thumbnail'))?.text()).toBe('grid')
+  })
+
   it('isolates versions in memory and Cache Storage', async () => {
     const storage = new FakeCacheStorage()
     const cache = new ThumbnailBlobCache(storage)

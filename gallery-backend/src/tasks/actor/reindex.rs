@@ -14,7 +14,8 @@ use uuid::Uuid;
 use crate::process::artifact_publisher::ArtifactPublisher;
 use crate::process::media_lock::lock_media;
 use crate::process::media_pipeline::{
-    MediaStage, MediaTaskPlan, ReindexOperation, ThumbnailPublishMode, execute_media_pipeline,
+    MediaStage, MediaTaskPlan, ReindexOperation, ThumbnailPublishMode, backfill_small_thumbnail,
+    execute_media_pipeline,
 };
 use crate::process::media_publish::publish_reindex_result;
 use crate::public::constant::runtime::{CURRENT_NUM_THREADS, WORKER_RAYON_POOL};
@@ -445,6 +446,16 @@ fn process_object_inner(
     }
 
     let token = format!("reindex-{job_id}-{}", slot_ref.raw());
+    if plan.contains(ReindexOperation::GridThumbnail) {
+        // ReindexObjectTask holds the same media lock as thumbnail regeneration
+        // and rotation. Bypass metadata publication to preserve every field.
+        return backfill_small_thumbnail(
+            &data.thumbnail_path_for_version(data.cache_version()),
+            &data.small_thumbnail_path_for_version(data.cache_version()),
+            &token,
+        )
+        .map_err(|error| (MediaStage::Thumbnail, error));
+    }
     let mut publisher = ArtifactPublisher::new(token);
     let result = execute_media_pipeline(
         &data,

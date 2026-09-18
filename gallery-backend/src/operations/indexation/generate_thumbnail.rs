@@ -144,6 +144,7 @@ pub fn generate_thumbnail_for_video_to(
 #[cfg(test)]
 mod small_thumbnail_tests {
     use super::{GRID_LONG_SIDE, generate_small_thumbnail_from};
+    use crate::process::media_pipeline as backfill;
     use image::{DynamicImage, ImageFormat, RgbImage};
 
     fn write_jpeg(directory: &std::path::Path, width: u32, height: u32) -> std::path::PathBuf {
@@ -217,5 +218,37 @@ mod small_thumbnail_tests {
 
         assert!(generate_small_thumbnail_from(&source, &output).is_err());
         assert!(!output.exists());
+    }
+
+    #[test]
+    fn backfill_preserves_viewer_and_skips_existing_grid() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = write_jpeg(directory.path(), 1200, 800);
+        let viewer_bytes = std::fs::read(&source).unwrap();
+        let output = directory.path().join("grid/hash-v7.jpg");
+        assert!(backfill::backfill_small_thumbnail(&source, &output, "first").unwrap());
+        assert_eq!(dimensions(&output), (768, 512));
+        assert_eq!(std::fs::read(&source).unwrap(), viewer_bytes);
+        let grid_bytes = std::fs::read(&output).unwrap();
+        std::fs::remove_file(&source).unwrap();
+        assert!(!backfill::backfill_small_thumbnail(&source, &output, "again").unwrap());
+        assert_eq!(std::fs::read(&output).unwrap(), grid_bytes);
+        assert_eq!(
+            std::fs::read_dir(output.parent().unwrap()).unwrap().count(),
+            1
+        );
+    }
+
+    #[test]
+    fn failed_backfill_publishes_nothing_and_can_resume() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("viewer.jpg");
+        let output = directory.path().join("grid.jpg");
+        std::fs::write(&source, b"invalid JPEG").unwrap();
+        assert!(backfill::backfill_small_thumbnail(&source, &output, "broken").is_err());
+        assert!(!output.exists());
+        write_jpeg(directory.path(), 600, 400);
+        assert!(backfill::backfill_small_thumbnail(&source, &output, "retry").unwrap());
+        assert_eq!(dimensions(&output), (600, 400));
     }
 }
