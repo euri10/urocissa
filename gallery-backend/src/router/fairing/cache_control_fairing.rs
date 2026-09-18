@@ -4,7 +4,10 @@ pub fn cache_control_fairing() -> AdHoc {
     AdHoc::on_response("Add Cache-Control header", |req, res| {
         Box::pin(async move {
             // Check if the response status is successful (2xx status codes)
-            if res.status().code >= 200 && res.status().code < 300 {
+            if res.status().code >= 200
+                && res.status().code < 300
+                && res.headers().get_one("Cache-Control").is_none()
+            {
                 // Apply cache control headers based on the request path
                 if req.uri().path().starts_with("/object")
                     || req.uri().path().starts_with("/assets")
