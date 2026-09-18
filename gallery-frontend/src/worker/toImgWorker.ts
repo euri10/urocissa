@@ -81,7 +81,13 @@ const handler = createHandler<typeof toImgWorker>({
         )
 
         blob = response.data
-        void thumbnailBlobCache.put(event.hash, event.cacheVersion, blob, tier)
+        void thumbnailBlobCache.put(
+          event.hash,
+          event.cacheVersion,
+          blob,
+          tier,
+          String(response.headers['cache-control'] ?? '')
+        )
       }
 
       controllerMap.delete(event.index)
@@ -129,7 +135,13 @@ const handler = createHandler<typeof toImgWorker>({
         )
 
         blob = response.data
-        void thumbnailBlobCache.put(event.hash, event.cacheVersion, blob)
+        void thumbnailBlobCache.put(
+          event.hash,
+          event.cacheVersion,
+          blob,
+          'compressed',
+          String(response.headers['cache-control'] ?? '')
+        )
       }
 
       const img = await createImageBitmap(blob)

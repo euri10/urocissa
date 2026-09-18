@@ -46,7 +46,7 @@ export interface ReindexJobStatus {
   jobId: string
   state: ReindexJobState
   queuePosition: number | null
-  operations: ReindexOperation[]
+  operations: (ReindexOperation | 'gridThumbnail')[]
   total: number
   processed: number
   succeeded: number

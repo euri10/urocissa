@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ReindexJobState, ReindexJobStatus, ReindexOperation } from '@/api/reindex'
+import type { ReindexJobState, ReindexJobStatus } from '@/api/reindex'
 import { reindexProgress } from '@/api/reindex'
 
 const props = defineProps<{
@@ -39,11 +39,12 @@ const icons: Record<ReindexJobState, string> = {
   failed: 'mdi-close'
 }
 
-const operationLabels: Record<ReindexOperation, string> = {
+const operationLabels: Record<ReindexJobStatus['operations'][number], string> = {
   exif: 'EXIF',
   dimensions: 'Dimensions',
   fileSize: 'File size',
   thumbnail: 'Thumbnail',
+  gridThumbnail: 'Missing grid thumbnails',
   visualHashes: 'Visual hashes',
   videoCompression: 'Video compression',
   clearTags: 'Clear tags'

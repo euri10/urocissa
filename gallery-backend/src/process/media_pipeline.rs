@@ -33,17 +33,20 @@ pub enum ReindexOperation {
     Dimensions,
     FileSize,
     Thumbnail,
+    /// Fill only missing grid artifacts without changing viewer files or metadata.
+    GridThumbnail,
     VisualHashes,
     VideoCompression,
     ClearTags,
 }
 
 impl ReindexOperation {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Exif,
         Self::Dimensions,
         Self::FileSize,
         Self::Thumbnail,
+        Self::GridThumbnail,
         Self::VisualHashes,
         Self::VideoCompression,
         Self::ClearTags,
@@ -108,6 +111,9 @@ impl MediaTaskPlan {
             anyhow::bail!("at least one reindex operation is required");
         }
         let requested = operations.into_iter().collect::<HashSet<_>>();
+        if requested.contains(&ReindexOperation::GridThumbnail) && requested.len() != 1 {
+            anyhow::bail!("gridThumbnail must be requested on its own");
+        }
         let operations = ReindexOperation::ALL
             .into_iter()
             .filter(|operation| requested.contains(operation))
@@ -527,6 +533,35 @@ fn publish_small_thumbnail(
     Ok(())
 }
 
+/// Fill a missing grid artifact from its existing viewer JPEG.
+///
+/// Returns false for an existing regular file. The caller must hold the media
+/// lock throughout this operation. No metadata or cache version is changed.
+///
+/// # Errors
+///
+/// Returns an error for an inaccessible or non-file destination, an invalid
+/// viewer JPEG, or failure to stage or publish the new artifact.
+pub fn backfill_small_thumbnail(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+    token: &str,
+) -> Result<bool> {
+    match fs::symlink_metadata(destination) {
+        Ok(metadata) if metadata.is_file() => return Ok(false),
+        Ok(_) => anyhow::bail!("grid destination is not a regular file"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error).context("failed to inspect grid destination"),
+    }
+    let mut publisher = ArtifactPublisher::new(token);
+    let staged = publisher.stage_path(destination)?;
+    // Register before encoding so a partial write is cleaned up on failure.
+    publisher.replace(staged.clone(), destination.to_path_buf());
+    generate_small_thumbnail_from(source, &staged)?;
+    publisher.publish(|| Ok(()))?;
+    Ok(true)
+}
+
 fn thumbnail_version_for_publish(current_version: u32, mode: ThumbnailPublishMode) -> Result<u32> {
     match mode {
         ThumbnailPublishMode::Initial => Ok(current_version),
@@ -595,6 +630,16 @@ mod tests {
             serde_json::from_str::<ReindexOperation>("\"fileSize\"").unwrap(),
             ReindexOperation::FileSize
         );
+    }
+
+    #[test]
+    fn grid_backfill_is_explicit_and_cannot_mix_with_metadata_operations() {
+        let operation: ReindexOperation = serde_json::from_str("\"gridThumbnail\"").unwrap();
+        let plan = MediaTaskPlan::new(vec![operation]).unwrap();
+        assert_eq!(plan.operations(), &[operation]);
+        assert!(!MediaTaskPlan::safe_default().contains(operation));
+        assert!(MediaTaskPlan::new(vec![operation, ReindexOperation::Thumbnail]).is_err());
+        assert!(MediaTaskPlan::new(vec![operation, ReindexOperation::Exif]).is_err());
     }
 
     #[test]
