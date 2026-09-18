@@ -156,6 +156,7 @@ export function useRowMediaRequests(
         height: request.displayHeight,
         devicePixelRatio: window.devicePixelRatio,
         fitMode: 'cover',
+        albumMode: request.abstractData.type === 'album',
         albumId: shareStore.albumId,
         shareId: shareStore.shareId,
         password: shareStore.password,

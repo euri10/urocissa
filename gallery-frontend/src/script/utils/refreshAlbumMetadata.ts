@@ -97,6 +97,7 @@ export async function refreshAlbumMetadata(albumId: string) {
         height: 300,
         devicePixelRatio: window.devicePixelRatio,
         fitMode: 'cover',
+        albumMode: true,
         albumId: shareStore.albumId,
         shareId: shareStore.shareId,
         password: shareStore.password,
