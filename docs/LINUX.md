@@ -107,14 +107,14 @@ After following these steps, your Urocissa app will be updated to the latest ver
 
 ## Backfill grid thumbnails
 
-The fork serves grid JPEGs at a maximum long side of 768 pixels. Existing
+The gallery serves grid JPEGs at a maximum long side of 768 pixels. Existing
 viewer JPEGs and their URLs remain unchanged. To create missing grid files,
 use the authenticated reindex API with `operations: ["gridThumbnail"]`.
 This operation must be requested alone; it is not part of the default reindex.
 
-1. As the owner, obtain a fresh selection snapshot with `POST /get/prefetch`.
+1. After signing in, obtain a fresh selection snapshot with `POST /get/prefetch`.
    Use the same filters you intend to backfill (`null` for the normal gallery).
-2. Send `POST /put/reindex` with the owner authentication and this JSON,
+2. Send `POST /put/reindex` with authentication and this JSON (read-only mode must be disabled),
    replacing the example timestamp with the response's `prefetch.timestamp`:
 
    ```json
@@ -127,7 +127,7 @@ This operation must be requested alone; it is not part of the default reindex.
 
    The selection covers that snapshot, not records outside its filters.
 3. Monitor `GET /get/reindex/jobs`. Cancel with
-   `POST /put/reindex/<jobId>/cancel`. Both require owner authentication.
+   `POST /put/reindex/<jobId>/cancel`. Both require authentication.
    Existing regular grid files count as skipped; missing or corrupt viewer
    JPEGs count as failures. Review errors even if the queue has finished.
 4. To resume after cancellation, restart, or repaired source files, submit

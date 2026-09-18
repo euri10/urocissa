@@ -99,7 +99,7 @@ pub async fn small_thumbnail_file(
     hash_guard: GuardResult<GuardHash>,
     file_path: PathBuf,
 ) -> AppResult<GridThumbnailResponse> {
-    check_public_media(auth_guard?, &file_path)?;
+    let _ = auth_guard?;
     let _ = hash_guard?;
     if file_path.extension().and_then(std::ffi::OsStr::to_str) != Some("jpg") {
         return Err(
