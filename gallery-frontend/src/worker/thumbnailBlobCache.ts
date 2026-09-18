@@ -88,8 +88,11 @@ export class ThumbnailBlobCache {
     hash: string,
     cacheVersion: number,
     blob: Blob,
-    tier: ThumbnailTier = 'compressed'
+    tier: ThumbnailTier = 'compressed',
+    cacheControl = ''
   ): Promise<void> {
+    // Cache Storage ignores HTTP cache policy; preserve temporary fallbacks' no-store.
+    if (cacheControl.split(',').some((directive) => directive.trim().toLowerCase() === 'no-store')) return
     const identity = thumbnailIdentity(hash, cacheVersion, tier)
     const prefix = `${tier}:${hash}:v`
     const memoryVersions = [...this.memory.keys()]
