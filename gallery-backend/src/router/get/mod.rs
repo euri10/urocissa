@@ -22,6 +22,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_data::get_rows,
         get_data::get_scroll_bar,
         get_img::compressed_file,
+        get_img::small_thumbnail_file,
         get_img::imported_file,
         get_page::redirect_to_photo,
         get_page::login,

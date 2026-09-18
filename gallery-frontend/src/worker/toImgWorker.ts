@@ -7,7 +7,7 @@ import {
 } from '@/worker/workerApi'
 import axiosRetry from 'axios-retry'
 import axios from 'axios'
-import { getThumbnailSrc } from '@utils/thumbnail'
+import { chooseThumbnailTier, getThumbnailSrc } from '@utils/thumbnail'
 import { setupWorkerAxiosInterceptor } from './workerAxiosInterceptor'
 import { ThumbnailBlobCache } from './thumbnailBlobCache'
 import { resizeThumbnailBlob } from './thumbnailResize'
@@ -45,12 +45,18 @@ void thumbnailBlobCache.cleanupLegacy()
 
 const handler = createHandler<typeof toImgWorker>({
   async processSmallImage(event: ProcessSmallImagePayload) {
+    const tier = chooseThumbnailTier(
+      event.width,
+      event.height,
+      event.devicePixelRatio,
+      event.albumMode === true
+    )
     try {
       const controller = new AbortController()
       controllerMap.set(event.index, controller)
 
       // Layer 1 + 2: worker memory and disk-persistent Cache Storage.
-      let blob = await thumbnailBlobCache.get(event.hash, event.cacheVersion)
+      let blob = await thumbnailBlobCache.get(event.hash, event.cacheVersion, tier)
 
       // Layer 3: Network fetch
       if (blob === undefined) {
@@ -70,12 +76,12 @@ const handler = createHandler<typeof toImgWorker>({
         }
 
         const response = await workerAxios.get<Blob>(
-          getThumbnailSrc(event.hash, event.cacheVersion),
+          getThumbnailSrc(event.hash, event.cacheVersion, tier),
           config
         )
 
         blob = response.data
-        void thumbnailBlobCache.put(event.hash, event.cacheVersion, blob)
+        void thumbnailBlobCache.put(event.hash, event.cacheVersion, blob, tier)
       }
 
       controllerMap.delete(event.index)
@@ -92,7 +98,7 @@ const handler = createHandler<typeof toImgWorker>({
     } catch (error) {
       if (axios.isCancel(error)) return
       // Purge potentially corrupt blob from caches so the next attempt re-fetches
-      void thumbnailBlobCache.purge(event.hash, event.cacheVersion)
+      void thumbnailBlobCache.purge(event.hash, event.cacheVersion, tier)
       console.error(error)
     }
   },
