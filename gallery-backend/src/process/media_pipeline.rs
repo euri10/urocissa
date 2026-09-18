@@ -18,7 +18,7 @@ use crate::operations::indexation::generate_exif::{
 };
 use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
 use crate::operations::indexation::generate_thumbnail::{
-    generate_thumbnail_for_image_to, generate_thumbnail_for_video_to,
+    generate_small_thumbnail_from, generate_thumbnail_for_image_to, generate_thumbnail_for_video_to,
 };
 use crate::operations::indexation::generate_width_height::{
     generate_image_width_height, generate_video_width_height,
@@ -395,9 +395,15 @@ fn run_image_pipeline(
             MediaStage::Thumbnail,
             generate_thumbnail_for_image_to(candidate, image, &staged),
         )?;
+        stage(
+            MediaStage::Thumbnail,
+            publish_small_thumbnail(candidate, publisher, &staged, published_version),
+        )?;
         publisher.replace(staged.clone(), destination);
         if published_version != current_version {
             publisher.retire_after_commit(candidate.thumbnail_path_for_version(current_version));
+            publisher
+                .retire_after_commit(candidate.small_thumbnail_path_for_version(current_version));
             candidate.set_cache_version(published_version);
         }
         Some(staged)
@@ -461,9 +467,15 @@ fn run_video_pipeline(
             MediaStage::Thumbnail,
             generate_thumbnail_for_video_to(candidate, &staged),
         )?;
+        stage(
+            MediaStage::Thumbnail,
+            publish_small_thumbnail(candidate, publisher, &staged, published_version),
+        )?;
         publisher.replace(staged.clone(), destination);
         if published_version != current_version {
             publisher.retire_after_commit(candidate.thumbnail_path_for_version(current_version));
+            publisher
+                .retire_after_commit(candidate.small_thumbnail_path_for_version(current_version));
             candidate.set_cache_version(published_version);
         }
         Some(staged)
@@ -495,6 +507,23 @@ fn run_video_pipeline(
         publisher.replace(staged, destination);
         candidate.set_pending(false);
     }
+    Ok(())
+}
+
+/// Stage the grid tier from an already staged viewer thumbnail.
+///
+/// Both tiers are staged before any promotion, so a failure here rolls back
+/// with everything else and never leaves the two tiers at different versions.
+fn publish_small_thumbnail(
+    candidate: &AbstractData,
+    publisher: &mut ArtifactPublisher,
+    staged_viewer: &std::path::Path,
+    published_version: u32,
+) -> Result<()> {
+    let destination = candidate.small_thumbnail_path_for_version(published_version);
+    let staged = publisher.stage_path(&destination)?;
+    generate_small_thumbnail_from(staged_viewer, &staged)?;
+    publisher.replace(staged, destination);
     Ok(())
 }
 

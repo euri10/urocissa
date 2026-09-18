@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  LEGACY_THUMBNAIL_CACHE_NAME,
+  LEGACY_THUMBNAIL_CACHE_NAMES,
   THUMBNAIL_CACHE_NAME,
   ThumbnailBlobCache,
   type ThumbnailCacheStorage,
@@ -76,13 +76,34 @@ describe('ThumbnailBlobCache', () => {
     expect(await (await cache.get(hash, 2))?.text()).toBe('newest')
   })
 
-  it('removes the hash-only v1 Cache Storage on startup', async () => {
+  it('removes every superseded Cache Storage on startup', async () => {
     const storage = new FakeCacheStorage()
-    await storage.open(LEGACY_THUMBNAIL_CACHE_NAME)
+    for (const name of LEGACY_THUMBNAIL_CACHE_NAMES) await storage.open(name)
     const cache = new ThumbnailBlobCache(storage)
 
     await cache.cleanupLegacy()
 
-    expect(storage.stores.has(LEGACY_THUMBNAIL_CACHE_NAME)).toBe(false)
+    for (const name of LEGACY_THUMBNAIL_CACHE_NAMES) {
+      expect(storage.stores.has(name)).toBe(false)
+    }
+  })
+
+  it('never serves a grid Blob to the viewer tier', async () => {
+    const storage = new FakeCacheStorage()
+    const cache = new ThumbnailBlobCache(storage)
+    await cache.put(hash, 0, new Blob(['grid']), 'thumbnail')
+
+    expect(await cache.get(hash, 0, 'compressed')).toBeUndefined()
+    expect(await (await cache.get(hash, 0, 'thumbnail'))?.text()).toBe('grid')
+  })
+
+  it('expires each tier on its own version without evicting the other', async () => {
+    const storage = new FakeCacheStorage()
+    const cache = new ThumbnailBlobCache(storage)
+    await cache.put(hash, 0, new Blob(['viewer v0']), 'compressed')
+    await cache.put(hash, 1, new Blob(['grid v1']), 'thumbnail')
+
+    expect(await (await cache.get(hash, 0, 'compressed'))?.text()).toBe('viewer v0')
+    expect(await (await cache.get(hash, 1, 'thumbnail'))?.text()).toBe('grid v1')
   })
 })

@@ -19,6 +19,7 @@ export interface ProcessSmallImagePayload {
   height: number
   devicePixelRatio: number
   fitMode: ThumbnailFitMode
+  albumMode: boolean
   albumId: null | string
   shareId: null | string
   password: null | string

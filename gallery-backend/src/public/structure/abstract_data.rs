@@ -96,6 +96,24 @@ fn word_boundary_after(value: &str, byte_index: usize) -> bool {
         .is_none_or(|character| !regex_syntax::is_word_character(character))
 }
 
+/// Directory holding the viewer-sized derived image, and compressed video.
+pub const VIEWER_TIER: &str = "compressed";
+
+/// Directory holding the grid-sized derived image.
+pub const GRID_TIER: &str = "thumbnail";
+
+/// Data-root-relative path of a derived image in one tier.
+///
+/// Both tiers use the same hash shard and versioned file name, so a cache
+/// version bump invalidates them together.
+pub fn thumbnail_relative_path(tier: &str, hash: &str, cache_version: u32) -> String {
+    format!(
+        "object/{tier}/{}/{}",
+        &hash[0..2],
+        thumbnail_file_name(hash, cache_version)
+    )
+}
+
 pub fn thumbnail_file_name(hash: &str, cache_version: u32) -> String {
     if cache_version == 0 {
         format!("{hash}.jpg")
@@ -129,7 +147,9 @@ pub fn parse_thumbnail_stem(stem: &str) -> Option<(&str, u32)> {
 
 #[cfg(test)]
 mod thumbnail_identity_tests {
-    use super::{parse_thumbnail_stem, thumbnail_file_name};
+    use super::{
+        GRID_TIER, VIEWER_TIER, parse_thumbnail_stem, thumbnail_file_name, thumbnail_relative_path,
+    };
 
     const HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
@@ -137,6 +157,35 @@ mod thumbnail_identity_tests {
     fn thumbnail_names_keep_version_zero_backward_compatible() {
         assert_eq!(thumbnail_file_name(HASH, 0), format!("{HASH}.jpg"));
         assert_eq!(thumbnail_file_name(HASH, 42), format!("{HASH}-v42.jpg"));
+    }
+
+    #[test]
+    fn the_viewer_tier_path_is_unchanged_by_the_grid_tier() {
+        assert_eq!(
+            thumbnail_relative_path(VIEWER_TIER, HASH, 0),
+            format!("object/compressed/01/{HASH}.jpg")
+        );
+        assert_eq!(
+            thumbnail_relative_path(VIEWER_TIER, HASH, 42),
+            format!("object/compressed/01/{HASH}-v42.jpg")
+        );
+    }
+
+    #[test]
+    fn the_grid_tier_shares_the_shard_and_version_in_its_own_directory() {
+        assert_eq!(
+            thumbnail_relative_path(GRID_TIER, HASH, 0),
+            format!("object/thumbnail/01/{HASH}.jpg")
+        );
+        assert_eq!(
+            thumbnail_relative_path(GRID_TIER, HASH, 42),
+            format!("object/thumbnail/01/{HASH}-v42.jpg")
+        );
+        // The public-media guard parses the stem, so both tiers must agree.
+        assert_eq!(
+            parse_thumbnail_stem(&format!("{HASH}-v42")),
+            Some((HASH, 42))
+        );
     }
 
     #[test]
@@ -832,11 +881,9 @@ impl AbstractData {
     pub fn compressed_path_string(&self) -> String {
         let hash = self.hash();
         let relative_path = match self {
-            AbstractData::Image(_) => format!(
-                "object/compressed/{}/{}",
-                &hash.as_str()[0..2],
-                thumbnail_file_name(hash.as_str(), self.cache_version())
-            ),
+            AbstractData::Image(_) => {
+                thumbnail_relative_path(VIEWER_TIER, hash.as_str(), self.cache_version())
+            }
             AbstractData::Video(_) => {
                 format!("object/compressed/{}/{}.mp4", &hash.as_str()[0..2], hash)
             }
@@ -872,11 +919,23 @@ impl AbstractData {
 
     /// Get the thumbnail path for a specific immutable cache version.
     pub fn thumbnail_path_for_version(&self, cache_version: u32) -> PathBuf {
-        let hash = self.hash();
-        crate::public::constant::storage::get_data_path().join(format!(
-            "object/compressed/{}/{}",
-            &hash.as_str()[0..2],
-            thumbnail_file_name(hash.as_str(), cache_version)
+        crate::public::constant::storage::get_data_path().join(thumbnail_relative_path(
+            VIEWER_TIER,
+            self.hash().as_str(),
+            cache_version,
+        ))
+    }
+
+    /// Get the grid thumbnail path for a specific immutable cache version.
+    ///
+    /// This is the small tier the gallery grid requests. It shares the cache
+    /// version of the viewer-sized artifact in
+    /// [`Self::thumbnail_path_for_version`], so one version bump retires both.
+    pub fn small_thumbnail_path_for_version(&self, cache_version: u32) -> PathBuf {
+        crate::public::constant::storage::get_data_path().join(thumbnail_relative_path(
+            GRID_TIER,
+            self.hash().as_str(),
+            cache_version,
         ))
     }
 
