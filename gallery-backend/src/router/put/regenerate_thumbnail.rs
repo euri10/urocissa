@@ -69,6 +69,9 @@ pub async fn regenerate_thumbnail_with_frame(
     let staged = publisher
         .stage_path(&destination)
         .map_err(|error| AppError::from_err(ErrorKind::IO, error))?;
+    #[cfg(test)]
+    crate::process::staging_failure_tests::partial_write_failure(&staged)
+        .map_err(|error| AppError::from_err(ErrorKind::IO, error))?;
     form.frame
         .move_copy_to(&staged)
         .await

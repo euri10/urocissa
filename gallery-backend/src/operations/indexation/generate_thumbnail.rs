@@ -29,6 +29,8 @@ fn write_jpeg_thumbnail(
     output_path: &Path,
 ) -> Result<()> {
     let thumbnail_image = dynamic_image.thumbnail_exact(width, height).to_rgb8();
+    #[cfg(test)]
+    crate::process::staging_failure_tests::jpeg_write_failure(&thumbnail_image, output_path)?;
 
     // Resolve parent directory of the output path
     let parent_path = output_path.parent().ok_or_else(|| {
@@ -102,6 +104,9 @@ pub fn generate_thumbnail_for_video_to(
     abstract_data: &AbstractData,
     output_path: &Path,
 ) -> Result<()> {
+    #[cfg(test)]
+    crate::process::staging_failure_tests::partial_write_failure(output_path)?;
+
     let (width, height) = (abstract_data.width(), abstract_data.height());
     let (thumb_width, thumb_height) = small_width_height(width, height, 1280);
 
