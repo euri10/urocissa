@@ -11,6 +11,7 @@ use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::object::next_mutation_timestamp;
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::router::fairing::guard_share_edit::GuardShareEdit;
 use crate::router::selection::{
     SelectionDescriptor, resolve_selection, resolved_selection_is_current,
 };
@@ -277,13 +278,21 @@ pub struct SetAlbumTitle {
 
 #[put("/put/set_album_title", data = "<set_album_title>")]
 pub async fn set_album_title(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardShareEdit>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     set_album_title: Json<SetAlbumTitle>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let auth = auth?;
     let _ = read_only_mode?;
     let data = set_album_title.into_inner();
+    if let crate::router::claims::Role::Share(share) = &auth.claims.role
+        && share.album_id != data.album_id
+    {
+        return Err(AppError::new(
+            ErrorKind::PermissionDenied,
+            "Album is outside the share",
+        ));
+    }
     let reservation = TREE
         .state
         .read()
