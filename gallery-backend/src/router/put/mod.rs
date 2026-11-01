@@ -10,6 +10,8 @@ pub mod edit_tag;
 pub mod regenerate_thumbnail;
 pub mod reindex;
 pub mod rotate_image;
+#[cfg(test)]
+mod thumbnail_mutation_tests;
 pub fn generate_put_routes() -> Vec<Route> {
     routes![
         edit_album::edit_album,
