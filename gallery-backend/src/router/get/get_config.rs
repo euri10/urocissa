@@ -8,6 +8,7 @@ use rocket::serde::json::Json;
 use crate::public::structure::config::{APP_CONFIG, PublicConfig};
 use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_share::GuardShare;
+use crate::router::fairing::guard_share_edit::can_edit_share_resources;
 use serde::Serialize;
 
 use crate::router::{AppResult, GuardResult};
@@ -26,12 +27,15 @@ pub struct PublicConfigResponse {
 
 #[get("/get/config")]
 pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<PublicConfigResponse>> {
-    let is_admin = auth?.claims.is_admin();
+    let claims = auth?.claims;
+    let is_admin = claims.is_admin();
     // Only return the public part
     let config = APP_CONFIG.get().unwrap().read().unwrap();
     let mut public = config.public.clone();
-    if !is_admin {
+    if !can_edit_share_resources(&claims) {
         public.read_only_mode = true;
+    }
+    if !is_admin {
         public.sync_paths.clear();
     }
     let response = PublicConfigResponse {
