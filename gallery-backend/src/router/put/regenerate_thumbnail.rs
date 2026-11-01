@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::operations::indexation::fix_orientation::fix_video_width_height;
 use crate::operations::indexation::generate_dynamic_image::decode_image;
 use crate::operations::indexation::generate_image_hash::generate_thumbhash;
+use crate::operations::indexation::generate_thumbnail::generate_small_thumbnail_from;
 use crate::operations::indexation::generate_width_height::generate_video_width_height;
 use crate::process::artifact_publisher::ArtifactPublisher;
 use crate::process::media_lock::lock_media;
@@ -69,12 +70,14 @@ pub async fn regenerate_thumbnail_with_frame(
     let staged = publisher
         .stage_path(&destination)
         .map_err(|error| AppError::from_err(ErrorKind::IO, error))?;
+    publisher.replace(staged.clone(), destination);
     form.frame
         .move_copy_to(&staged)
         .await
         .or_raise(|| (ErrorKind::IO, "failed to stage captured video frame"))?;
-    publisher.replace(staged.clone(), destination);
     publisher.retire_after_commit(previous_thumbnail);
+    publisher
+        .retire_after_commit(current_data.small_thumbnail_path_for_version(current_cache_version));
 
     tokio::task::spawn_blocking(move || {
         capture_frame_inner(
@@ -97,7 +100,7 @@ fn capture_frame_inner(
     current_cache_version: u32,
     next_cache_version: u32,
     staged: &std::path::Path,
-    publisher: ArtifactPublisher,
+    mut publisher: ArtifactPublisher,
 ) -> Result<()> {
     let (slot_ref, mut data) = load_logical_media(hash)?;
     if !data.is_video() {
@@ -108,6 +111,10 @@ fn capture_frame_inner(
         .to_rgb8()
         .save_with_format(staged, ImageFormat::Jpeg)
         .context("failed to normalize captured frame as JPEG")?;
+    let next_grid_path = data.small_thumbnail_path_for_version(next_cache_version);
+    let staged_grid = publisher.stage_path(&next_grid_path)?;
+    publisher.replace(staged_grid.clone(), next_grid_path);
+    generate_small_thumbnail_from(staged, &staged_grid)?;
     let thumbhash = generate_thumbhash(&image);
     let (width, height) = generate_video_width_height(&data)?;
     data.set_width(width);
@@ -115,6 +122,8 @@ fn capture_frame_inner(
     fix_video_width_height(&mut data);
     let (width, height) = (data.width(), data.height());
 
+    #[cfg(test)]
+    super::thumbnail_mutation_tests::before_publish(&staged_grid);
     publish_media_mutation(slot_ref, hash, publisher, move |latest| {
         let AbstractData::Video(video) = latest else {
             anyhow::bail!("media type changed before captured frame was published");
