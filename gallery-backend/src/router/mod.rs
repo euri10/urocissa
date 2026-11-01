@@ -13,3 +13,6 @@ pub type AppResult<T> = Result<T, AppError>;
 pub type GuardResult<T> = Result<T, AppError>;
 pub type GuardError = AppError;
 pub use builder::build_rocket;
+
+#[cfg(test)]
+mod share_edit_http_tests;

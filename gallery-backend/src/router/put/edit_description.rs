@@ -7,8 +7,8 @@ use crate::public::db::tree::VERSION_COUNT_TIMESTAMP;
 use crate::public::db::write_behind::{DirtyOperation, WRITE_BEHIND};
 use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::object::next_mutation_timestamp;
-use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
+use crate::router::fairing::guard_share_edit::GuardShareEdit;
 use crate::router::selection::{
     SelectionDescriptor, resolve_selection, resolved_selection_is_current,
 };
@@ -29,11 +29,11 @@ pub struct SetUserDefinedDescription {
     data = "<set_user_defined_description>"
 )]
 pub async fn set_user_defined_description(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardShareEdit>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     set_user_defined_description: Json<SetUserDefinedDescription>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let auth = auth?;
     let _ = read_only_mode?;
     let data = set_user_defined_description.into_inner();
     let selection = data
@@ -78,6 +78,24 @@ pub async fn set_user_defined_description(
         return Err(AppError::new(
             ErrorKind::Conflict,
             "selection became stale before publication",
+        ));
+    }
+    // A snapshot/timestamp is not an authorization capability. Check current
+    // membership under the publication lock, including explicit/all-except selections.
+    if let crate::router::claims::Role::Share(share) = &auth.claims.role
+        && !state.get(target).is_some_and(|record| {
+            record.id == share.album_id
+                || state
+                    .query
+                    .albums
+                    .get(&share.album_id)
+                    .is_some_and(|members| members.contains(target.index()))
+        })
+    {
+        WRITE_BEHIND.release_reservation(bytes);
+        return Err(AppError::new(
+            ErrorKind::PermissionDenied,
+            "Item is outside the share",
         ));
     }
     let changed_at = next_mutation_timestamp();
