@@ -51,6 +51,9 @@ pub fn generate_compressed_video_to(
     output_path: &Path,
     report_progress: bool,
 ) -> Result<VideoCompressionOutcome> {
+    #[cfg(test)]
+    crate::process::staging_failure_tests::partial_write_failure(output_path)?;
+
     if is_static_gif(abstract_data)? {
         info!(
             "Static GIF detected. Processing as image: {:?}",

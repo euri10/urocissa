@@ -26,6 +26,7 @@ struct AppliedArtifact {
 #[derive(Debug)]
 pub struct ArtifactPublisher {
     token: String,
+    staged_paths: Vec<PathBuf>,
     actions: Vec<ArtifactAction>,
     retire_after_commit: Vec<PathBuf>,
 }
@@ -34,16 +35,23 @@ impl ArtifactPublisher {
     pub fn new(token: impl Into<String>) -> Self {
         Self {
             token: token.into(),
+            staged_paths: Vec::new(),
             actions: Vec::new(),
             retire_after_commit: Vec::new(),
         }
     }
 
-    pub fn stage_path(&self, destination: &Path) -> Result<PathBuf> {
-        sibling_path(destination, &self.token, "tmp")
+    /// Own cleanup before any fallible generation or copy can create the file.
+    /// This does not schedule publication; callers still register `replace`.
+    pub fn stage_path(&mut self, destination: &Path) -> Result<PathBuf> {
+        let staged = sibling_path(destination, &self.token, "tmp")?;
+        self.staged_paths.push(staged.clone());
+        Ok(staged)
     }
 
     pub fn replace(&mut self, staged: PathBuf, destination: PathBuf) {
+        // Also own paths supplied without going through stage_path.
+        self.staged_paths.push(staged.clone());
         self.actions.push(ArtifactAction::Replace {
             staged,
             destination,
@@ -168,12 +176,8 @@ impl ArtifactPublisher {
     }
 
     fn cleanup_staged(&self) {
-        for action in &self.actions {
-            if let ArtifactAction::Replace { staged, .. } = action
-                && staged.exists()
-            {
-                let _ = fs::remove_file(staged);
-            }
+        for staged in &self.staged_paths {
+            let _ = fs::remove_file(staged);
         }
     }
 }
@@ -227,11 +231,49 @@ mod tests {
 
     #[test]
     fn staged_file_keeps_destination_extension() {
-        let publisher = ArtifactPublisher::new("job-1");
+        let directory = tempfile::tempdir().unwrap();
+        let mut publisher = ArtifactPublisher::new("job-1");
         let staged = publisher
-            .stage_path(std::path::Path::new("C:/data/example.jpg"))
+            .stage_path(&directory.path().join("example.jpg"))
             .unwrap();
         assert_eq!(staged.file_name().unwrap(), "example.job-1.tmp.jpg");
+    }
+
+    #[test]
+    fn drop_cleans_partial_output_without_a_replace_action() {
+        let directory = tempfile::tempdir().unwrap();
+        let destination = directory.path().join("object.jpg");
+        std::fs::write(&destination, b"published").unwrap();
+        let mut publisher = ArtifactPublisher::new("partial");
+        let staged = publisher.stage_path(&destination).unwrap();
+        std::fs::write(&staged, b"partial").unwrap();
+        drop(publisher);
+        assert!(!staged.exists());
+        assert_eq!(std::fs::read(destination).unwrap(), b"published");
+    }
+
+    #[test]
+    fn replace_still_owns_externally_staged_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let staged = directory.path().join("external.tmp.jpg");
+        std::fs::write(&staged, b"partial").unwrap();
+        let mut publisher = ArtifactPublisher::new("external");
+        publisher.replace(staged.clone(), directory.path().join("object.jpg"));
+        drop(publisher);
+        assert!(!staged.exists());
+    }
+
+    #[test]
+    fn cleanup_ownership_does_not_schedule_publication() {
+        let directory = tempfile::tempdir().unwrap();
+        let destination = directory.path().join("object.jpg");
+        std::fs::write(&destination, b"published").unwrap();
+        let mut publisher = ArtifactPublisher::new("unused");
+        let staged = publisher.stage_path(&destination).unwrap();
+        std::fs::write(&staged, b"unused").unwrap();
+        publisher.publish(|| Ok(())).unwrap();
+        assert!(!staged.exists());
+        assert_eq!(std::fs::read(destination).unwrap(), b"published");
     }
 
     #[test]

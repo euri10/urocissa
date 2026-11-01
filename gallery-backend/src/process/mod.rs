@@ -5,3 +5,6 @@ pub mod io;
 pub mod media_lock;
 pub mod media_pipeline;
 pub mod media_publish;
+
+#[cfg(test)]
+pub(crate) mod staging_failure_tests;
