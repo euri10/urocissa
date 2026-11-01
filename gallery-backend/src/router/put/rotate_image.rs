@@ -5,7 +5,9 @@ use rocket::serde::{Deserialize, json::Json};
 use uuid::Uuid;
 
 use crate::operations::indexation::generate_image_hash::{generate_phash, generate_thumbhash};
-use crate::operations::indexation::generate_thumbnail::generate_thumbnail_for_image_to;
+use crate::operations::indexation::generate_thumbnail::{
+    generate_small_thumbnail_from, generate_thumbnail_for_image_to,
+};
 use crate::process::artifact_publisher::ArtifactPublisher;
 use crate::process::media_lock::lock_media;
 use crate::process::media_publish::{load_logical_media, publish_media_mutation};
@@ -62,9 +64,16 @@ fn rotate_image_inner(hash: ArrayString<64>) -> Result<()> {
 
     let mut publisher = ArtifactPublisher::new(format!("rotate-{}", Uuid::new_v4()));
     let staged = publisher.stage_path(&next_thumbnail_path)?;
+    publisher.replace(staged.clone(), next_thumbnail_path);
+    let next_grid_path = data.small_thumbnail_path_for_version(next_cache_version);
+    let staged_grid = publisher.stage_path(&next_grid_path)?;
+    publisher.replace(staged_grid.clone(), next_grid_path);
     generate_thumbnail_for_image_to(&data, &rotated, &staged)?;
-    publisher.replace(staged, next_thumbnail_path);
+    generate_small_thumbnail_from(&staged, &staged_grid)?;
     publisher.retire_after_commit(compressed_path);
+    publisher.retire_after_commit(data.small_thumbnail_path_for_version(current_cache_version));
+    #[cfg(test)]
+    super::thumbnail_mutation_tests::before_publish(&staged_grid);
     publish_media_mutation(slot_ref, hash, publisher, move |latest| {
         let AbstractData::Image(image) = latest else {
             anyhow::bail!("media type changed before image rotation was published");
