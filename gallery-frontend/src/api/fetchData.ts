@@ -4,6 +4,7 @@ import { bindActionDispatch } from 'typesafe-agent-events'
 import { toDataWorker } from '@/worker/workerApi'
 import { FetchDataMethod, IsolationId } from '@type/types'
 import { useTokenStore } from '@/store/tokenStore'
+import { useShareStore } from '@/store/shareStore'
 
 export async function fetchDataInWorker(
   fetchMethod: FetchDataMethod,
@@ -38,7 +39,8 @@ export async function fetchDataInWorker(
       fetchMethod: fetchMethod,
       batch: batch,
       timestamp: timestamp,
-      timestampToken
+      timestampToken,
+      shareHeaders: useShareStore('mainId').authHeaders
     })
   }
 }

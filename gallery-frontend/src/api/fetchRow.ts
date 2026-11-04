@@ -8,6 +8,7 @@ import { bindActionDispatch } from 'typesafe-agent-events'
 import { IsolationId } from '@type/types'
 import { useTokenStore } from '@/store/tokenStore'
 import { useConstStore } from '@/store/constStore'
+import { useShareStore } from '@/store/shareStore'
 
 /**
  * Fetches a row of data using a web worker if it isn't already queued.
@@ -66,6 +67,7 @@ export async function fetchRowInWorker(index: number, isolationId: IsolationId) 
       windowWidth: prefetchStore.windowWidth,
       isLastRow: index === prefetchStore.rowLength - 1,
       timestampToken,
+      shareHeaders: useShareStore('mainId').authHeaders,
       subRowHeightScale: constStore.subRowHeightScale,
       limitRatio: constStore.limitRatio
     })

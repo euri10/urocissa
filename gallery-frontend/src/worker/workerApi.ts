@@ -76,6 +76,7 @@ export interface FetchDataPayload {
   batch: number
   timestamp: number
   timestampToken: string
+  shareHeaders: Record<string, string>
 }
 
 export interface FetchRowPayload {
@@ -84,6 +85,7 @@ export interface FetchRowPayload {
   windowWidth: number
   isLastRow: boolean
   timestampToken: string
+  shareHeaders: Record<string, string>
   subRowHeightScale: number
   limitRatio: boolean
 }

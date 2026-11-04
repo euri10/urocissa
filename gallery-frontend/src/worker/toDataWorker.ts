@@ -32,7 +32,7 @@ setupWorkerAxiosInterceptor(workerAxios, postToMainData.notification)
 self.addEventListener('message', (e) => {
   const handler = createHandler<typeof toDataWorker>({
     fetchData: async (payload) => {
-      const { fetchMethod, batch, timestamp, timestampToken } = payload
+      const { fetchMethod, batch, timestamp, timestampToken, shareHeaders } = payload
 
       // if there are too many batch are processed then try to terminate the oldest request
       if (fetchMethod === 'batch') {
@@ -46,7 +46,8 @@ self.addEventListener('message', (e) => {
         fetchMethod,
         batch,
         timestamp,
-        timestampToken
+        timestampToken,
+        shareHeaders
       )
 
       if (result.size > 0) {
@@ -75,6 +76,7 @@ self.addEventListener('message', (e) => {
         windowWidth,
         isLastRow,
         timestampToken,
+        shareHeaders,
         subRowHeightScale,
         limitRatio
       } = payload
@@ -85,6 +87,7 @@ self.addEventListener('message', (e) => {
         windowWidth,
         isLastRow,
         timestampToken,
+        shareHeaders,
         subRowHeightScale,
         limitRatio
       )
@@ -114,7 +117,8 @@ async function fetchData(
   fetchMethod: FetchDataMethod,
   index: number,
   timestamp: number,
-  timestampToken: string
+  timestampToken: string,
+  shareHeaders: Record<string, string>
 ): Promise<{
   result: Map<
     number,
@@ -146,6 +150,7 @@ async function fetchData(
 
   const response = await workerAxios.get(fetchUrl, {
     headers: {
+      ...shareHeaders,
       Authorization: `Bearer ${timestampToken}`
     }
   })
@@ -212,6 +217,7 @@ async function fetchRow(
   windowWidth: number,
   isLastRow: boolean,
   timestampToken: string,
+  shareHeaders: Record<string, string>,
   subRowHeightScale: number,
   limitRatio: boolean
 ): Promise<RowWithOffset> {
@@ -227,6 +233,7 @@ async function fetchRow(
       `/get/get-rows?index=${index}&timestamp=${timestamp}&window_width=${Math.round(windowWidth)}`,
       {
         headers: {
+          ...shareHeaders,
           Authorization: `Bearer ${timestampToken}`
         }
       }

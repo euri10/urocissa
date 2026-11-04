@@ -25,6 +25,19 @@ export const useShareStore = (isolationId: IsolationId) =>
       allShares: [],
       fetched: false
     }),
+    getters: {
+      authHeaders: (state): Record<string, string> => {
+        if (state.albumId === null || state.shareId === null) return {}
+        const headers: Record<string, string> = {
+          'x-album-id': state.albumId,
+          'x-share-id': state.shareId
+        }
+        if (state.password !== null && state.password !== '') {
+          headers['x-share-password'] = state.password
+        }
+        return headers
+      }
+    },
     actions: {
       async fetchAllShares() {
         await tryWithMessageStore('mainId', async () => {

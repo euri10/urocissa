@@ -34,8 +34,9 @@ tokens and query caches carry the viewer and audience revision: an owner
 snapshot cannot be replayed anonymously, and an audience change requires a new
 snapshot. Old timestamp tokens without these fields are rejected; clients must
 refresh. Share permissions are resolved again on each timestamp request.
-Media responses use `Cache-Control: no-store`, so future requests cannot bypass
-visibility checks through a shared or browser cache. Data already downloaded
+Media responses use `Cache-Control: no-store` (originals also specify `private`),
+so future requests cannot bypass visibility checks through a shared or browser
+cache. Data already downloaded
 before a privacy change cannot be recalled.
 
 ## Fail-closed rollback
@@ -90,26 +91,47 @@ cargo clippy --offline --locked --all-targets
 Counts/facets/tags belong to `.7`, publish controls to `.8`, album audience and
 private-cover handling to `.9`, and further share-link changes to `.10`.
 
-## Integration with sibling tasks
+## Integrated first batch
 
-`.2` overlaps `router/get/get_data.rs`, `get_resource.rs`, `get_img.rs` and
-possibly timestamp guards. Retain both the shared visibility check and `.2`'s
-response redaction/original-download restrictions. Use
-`PhotoVisibility.viewer == Viewer::Owner` where `.2` needs the owner distinction;
-the resource helper now takes `&PhotoVisibility` instead of `is_admin`. Check
-photo visibility before reporting the separate original-download restriction.
+Tasks `.1`, `.2`, `.3`, `.4` and `.6` were merged from the same `55acb30`
+production-source base, preserving their commits and branches. Reconciliation
+is tracked by `infra-urocissa-private-audience-itz1.12`; `.13` fixes share
+authorization forwarding through the frontend data worker.
 
-`.3` overlaps `router/get/get_prefetch.rs`. Preserve its hidden-field search
-rules alongside visibility filtering, viewer/revision cache keys and scoped
-timestamp issuance. `ClaimsTimestamp::new` now requires the resolved share,
-timestamp, viewer and audience revision. Old unscoped tokens are intentionally
-invalid. Test-module registration in `router/mod.rs` may also need combining.
+Visibility checks run before public metadata redaction and original-download
+restrictions. Public originals return 403; private objects remain undiscoverable
+with 404. Owners retain full metadata and original access. Share records receive
+the public allow-list, including private photos explicitly granted by the share.
+The resource helper takes `&PhotoVisibility`; its response policy derives owner
+status from that validated viewer.
+
+Prefetch cache keys include both hidden-field search policy and viewer/audience
+revision. Anonymous Path expressions are rejected before cache lookup; free text
+cannot match paths, even after the owner has cached the same query. Scoped
+timestamp tokens require the matching request identity. The main-thread Axios
+interceptor and the data worker both forward the active share context; worker
+messages carry a fresh header object for each data/row request so switching or
+leaving a share does not retain its credentials.
+
+Combined HTTP regressions cover owner-cache reuse, private-photo exclusion,
+metadata redaction for shared private photos, media/original authorization and
+stale snapshot rejection. Frontend tests cross the real producer/worker message
+boundary and render the combined read-only metadata panel with the date hidden.
+The route-enumeration gate retains the exact existing public POST prefetch read
+exception. New video compression strips source container and stream metadata;
+existing files still require `.5`.
+
+This batch is source integration, not a complete private-gallery rollout.
+Do not repin or deploy it as completion of the epic while `.5`, `.7`, `.8`, `.9`,
+`.10` and the production gates in `.11` remain outstanding.
+
+## Interfaces for remaining tasks
 
 `.7` can use `PhotoVisibility::allows_cached` for tree-backed aggregates and
 `allows_data` for logical records. `.8` can use
 `DataStore::photo_audiences().get(hash)` and `set_photo_audience`; the setter
 invalidates previous snapshots through its durable revision. `.9` must replace
 the adapter's documented album compatibility behavior and add album migration
-without rerunning the photo migration. `.1` and `.4` have no expected direct
-implementation-file overlap. Cache expectations in thumbnail mutation tests
-now require `no-store` for both tiers.
+without rerunning the photo migration. Cache expectations in thumbnail mutation
+tests require `no-store` for both tiers. Preserve owner-only selection entry
+through `collectionStore.enterEdit()` when adding publishing controls.
