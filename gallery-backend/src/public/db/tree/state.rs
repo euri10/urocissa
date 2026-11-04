@@ -2567,7 +2567,7 @@ impl TreeState {
         let Some(record) = self.get(slot_ref) else {
             return false;
         };
-        self.compile_expression(expression, hidden_metadata_album)
+        self.compile_expression(expression, hidden_metadata_album, false)
             .matches(record, slot_ref.index())
     }
 
@@ -2575,8 +2575,14 @@ impl TreeState {
         &'a self,
         expression: &Expression,
         hidden_metadata_album: Option<ArrayString<64>>,
+        hide_paths: bool,
     ) -> CompiledExpression<'a> {
-        CompiledExpression::new(expression, &self.query, hidden_metadata_album)
+        CompiledExpression::new(
+            expression,
+            &self.query,
+            hidden_metadata_album,
+            hide_paths || hidden_metadata_album.is_some(),
+        )
     }
 
     #[allow(clippy::too_many_lines)]
@@ -3013,11 +3019,13 @@ impl<'a> CompiledExpression<'a> {
         expression: &Expression,
         indexes: &'a QueryIndexes,
         hidden_metadata_album: Option<ArrayString<64>>,
+        hide_paths: bool,
     ) -> Self {
         Self(CompiledExpressionNode::new(
             expression,
             indexes,
             hidden_metadata_album,
+            hide_paths,
         ))
     }
 
@@ -3031,28 +3039,33 @@ impl<'a> CompiledExpressionNode<'a> {
         expression: &Expression,
         indexes: &'a QueryIndexes,
         hidden_metadata_album: Option<ArrayString<64>>,
+        hide_paths: bool,
     ) -> Self {
         match expression {
             Expression::Or(expressions) => Self::Or(
                 expressions
                     .iter()
-                    .map(|expression| Self::new(expression, indexes, hidden_metadata_album))
+                    .map(|expression| {
+                        Self::new(expression, indexes, hidden_metadata_album, hide_paths)
+                    })
                     .collect(),
             ),
             Expression::And(expressions) => Self::And(
                 expressions
                     .iter()
-                    .map(|expression| Self::new(expression, indexes, hidden_metadata_album))
+                    .map(|expression| {
+                        Self::new(expression, indexes, hidden_metadata_album, hide_paths)
+                    })
                     .collect(),
             ),
             Expression::Not(expression) => Self::Not(Box::new(Self::new(
                 expression,
                 indexes,
                 hidden_metadata_album,
+                hide_paths,
             ))),
-            Expression::Tag(_) | Expression::Path(_) if hidden_metadata_album.is_some() => {
-                Self::Constant(false)
-            }
+            Expression::Tag(_) if hidden_metadata_album.is_some() => Self::Constant(false),
+            Expression::Path(_) if hide_paths => Self::Constant(false),
             Expression::Tag(FilterValue::Value(tag)) => Self::Membership(indexes.tags.get(tag)),
             Expression::Tag(FilterValue::Exists(exists)) => {
                 Self::Bitmap(indexes.tags.has_any(), *exists)
@@ -3103,7 +3116,7 @@ impl<'a> CompiledExpressionNode<'a> {
                     .is_none()
                     .then(|| indexes.tags.get(value))
                     .flatten(),
-                include_paths: hidden_metadata_album.is_none(),
+                include_paths: !hide_paths,
                 include_album_type: hidden_metadata_album.is_none(),
             },
         }
@@ -3377,6 +3390,143 @@ mod tests {
             object: ObjectSchema::new(id, ObjectType::Image),
             metadata,
         })
+    }
+
+    fn search_fixture() -> TreeState {
+        let album_id = ArrayString::<64>::from("search-album").unwrap();
+        let mut media = camera_record(30, "Canon", "R5");
+        if let AbstractData::Image(image) = &mut media {
+            image.object.tags.insert("holiday".to_owned());
+            image.metadata.albums.insert(album_id);
+            for path in [
+                "/srv/Private-Segment/original-name.jpg",
+                "Z:\\Second-Alias\\renamed.nef",
+            ] {
+                image
+                    .metadata
+                    .alias
+                    .push(crate::public::structure::common::FileModify {
+                        file: path.to_owned(),
+                        modified: 1,
+                        scan_time: 2,
+                    });
+            }
+        }
+        let mut tagged = camera_record(31, "", "");
+        tagged.tag_mut().insert("private-segment".to_owned());
+        let album = Album::new(album_id, Some("Search album".to_owned())).into_abstract_data();
+        TreeState::from_records([media, tagged, album])
+    }
+
+    #[test]
+    fn anonymous_search_hides_paths_and_preserves_owner_and_hidden_share_matching() {
+        let state = search_fixture();
+        let album_id = ArrayString::<64>::from("search-album").unwrap();
+        let slot = state.find("camera-30").unwrap();
+        let record = state.get(slot).unwrap();
+
+        for expression in [
+            Expression::Any("PRIVATE-segment".to_owned()),
+            Expression::Any("original-name".to_owned()),
+            Expression::Any("second-alias".to_owned()),
+            Expression::Path("private-segment".to_owned()),
+            Expression::Or(vec![
+                Expression::Any("second-alias".to_owned()),
+                Expression::Tag(FilterValue::Value("missing".to_owned())),
+            ]),
+            Expression::And(vec![
+                Expression::Any("private-segment".to_owned()),
+                Expression::Ext("jpg".to_owned()),
+            ]),
+        ] {
+            assert!(
+                state.matches(slot, &expression, None),
+                "owner: {expression:?}"
+            );
+            assert!(
+                !state
+                    .compile_expression(&expression, None, true)
+                    .matches(record, slot.index()),
+                "anonymous: {expression:?}"
+            );
+            assert!(
+                !state.matches(slot, &expression, Some(album_id)),
+                "hidden share: {expression:?}"
+            );
+        }
+
+        let not_path = Expression::Not(Box::new(Expression::Any("private-segment".to_owned())));
+        assert!(!state.matches(slot, &not_path, None));
+        assert!(
+            state
+                .compile_expression(&not_path, None, true)
+                .matches(record, slot.index())
+        );
+
+        // A public tag remains searchable even when the same text is also a hidden path.
+        let tagged_slot = state.find("camera-31").unwrap();
+        assert!(
+            state
+                .compile_expression(&Expression::Any("private-segment".to_owned()), None, true)
+                .matches(state.get(tagged_slot).unwrap(), tagged_slot.index())
+        );
+    }
+
+    #[test]
+    fn anonymous_search_preserves_public_fields_and_hidden_share_restrictions() {
+        let state = search_fixture();
+        let album_id = ArrayString::<64>::from("search-album").unwrap();
+        let slot = state.find("camera-30").unwrap();
+        let record = state.get(slot).unwrap();
+        for expression in [
+            Expression::Tag(FilterValue::Value("holiday".to_owned())),
+            Expression::Tag(FilterValue::Exists(true)),
+            Expression::Album(AlbumFilterValue::Value(album_id)),
+            Expression::Album(AlbumFilterValue::Exists(true)),
+            Expression::Ext("JPG".to_owned()),
+            Expression::ExtType("image".to_owned()),
+            Expression::Make(FilterValue::Value("canon".to_owned())),
+            Expression::Model(FilterValue::Value("r5".to_owned())),
+            Expression::Any("holiday".to_owned()),
+            Expression::Any("CANON".to_owned()),
+            Expression::Any("r5".to_owned()),
+            Expression::Any("jpg".to_owned()),
+            Expression::Any("image".to_owned()),
+        ] {
+            assert!(
+                state.matches(slot, &expression, None),
+                "owner: {expression:?}"
+            );
+            assert!(
+                state
+                    .compile_expression(&expression, None, true)
+                    .matches(record, slot.index()),
+                "anonymous: {expression:?}"
+            );
+        }
+        for expression in [
+            Expression::Tag(FilterValue::Value("holiday".to_owned())),
+            Expression::Any("holiday".to_owned()),
+            Expression::Album(AlbumFilterValue::Value(
+                ArrayString::from("other-album").unwrap(),
+            )),
+        ] {
+            assert!(
+                !state.matches(slot, &expression, Some(album_id)),
+                "hidden share: {expression:?}"
+            );
+        }
+        assert!(state.matches(
+            slot,
+            &Expression::Album(AlbumFilterValue::Value(album_id)),
+            Some(album_id)
+        ));
+        let album_slot = state.find(album_id.as_str()).unwrap();
+        assert!(
+            state
+                .compile_expression(&Expression::ExtType("album".to_owned()), None, true)
+                .matches(state.get(album_slot).unwrap(), album_slot.index())
+        );
     }
 
     #[test]
@@ -4945,7 +5095,7 @@ mod tests {
             ]),
             Expression::Not(Box::new(Expression::Trashed(true))),
         ]);
-        let compiled = state.compile_expression(&expression, None);
+        let compiled = state.compile_expression(&expression, None, false);
         let sequential = state
             .order
             .iter()

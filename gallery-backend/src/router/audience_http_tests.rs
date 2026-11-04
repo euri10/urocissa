@@ -21,6 +21,7 @@ use crate::{
             abstract_data::AbstractData,
             album::{Album, Share},
             audience::Audience,
+            common::FileModify,
             config::{APP_CONFIG, AppConfig},
             expression::Expression,
             image::{ImageCombined, ImageMetadata},
@@ -76,6 +77,19 @@ fn photo(hash: &str, video: bool, shared: bool) -> AbstractData {
             metadata,
         })
     };
+    data.alias_mut().unwrap().push(FileModify {
+        file: format!("/private-path-marker/{hash}"),
+        modified: 1_781_454_912_345,
+        scan_time: 1_781_454_912_345,
+    });
+    data.exif_vec_mut()
+        .unwrap()
+        .insert("GPSLatitude".into(), "private-gps-marker".into());
+    if hash == PUBLIC {
+        data.tag_mut().insert("public-search-tag".into());
+    } else if hash == PRIVATE {
+        data.tag_mut().insert("private-search-tag".into());
+    }
     data.set_cache_version(7);
     data
 }
@@ -191,12 +205,79 @@ async fn hashes(client: &Client, snapshot: &PrefetchReturn, is_owner: bool) -> H
         .await
         .unwrap()
         .into_iter()
-        .map(|data| data["abstractData"]["id"].as_str().unwrap().to_owned())
+        .map(|data| {
+            let record = &data["abstractData"];
+            if record["type"] != "album" {
+                if is_owner {
+                    assert_eq!(record["exifVec"]["GPSLatitude"], "private-gps-marker");
+                    assert!(record["alias"].is_array());
+                } else {
+                    assert!(!record.to_string().contains("private-gps-marker"));
+                    assert!(record.get("alias").is_none());
+                }
+            }
+            record["id"].as_str().unwrap().to_owned()
+        })
         .collect()
+}
+
+async fn search_privacy_checks(client: &Client) {
+    for term in [
+        "private-path-marker",
+        "public-search-tag",
+        "private-search-tag",
+    ] {
+        let query = Expression::And(vec![
+            Expression::Trashed(false),
+            Expression::Any(term.into()),
+        ]);
+        // Prime the owner cache first, then reuse exactly the same public query.
+        for is_owner in [true, false, true, false] {
+            let response = owner(
+                client
+                    .post("/get/prefetch")
+                    .header(ContentType::JSON)
+                    .body(serde_json::to_string(&query).unwrap()),
+                is_owner,
+            )
+            .dispatch()
+            .await;
+            assert_eq!(response.status(), Status::Ok);
+            let snapshot = response.into_json::<PrefetchReturn>().await.unwrap();
+            let expected = match (term, is_owner) {
+                ("private-path-marker", true) => {
+                    vec![PUBLIC, PUBLIC_VIDEO, PRIVATE, MISSING, PRIVATE_VIDEO]
+                }
+                ("public-search-tag", _) => vec![PUBLIC],
+                ("private-search-tag", true) => vec![PRIVATE],
+                _ => vec![],
+            }
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+            assert_eq!(hashes(client, &snapshot, is_owner).await, expected);
+        }
+    }
+    let query = Expression::Not(Box::new(Expression::Path("private-path-marker".into())));
+    let response = client
+        .post("/get/prefetch")
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(&query).unwrap())
+        .dispatch()
+        .await;
+    assert_eq!(response.status(), Status::BadRequest);
+    assert!(
+        response
+            .into_string()
+            .await
+            .unwrap()
+            .contains("Path expressions are unavailable")
+    );
 }
 
 #[allow(clippy::too_many_lines)]
 async fn public_checks(client: &Client, records: &[AbstractData]) {
+    search_privacy_checks(client).await;
     let expected = HashSet::from([PUBLIC.to_owned(), PUBLIC_VIDEO.to_owned(), ALBUM.to_owned()]);
     for sort in ["descending", "ascending", "random"] {
         let owner_snapshot = snapshot(client, true, sort).await;
@@ -332,7 +413,12 @@ async fn public_checks(client: &Client, records: &[AbstractData]) {
         .await
         .unwrap()
         .into_iter()
-        .map(|data| data["abstractData"]["id"].as_str().unwrap().to_owned())
+        .map(|data| {
+            let record = &data["abstractData"];
+            assert!(!record.to_string().contains("private-gps-marker"));
+            assert!(record.get("alias").is_none());
+            record["id"].as_str().unwrap().to_owned()
+        })
         .collect();
     assert_eq!(
         shared_hashes,

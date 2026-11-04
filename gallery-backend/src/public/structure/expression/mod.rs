@@ -33,3 +33,16 @@ pub enum Expression {
     Archived(bool),
     Trashed(bool),
 }
+
+impl Expression {
+    pub fn contains_path(&self) -> bool {
+        match self {
+            Self::Path(_) => true,
+            Self::Or(expressions) | Self::And(expressions) => {
+                expressions.iter().any(Self::contains_path)
+            }
+            Self::Not(expression) => expression.contains_path(),
+            _ => false,
+        }
+    }
+}

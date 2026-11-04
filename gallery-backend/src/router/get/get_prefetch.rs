@@ -8,6 +8,7 @@ use crate::public::db::tree_snapshot::read_scrollbar::timestamp_year_month;
 use crate::public::db::tree_snapshot::{PendingTreeSnapshot, TREE_SNAPSHOT};
 use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::public::structure::album::ResolvedShare;
+use crate::public::structure::audience::Viewer;
 use crate::public::structure::expression::{AlbumFilterValue, Expression};
 use crate::public::structure::gallery_sort_order::GallerySortOrder;
 use crate::public::structure::object::next_mutation_timestamp;
@@ -22,6 +23,7 @@ use crate::tasks::batcher::flush_query_snapshot::FlushQuerySnapshotTask;
 use crate::tasks::batcher::flush_tree_snapshot::FlushTreeSnapshotTask;
 
 use anyhow::Result;
+use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
 use chrono::{TimeZone, Utc};
 use rand::seq::SliceRandom;
@@ -355,7 +357,8 @@ fn check_query_cache(
 #[allow(clippy::too_many_lines)]
 fn filter_items(
     expression_option: Option<&Expression>,
-    resolved_share_option: Option<&ResolvedShare>,
+    hidden_metadata_album: Option<ArrayString<64>>,
+    hide_paths: bool,
     locate_option: Option<&String>,
     sort_order: GallerySortOrder,
     visibility: &PhotoVisibility,
@@ -368,12 +371,10 @@ fn filter_items(
             format!("Failed to read tree in memory: {err:?}"),
         )
     })?;
-    let hidden_album = resolved_share_option
-        .filter(|share| !share.share.show_metadata)
-        .map(|share| share.album_id);
     let compile_start = Instant::now();
-    let compiled_expression =
-        expression_option.map(|expression| tree_guard.compile_expression(expression, hidden_album));
+    let compiled_expression = expression_option.map(|expression| {
+        tree_guard.compile_expression(expression, hidden_metadata_album, hide_paths)
+    });
     crate::perf_timing!(
         "prefetch.compile_expression",
         compile_start,
@@ -540,6 +541,8 @@ fn build_cache_key(
     expression_option: Option<&Expression>,
     locate_option: Option<&String>,
     sort_order: GallerySortOrder,
+    hidden_metadata_album: Option<ArrayString<64>>,
+    hide_paths: bool,
 ) -> u64 {
     let cache_key_start_time = Instant::now();
 
@@ -550,6 +553,8 @@ fn build_cache_key(
         .hash(&mut hasher);
     locate_option.hash(&mut hasher);
     sort_order.hash(&mut hasher);
+    hidden_metadata_album.hash(&mut hasher);
+    hide_paths.hash(&mut hasher);
     let query_hash = hasher.finish();
 
     crate::perf_timing!(
@@ -565,9 +570,18 @@ fn query_cache_key(
     expression_option: Option<&Expression>,
     locate_option: Option<&String>,
     sort_order: GallerySortOrder,
+    hidden_metadata_album: Option<ArrayString<64>>,
+    hide_paths: bool,
 ) -> Option<u64> {
-    (sort_order != GallerySortOrder::Random)
-        .then(|| build_cache_key(expression_option, locate_option, sort_order))
+    (sort_order != GallerySortOrder::Random).then(|| {
+        build_cache_key(
+            expression_option,
+            locate_option,
+            sort_order,
+            hidden_metadata_album,
+            hide_paths,
+        )
+    })
 }
 
 pub(crate) fn insert_data_into_tree_snapshot(snapshot: PendingTreeSnapshot) -> (i64, usize) {
@@ -649,7 +663,19 @@ fn execute_prefetch_logic(
     let start_time = Instant::now();
 
     // Step 1: Build cache key for response creation
-    let query_hash = query_cache_key(expression_option, locate_option, sort_order).map(|key| {
+    let hidden_metadata_album = resolved_share_option
+        .as_ref()
+        .filter(|share| !share.share.show_metadata)
+        .map(|share| share.album_id);
+    let hide_paths = visibility.viewer == Viewer::Anonymous || hidden_metadata_album.is_some();
+    let query_hash = query_cache_key(
+        expression_option,
+        locate_option,
+        sort_order,
+        hidden_metadata_album,
+        hide_paths,
+    )
+    .map(|key| {
         let mut hasher = DefaultHasher::new();
         (key, visibility.viewer, visibility.revision()).hash(&mut hasher);
         hasher.finish()
@@ -666,7 +692,8 @@ fn execute_prefetch_logic(
     // Step 3: Filter items
     let (snapshot, locate_to_index) = filter_items(
         expression_option,
-        resolved_share_option.as_ref(),
+        hidden_metadata_album,
+        hide_paths,
         locate_option,
         sort_order,
         visibility,
@@ -726,8 +753,8 @@ pub async fn prefetch(
     // Combine album filter (if any) with the client‑supplied query.
     let client_expression = constrain_public_query(
         query_data.map(rocket::serde::json::Json::into_inner),
-        matches!(auth_guard.claims.role, crate::router::claims::Role::Public),
-    );
+        request_viewer == Viewer::Anonymous,
+    )?;
     let resolved_share_option = auth_guard.claims.get_share();
     let sort_order = sort
         .as_deref()
@@ -756,14 +783,23 @@ pub async fn prefetch(
     Ok(job_handle)
 }
 
-fn constrain_public_query(query: Option<Expression>, is_public: bool) -> Option<Expression> {
+fn constrain_public_query(
+    query: Option<Expression>,
+    is_public: bool,
+) -> Result<Option<Expression>, AppError> {
     if !is_public {
-        return query;
+        return Ok(query);
     }
-    Some(match query {
+    if query.as_ref().is_some_and(Expression::contains_path) {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "Path expressions are unavailable to anonymous visitors",
+        ));
+    }
+    Ok(Some(match query {
         Some(query) => Expression::And(vec![Expression::Trashed(false), query]),
         None => Expression::Trashed(false),
-    })
+    }))
 }
 
 #[cfg(test)]
@@ -787,21 +823,71 @@ mod tests {
     fn public_gallery_queries_cannot_include_trash() {
         use super::constrain_public_query;
         assert_eq!(
-            constrain_public_query(None, true),
+            constrain_public_query(None, true).unwrap(),
             Some(Expression::Trashed(false))
         );
         assert_eq!(
-            constrain_public_query(Some(Expression::Trashed(true)), true),
+            constrain_public_query(Some(Expression::Trashed(true)), true).unwrap(),
             Some(Expression::And(vec![
                 Expression::Trashed(false),
                 Expression::Trashed(true)
             ]))
         );
-        assert_eq!(constrain_public_query(None, false), None);
+        assert_eq!(constrain_public_query(None, false).unwrap(), None);
         assert_eq!(
-            constrain_public_query(Some(Expression::Trashed(true)), false),
+            constrain_public_query(Some(Expression::Trashed(true)), false).unwrap(),
             Some(Expression::Trashed(true))
         );
+    }
+
+    #[test]
+    fn anonymous_search_rejects_path_expressions_at_every_depth() {
+        use super::constrain_public_query;
+        use crate::public::error::ErrorKind;
+
+        for expression in [
+            Expression::Path("private-segment".to_owned()),
+            Expression::Path(String::new()),
+            Expression::And(vec![
+                Expression::Any("holiday".to_owned()),
+                Expression::Path("private-segment".to_owned()),
+            ]),
+            Expression::Or(vec![
+                Expression::Tag(crate::public::structure::expression::FilterValue::Exists(
+                    true,
+                )),
+                Expression::Not(Box::new(Expression::And(vec![Expression::Path(
+                    "private-segment".to_owned(),
+                )]))),
+            ]),
+            Expression::Not(Box::new(Expression::Path("private-segment".to_owned()))),
+        ] {
+            let error = constrain_public_query(Some(expression.clone()), true).unwrap_err();
+            assert_eq!(error.kind, ErrorKind::InvalidInput);
+            assert_eq!(error.http_status(), rocket::http::Status::BadRequest);
+            assert_eq!(
+                error.message,
+                "Path expressions are unavailable to anonymous visitors"
+            );
+            assert_eq!(
+                constrain_public_query(Some(expression.clone()), false).unwrap(),
+                Some(expression)
+            );
+        }
+        for expression in [
+            Expression::Any("private-segment".to_owned()),
+            Expression::Not(Box::new(Expression::Any("private-segment".to_owned()))),
+            Expression::And(vec![]),
+            Expression::Or(vec![]),
+        ] {
+            assert_eq!(
+                constrain_public_query(Some(expression.clone()), true).unwrap(),
+                Some(Expression::And(vec![
+                    Expression::Trashed(false),
+                    expression
+                ]))
+            );
+        }
     }
 
     fn timestamp(year: i32, month: u32, day: u32) -> i64 {
@@ -994,13 +1080,44 @@ mod tests {
 
     #[test]
     fn deterministic_sorts_have_distinct_cache_keys_and_random_bypasses_cache() {
-        let descending = query_cache_key(None, None, GallerySortOrder::Descending);
-        let ascending = query_cache_key(None, None, GallerySortOrder::Ascending);
+        let descending = query_cache_key(None, None, GallerySortOrder::Descending, None, false);
+        let ascending = query_cache_key(None, None, GallerySortOrder::Ascending, None, false);
 
         assert!(descending.is_some());
         assert!(ascending.is_some());
         assert_ne!(descending, ascending);
-        assert_eq!(query_cache_key(None, None, GallerySortOrder::Random), None);
+        assert_eq!(
+            query_cache_key(None, None, GallerySortOrder::Random, None, false),
+            None
+        );
+    }
+
+    #[test]
+    fn search_cache_keys_separate_anonymous_owner_and_hidden_share_matching() {
+        let expression = Expression::And(vec![
+            Expression::Trashed(false),
+            Expression::Any("private-segment".to_owned()),
+        ]);
+        let key = |hidden_album, hide_paths| {
+            query_cache_key(
+                Some(&expression),
+                None,
+                GallerySortOrder::Descending,
+                hidden_album,
+                hide_paths,
+            )
+        };
+        let owner = key(None, false);
+        let anonymous = key(None, true);
+        let hidden_share = key(Some(ArrayString::from("shared-album").unwrap()), true);
+        assert_ne!(owner, anonymous);
+        assert_ne!(owner, hidden_share);
+        assert_ne!(anonymous, hidden_share);
+        assert_ne!(
+            hidden_share,
+            key(Some(ArrayString::from("other-album").unwrap()), true)
+        );
+        assert_eq!(anonymous, key(None, true));
     }
 
     #[test]
