@@ -1,3 +1,4 @@
+use crate::operations::public_metadata::ViewerKind;
 use crate::operations::transitor::abstract_data_to_database_timestamp_return;
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::state::TargetSet;
@@ -159,8 +160,13 @@ fn create_resource_snapshot(resource_id: &str, is_admin: bool) -> AppResult<Rout
     let prefetch = get_or_create_resource_prefetch(resource_id)?;
     let claims = ClaimsTimestamp::new(None, prefetch.timestamp);
     let token = claims.encode();
-    let data =
-        abstract_data_to_database_timestamp_return(abstract_data, prefetch.timestamp, true, true);
+    let data = abstract_data_to_database_timestamp_return(
+        abstract_data,
+        prefetch.timestamp,
+        true,
+        true,
+        ViewerKind::for_response(is_admin, false),
+    );
 
     Ok(RouteResourceSnapshot {
         prefetch,
