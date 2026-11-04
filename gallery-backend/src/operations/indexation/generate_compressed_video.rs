@@ -90,6 +90,10 @@ pub fn generate_compressed_video_to(
         "-y", // Overwrite output file if it exists
         "-i",
         &abstract_data.imported_path_string(),
+        "-map_metadata",
+        "-1", // Drop source container metadata.
+        "-map_metadata:s",
+        "-1", // Drop source metadata from every output stream.
         "-vf",
         // Scale video to a max height of 720p, ensuring dimensions are even.
         &format!(
@@ -141,3 +145,7 @@ pub fn generate_compressed_video_to(
     }
     Ok(VideoCompressionOutcome::Video)
 }
+
+#[cfg(test)]
+#[path = "compressed_video_metadata_tests.rs"]
+mod metadata_tests;
