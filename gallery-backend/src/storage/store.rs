@@ -19,7 +19,7 @@ use crate::public::structure::abstract_data::AbstractData;
 pub(crate) const RECORDS_TABLE: TableDefinition<&str, RawV6Bytes> = TableDefinition::new("records");
 
 pub struct DataStore {
-    db: Database,
+    pub(super) db: Database,
     #[cfg(feature = "performance-test")]
     cache_limit_bytes: usize,
 }
@@ -58,6 +58,7 @@ impl RecordValue {
 
 pub struct RecordWriter<'txn> {
     table: Table<'txn, &'static str, RawV6Bytes>,
+    audiences: Table<'txn, &'static str, u8>,
     codec: Buffer,
     io_timing: RecordIoTiming,
 }
@@ -82,13 +83,15 @@ impl DataStore {
                 format!("failed to create database directory {}", parent.display())
             })?;
         }
-        Ok(Self {
+        let store = Self {
             db: database_builder(cache_class)
                 .create(path)
                 .with_context(|| format!("failed to open V6 database {}", path.display()))?,
             #[cfg(feature = "performance-test")]
             cache_limit_bytes: cache_class.limit_bytes(),
-        })
+        };
+        store.initialize_audience_tables()?;
+        Ok(store)
     }
 
     #[cfg(feature = "performance-test")]
@@ -174,6 +177,10 @@ impl DataStore {
             .map_err(E::from)?;
         let mut writer = RecordWriter {
             table,
+            audiences: txn
+                .open_table(super::audience::PHOTO_AUDIENCE)
+                .map_err(anyhow::Error::from)
+                .map_err(E::from)?,
             codec: Buffer::new(),
             io_timing: RecordIoTiming::default(),
         };
@@ -204,6 +211,10 @@ impl DataStore {
             .map_err(E::from)?;
         let mut writer = RecordWriter {
             table,
+            audiences: txn
+                .open_table(super::audience::PHOTO_AUDIENCE)
+                .map_err(anyhow::Error::from)
+                .map_err(E::from)?,
             codec: Buffer::new(),
             io_timing: RecordIoTiming::default(),
         };
@@ -415,6 +426,10 @@ impl RecordWriter<'_> {
                 value.id()
             ));
         }
+        // Reingestion must not inherit a stale public grant, including after an old-binary rollback.
+        if self.table.get(key)?.is_none() {
+            self.audiences.remove(key)?;
+        }
         let bytes = self.codec.encode(&value);
         self.table.insert(key, bytes)?;
         Ok(())
@@ -432,6 +447,7 @@ impl RecordWriter<'_> {
 
     pub fn remove(&mut self, key: &str) -> Result<()> {
         self.table.remove(key)?;
+        self.audiences.remove(key)?;
         Ok(())
     }
 }

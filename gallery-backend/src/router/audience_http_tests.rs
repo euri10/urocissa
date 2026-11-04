@@ -1,0 +1,564 @@
+//! Actual read routes and guards, isolated from all real configuration, media and databases.
+use std::{
+    collections::HashSet,
+    process::{Command, Stdio},
+    sync::RwLock,
+    time::{Duration, Instant},
+};
+
+use arrayvec::ArrayString;
+use rocket::{
+    http::{ContentType, Cookie, Header, Status},
+    local::asynchronous::{Client, LocalRequest},
+};
+use serde_json::Value;
+
+use crate::{
+    public::{
+        constant::storage::DATA_PATH,
+        db::tree::{TREE, state::TreeState},
+        structure::{
+            abstract_data::AbstractData,
+            album::{Album, Share},
+            audience::Audience,
+            config::{APP_CONFIG, AppConfig},
+            expression::Expression,
+            image::{ImageCombined, ImageMetadata},
+            object::{ObjectSchema, ObjectType},
+            video::{VideoCombined, VideoMetadata},
+        },
+    },
+    router::{
+        claims::{Claims, claims_hash::ClaimsHash},
+        fairing::{
+            cache_control_fairing::cache_control_fairing, guard_timestamp::renew_timestamp_token,
+        },
+        get::{
+            get_data::{get_data, get_rows, get_scroll_bar},
+            get_img::{compressed_file, imported_file, small_thumbnail_file},
+            get_prefetch::{PrefetchReturn, prefetch},
+            get_resource::get_resource,
+        },
+    },
+    storage::DataStore,
+};
+
+const KEY: &[u8] = b"audience-fixture-signing-key-only";
+const PUBLIC: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const PUBLIC_VIDEO: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const PRIVATE: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const MISSING: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+const PRIVATE_VIDEO: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+const TRASHED: &str = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+const ALBUM: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+
+fn id(value: &str) -> ArrayString<64> {
+    ArrayString::from(value).unwrap()
+}
+
+fn photo(hash: &str, video: bool, shared: bool) -> AbstractData {
+    let mut data = if video {
+        let mut metadata = VideoMetadata::new(id(hash), 13, 32, 24, "mp4".into());
+        if shared {
+            metadata.albums.insert(id(ALBUM));
+        }
+        AbstractData::Video(VideoCombined {
+            object: ObjectSchema::new(id(hash), ObjectType::Video),
+            metadata,
+        })
+    } else {
+        let mut metadata = ImageMetadata::new(id(hash), 13, 32, 24, "jpg".into());
+        if shared {
+            metadata.albums.insert(id(ALBUM));
+        }
+        AbstractData::Image(ImageCombined {
+            object: ObjectSchema::new(id(hash), ObjectType::Image),
+            metadata,
+        })
+    };
+    data.set_cache_version(7);
+    data
+}
+
+fn seed() -> Vec<AbstractData> {
+    let mut album = Album::new(id(ALBUM), Some("Fixture album".into()));
+    album
+        .share_list
+        .insert(id("fixture-share"), Share::default());
+    let mut trashed = photo(TRASHED, false, true);
+    trashed.set_trashed(true);
+    let mut records = vec![
+        photo(PUBLIC, false, true),
+        photo(PUBLIC_VIDEO, true, false),
+        trashed,
+        album.into_abstract_data(),
+    ];
+    let store = DataStore::initialize_empty(
+        &crate::public::constant::storage::get_data_path().join("db/index_v6.redb"),
+    )
+    .unwrap();
+    store
+        .write(|writer| -> anyhow::Result<()> {
+            for data in &records {
+                writer.insert(data)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    store.migrate_photo_audience().unwrap();
+    let new = vec![
+        photo(PRIVATE, false, true),
+        photo(MISSING, false, false),
+        photo(PRIVATE_VIDEO, true, true),
+    ];
+    store
+        .write(|writer| -> anyhow::Result<()> {
+            for data in &new {
+                writer.insert(data)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    store
+        .set_photo_audience(PRIVATE, Audience::Private)
+        .unwrap();
+    store.migrate_photo_audience().unwrap();
+    drop(store);
+    records.extend(new);
+    for data in &records {
+        if matches!(data, AbstractData::Album(_)) {
+            continue;
+        }
+        for path in [
+            data.imported_path(),
+            data.compressed_path(),
+            data.thumbnail_path_for_version(7),
+            data.small_thumbnail_path_for_version(7),
+        ] {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"fixture-media").unwrap();
+        }
+    }
+    *TREE.state.write().unwrap() = TreeState::from_records(records.clone());
+    records
+}
+
+fn owner(request: LocalRequest<'_>, enabled: bool) -> LocalRequest<'_> {
+    if enabled {
+        request.cookie(Cookie::new("jwt", Claims::new_admin().encode_with_key(KEY)))
+    } else {
+        request
+    }
+}
+
+async fn snapshot(client: &Client, is_owner: bool, sort: &str) -> PrefetchReturn {
+    // Equal query content deliberately exercises the owner/anonymous cache boundary.
+    let request = client
+        .post(format!("/get/prefetch?sort={sort}&locate={MISSING}"))
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(&Expression::Trashed(false)).unwrap());
+    let response = owner(request, is_owner).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    response.into_json().await.unwrap()
+}
+
+fn snapshot_path(route: &str, snapshot: &PrefetchReturn) -> String {
+    let timestamp = snapshot.prefetch.timestamp;
+    match route {
+        "data" => format!(
+            "/get/get-data?timestamp={timestamp}&start=0&end=100&token={}",
+            snapshot.token
+        ),
+        "rows" => format!(
+            "/get/get-rows?timestamp={timestamp}&index=0&token={}",
+            snapshot.token
+        ),
+        "scroll" => format!(
+            "/get/get-scroll-bar?timestamp={timestamp}&token={}",
+            snapshot.token
+        ),
+        _ => unreachable!(),
+    }
+}
+
+async fn hashes(client: &Client, snapshot: &PrefetchReturn, is_owner: bool) -> HashSet<String> {
+    let response = owner(client.get(snapshot_path("data", snapshot)), is_owner)
+        .dispatch()
+        .await;
+    assert_eq!(response.status(), Status::Ok);
+    response
+        .into_json::<Vec<Value>>()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|data| data["abstractData"]["id"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[allow(clippy::too_many_lines)]
+async fn public_checks(client: &Client, records: &[AbstractData]) {
+    let expected = HashSet::from([PUBLIC.to_owned(), PUBLIC_VIDEO.to_owned(), ALBUM.to_owned()]);
+    for sort in ["descending", "ascending", "random"] {
+        let owner_snapshot = snapshot(client, true, sort).await;
+        assert_eq!(
+            hashes(client, &owner_snapshot, true).await.len(),
+            records.len() - 1
+        );
+        let public_snapshot = snapshot(client, false, sort).await;
+        assert_eq!(public_snapshot.prefetch.data_length, expected.len());
+        assert_eq!(public_snapshot.prefetch.locate_to, None);
+        assert_eq!(hashes(client, &public_snapshot, false).await, expected);
+        for route in ["rows", "scroll"] {
+            assert_eq!(
+                client
+                    .get(snapshot_path(route, &public_snapshot))
+                    .dispatch()
+                    .await
+                    .status(),
+                Status::Ok
+            );
+        }
+        // Owner snapshots cannot become anonymous grants through their bearer tokens.
+        for route in ["data", "rows", "scroll"] {
+            assert_eq!(
+                client
+                    .get(snapshot_path(route, &owner_snapshot))
+                    .dispatch()
+                    .await
+                    .status(),
+                Status::Unauthorized
+            );
+        }
+    }
+    for hash in [PRIVATE, MISSING, PRIVATE_VIDEO, TRASHED] {
+        assert_eq!(
+            client
+                .get(format!("/get/resource/{hash}"))
+                .dispatch()
+                .await
+                .status(),
+            Status::NotFound
+        );
+        assert_eq!(
+            owner(client.get(format!("/get/resource/{hash}")), true)
+                .dispatch()
+                .await
+                .status(),
+            Status::Ok
+        );
+    }
+    assert_eq!(
+        client
+            .get(format!("/get/resource/{PUBLIC}"))
+            .dispatch()
+            .await
+            .status(),
+        Status::Ok
+    );
+
+    for data in records
+        .iter()
+        .filter(|data| !matches!(data, AbstractData::Album(_)))
+    {
+        let hash = data.hash();
+        let token = ClaimsHash::new(hash, 0, true).encode();
+        for path in [
+            data.imported_path(),
+            data.compressed_path(),
+            data.thumbnail_path_for_version(7),
+            data.small_thumbnail_path_for_version(7),
+        ] {
+            let path = path
+                .strip_prefix(crate::public::constant::storage::get_data_path())
+                .unwrap();
+            let url = format!("/{}?token={token}", path.to_str().unwrap());
+            let response = client.get(url.clone()).dispatch().await;
+            let public = matches!(hash.as_str(), PUBLIC | PUBLIC_VIDEO);
+            // Original-download policy is implemented separately by .2.
+            if !public {
+                assert_eq!(response.status(), Status::NotFound, "{url}");
+            } else if !path.starts_with("object/imported") {
+                assert_eq!(response.status(), Status::Ok, "{url}");
+                assert_eq!(
+                    response.headers().get_one("Cache-Control"),
+                    Some("no-store")
+                );
+            }
+            let response = owner(client.get(url.clone()), true).dispatch().await;
+            assert_eq!(response.status(), Status::Ok, "owner: {url}");
+            assert_eq!(
+                response.headers().get_one("Cache-Control"),
+                Some("no-store")
+            );
+            // Share access is an explicit grant, bounded by current album membership.
+            let response = client
+                .get(url)
+                .header(Header::new("x-album-id", ALBUM))
+                .header(Header::new("x-share-id", "fixture-share"))
+                .dispatch()
+                .await;
+            let member = matches!(hash.as_str(), PUBLIC | PRIVATE | PRIVATE_VIDEO);
+            if !member {
+                assert_eq!(response.status(), Status::NotFound);
+            } else if !path.starts_with("object/imported") {
+                assert_eq!(response.status(), Status::Ok);
+            }
+        }
+    }
+
+    let shared = client
+        .post("/get/prefetch")
+        .header(ContentType::JSON)
+        .header(Header::new("x-album-id", ALBUM))
+        .header(Header::new("x-share-id", "fixture-share"))
+        .dispatch()
+        .await;
+    assert_eq!(shared.status(), Status::Ok);
+    let shared: PrefetchReturn = shared.into_json().await.unwrap();
+    let response = client
+        .get(snapshot_path("data", &shared))
+        .header(Header::new("x-album-id", ALBUM))
+        .header(Header::new("x-share-id", "fixture-share"))
+        .dispatch()
+        .await;
+    assert_eq!(response.status(), Status::Ok);
+    let shared_hashes: HashSet<_> = response
+        .into_json::<Vec<Value>>()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|data| data["abstractData"]["id"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        shared_hashes,
+        HashSet::from([
+            PUBLIC.to_owned(),
+            PRIVATE.to_owned(),
+            PRIVATE_VIDEO.to_owned()
+        ])
+    );
+    assert_eq!(
+        client
+            .get(snapshot_path("data", &shared))
+            .dispatch()
+            .await
+            .status(),
+        Status::Unauthorized
+    );
+
+    let previous = snapshot(client, false, "descending").await;
+    TREE.store
+        .set_photo_audience(PUBLIC, Audience::Private)
+        .unwrap();
+    for route in ["data", "rows", "scroll"] {
+        assert_eq!(
+            client
+                .get(snapshot_path(route, &previous))
+                .dispatch()
+                .await
+                .status(),
+            Status::Unauthorized
+        );
+    }
+    let response = client
+        .post("/post/renew-timestamp-token")
+        .header(ContentType::JSON)
+        .body(serde_json::json!({ "token": previous.token }).to_string())
+        .dispatch()
+        .await;
+    assert_eq!(response.status(), Status::Unauthorized);
+    let current = snapshot(client, false, "descending").await;
+    assert_eq!(
+        hashes(client, &current, false).await,
+        HashSet::from([PUBLIC_VIDEO.to_owned(), ALBUM.to_owned()])
+    );
+    assert_eq!(
+        client
+            .get(format!("/get/resource/{PUBLIC}"))
+            .dispatch()
+            .await
+            .status(),
+        Status::NotFound
+    );
+    let data = records
+        .iter()
+        .find(|data| data.hash().as_str() == PUBLIC)
+        .unwrap();
+    let token = ClaimsHash::new(id(PUBLIC), 0, true).encode();
+    let relative = data.small_thumbnail_path_for_version(7);
+    let relative = relative
+        .strip_prefix(crate::public::constant::storage::get_data_path())
+        .unwrap();
+    assert_eq!(
+        client
+            .get(format!("/{}?token={token}", relative.display()))
+            .dispatch()
+            .await
+            .status(),
+        Status::NotFound
+    );
+
+    // Old tokens lack a viewer/revision and must not regain access after upgrade.
+    let old = serde_json::json!({"resolvedShareOpt": null, "timestamp": current.prefetch.timestamp, "exp": Claims::new_admin().exp});
+    let old = jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &old,
+        &jsonwebtoken::EncodingKey::from_secret(KEY),
+    )
+    .unwrap();
+    assert_eq!(
+        client
+            .get(format!(
+                "/get/get-data?timestamp={}&start=0&end=100&token={old}",
+                current.prefetch.timestamp
+            ))
+            .dispatch()
+            .await
+            .status(),
+        Status::Unauthorized
+    );
+}
+
+async fn private_checks(client: &Client, records: &[AbstractData]) {
+    let owner_snapshot = snapshot(client, true, "descending").await;
+    assert_eq!(
+        hashes(client, &owner_snapshot, true).await.len(),
+        records.len() - 1
+    );
+    assert_eq!(
+        client
+            .post("/get/prefetch")
+            .header(ContentType::JSON)
+            .dispatch()
+            .await
+            .status(),
+        Status::Unauthorized
+    );
+    assert_eq!(
+        client
+            .get(format!("/get/resource/{PUBLIC}"))
+            .dispatch()
+            .await
+            .status(),
+        Status::Unauthorized
+    );
+    for route in ["data", "rows", "scroll"] {
+        assert_eq!(
+            client
+                .get(snapshot_path(route, &owner_snapshot))
+                .dispatch()
+                .await
+                .status(),
+            Status::Unauthorized
+        );
+    }
+    for data in records
+        .iter()
+        .filter(|data| !matches!(data, AbstractData::Album(_)))
+    {
+        let token = ClaimsHash::new(data.hash(), 0, true).encode();
+        for path in [
+            data.imported_path(),
+            data.compressed_path(),
+            data.thumbnail_path_for_version(7),
+            data.small_thumbnail_path_for_version(7),
+        ] {
+            let path = path
+                .strip_prefix(crate::public::constant::storage::get_data_path())
+                .unwrap();
+            assert_eq!(
+                client
+                    .get(format!("/{}?token={token}", path.display()))
+                    .dispatch()
+                    .await
+                    .status(),
+                Status::Unauthorized
+            );
+        }
+    }
+}
+
+#[rocket::async_test]
+async fn http_child() {
+    let Some(root) = std::env::var_os("UROCISSA_AUDIENCE_TEST_ROOT") else {
+        return;
+    };
+    DATA_PATH.set(root.into()).unwrap();
+    let mut config = AppConfig::default();
+    config.private.password = Some("fixture-owner-password".into());
+    config.private.auth_key = Some(String::from_utf8(KEY.to_vec()).unwrap());
+    APP_CONFIG.set(RwLock::new(config)).unwrap();
+    let records = seed();
+    let client = Client::untracked(
+        rocket::custom(rocket::Config {
+            port: 0,
+            log_level: rocket::config::LogLevel::Off,
+            ..rocket::Config::debug_default()
+        })
+        .attach(cache_control_fairing())
+        .mount(
+            "/",
+            routes![
+                prefetch,
+                get_data,
+                get_rows,
+                get_scroll_bar,
+                get_resource,
+                compressed_file,
+                small_thumbnail_file,
+                imported_file,
+                renew_timestamp_token,
+            ],
+        ),
+    )
+    .await
+    .unwrap();
+    if crate::router::fairing::guard_gallery::public_gallery_enabled() {
+        public_checks(&client, &records).await;
+    } else {
+        private_checks(&client, &records).await;
+    }
+}
+
+fn isolated(public: bool) {
+    let root = tempfile::tempdir().unwrap();
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .env_clear()
+        .env("UROCISSA_AUDIENCE_TEST_ROOT", root.path())
+        .env("UROCISSA_PUBLIC_GALLERY", if public { "1" } else { "0" })
+        .args([
+            "--exact",
+            "router::audience_http_tests::http_child",
+            "--nocapture",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(45);
+    while child.try_wait().unwrap().is_none() {
+        if Instant::now() >= deadline {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("Audience HTTP fixture timed out");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "public={public}:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn public_audience_http() {
+    isolated(true);
+}
+
+#[test]
+fn disabled_public_gallery_fails_closed_http() {
+    isolated(false);
+}

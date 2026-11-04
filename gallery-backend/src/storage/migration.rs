@@ -35,7 +35,7 @@ pub(crate) fn prepare_storage_at(db_dir: &Path) -> Result<()> {
 
     let current = db_dir.join(V6_DB_NAME);
     if current.exists() {
-        return Ok(());
+        return DataStore::open(&current)?.migrate_photo_audience();
     }
 
     let migrating = db_dir.join(MIGRATING_DB_NAME);
@@ -52,13 +52,13 @@ pub(crate) fn prepare_storage_at(db_dir: &Path) -> Result<()> {
             "V5 migration completed; V6 database is ready at {}",
             current.display()
         );
-        return Ok(());
+        return DataStore::open(&current)?.migrate_photo_audience();
     }
 
     // Experimental unversioned files are intentionally ignored. Only the
     // explicitly versioned V5 and V6 paths participate in storage selection.
     info!("Creating a new empty V6 database at {}", current.display());
-    drop(DataStore::initialize_empty(&current)?);
+    DataStore::initialize_empty(&current)?.migrate_photo_audience()?;
     Ok(())
 }
 
@@ -522,7 +522,8 @@ mod tests {
         txn.commit()?;
         drop(db);
 
-        prepare_storage_at(directory.path())?;
+        // Audience migration must reject an unreadable records table before serving HTTP.
+        assert!(prepare_storage_at(directory.path()).is_err());
         let store = DataStore::open(&path)?;
         assert!(store.record_count().is_err());
         assert!(directory.path().join(V5_DB_NAME).exists());

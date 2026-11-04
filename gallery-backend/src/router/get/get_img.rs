@@ -1,3 +1,4 @@
+use crate::operations::visibility::{PhotoVisibility, viewer};
 use crate::public::constant::storage::get_data_path;
 use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::router::{
@@ -12,10 +13,8 @@ use rocket::response::Responder;
 use rocket_seek_stream::SeekStream;
 use std::path::PathBuf;
 
-fn check_public_media(auth: GuardShare, path: &std::path::Path) -> AppResult<()> {
-    if !matches!(auth.claims.role, crate::router::claims::Role::Public) {
-        return Ok(());
-    }
+fn check_media_visibility(auth: &GuardShare, path: &std::path::Path) -> AppResult<()> {
+    let visibility = PhotoVisibility::new(viewer(&auth.claims.role))?;
     let hash = path
         .file_stem()
         .and_then(|stem| stem.to_str())
@@ -30,13 +29,10 @@ fn check_public_media(auth: GuardShare, path: &std::path::Path) -> AppResult<()>
                 .map(|value| value.map(crate::storage::store::RecordValue::into_value))
         })
         .map_err(|error| AppError::from_err(ErrorKind::Database, error))?;
-    if !crate::public::db::write_behind::WRITE_BEHIND
+    let data = crate::public::db::write_behind::WRITE_BEHIND
         .logical_record(hash, durable)
-        .is_some_and(|data| !data.is_trashed())
-    {
-        return Err(AppError::new(ErrorKind::NotFound, "Item not found"));
-    }
-    Ok(())
+        .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Item not found"))?;
+    visibility.require_data(&data)
 }
 
 #[derive(Responder)]
@@ -51,7 +47,7 @@ pub async fn compressed_file(
     hash_guard: GuardResult<GuardHash>,
     file_path: PathBuf,
 ) -> AppResult<CompressedFileResponse<'static>> {
-    check_public_media(auth_guard?, &file_path)?;
+    check_media_visibility(&auth_guard?, &file_path)?;
     let _ = hash_guard?;
     let root = get_data_path();
     let compressed_file_path = root.join("object/compressed").join(&file_path);
@@ -126,7 +122,7 @@ pub async fn small_thumbnail_file(
     hash_guard: GuardResult<GuardHash>,
     file_path: PathBuf,
 ) -> AppResult<GridThumbnailResponse> {
-    check_public_media(auth_guard?, &file_path)?;
+    check_media_visibility(&auth_guard?, &file_path)?;
     let _ = hash_guard?;
     if file_path.extension().and_then(std::ffi::OsStr::to_str) != Some("jpg") {
         return Err(
@@ -137,7 +133,7 @@ pub async fn small_thumbnail_file(
     open_grid_thumbnail(get_data_path(), &file_path).await
 }
 
-/// A grid image with a cache policy that prevents retaining viewer fallbacks.
+/// Audience may change, so both thumbnail tiers require a fresh authorization check.
 #[derive(Responder)]
 pub struct GridThumbnailResponse {
     file: NamedFile,
@@ -149,7 +145,6 @@ async fn open_grid_thumbnail(
     file_path: &std::path::Path,
 ) -> AppResult<GridThumbnailResponse> {
     let path = resolve_grid_thumbnail(root, file_path);
-    let is_grid = path == root.join("object/thumbnail").join(file_path);
     let file = NamedFile::open(&path).await.or_raise(|| {
         (
             ErrorKind::IO,
@@ -158,14 +153,7 @@ async fn open_grid_thumbnail(
     })?;
     Ok(GridThumbnailResponse {
         file,
-        cache_control: rocket::http::Header::new(
-            "Cache-Control",
-            if is_grid {
-                "max-age=31536000, public"
-            } else {
-                "no-store"
-            },
-        ),
+        cache_control: rocket::http::Header::new("Cache-Control", "no-store"),
     })
 }
 
@@ -175,7 +163,7 @@ pub async fn imported_file(
     hash_guard: GuardResult<GuardHashOriginal>,
     file_path: PathBuf,
 ) -> AppResult<CompressedFileResponse<'static>> {
-    check_public_media(auth?, &file_path)?;
+    check_media_visibility(&auth?, &file_path)?;
     let _ = hash_guard?;
     let root = get_data_path();
     let imported_file_path = root.join("object/imported").join(&file_path);
@@ -207,7 +195,7 @@ mod grid_thumbnail_tests {
     }
 
     #[rocket::async_test]
-    async fn fallback_is_not_cached_but_backfilled_grid_is() {
+    async fn both_thumbnail_tiers_require_fresh_authorization() {
         let root = tempfile::tempdir().unwrap();
         let relative = Path::new("ab/abc-v7.jpg");
         let viewer = root.path().join("object/compressed").join(relative);
@@ -240,7 +228,7 @@ mod grid_thumbnail_tests {
             .await;
         assert_eq!(
             response.headers().get_one("Cache-Control"),
-            Some("max-age=31536000, public")
+            Some("no-store")
         );
         assert_eq!(response.into_bytes().await.unwrap(), b"grid JPEG");
     }

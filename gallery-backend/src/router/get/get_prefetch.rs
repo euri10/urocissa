@@ -1,3 +1,4 @@
+use crate::operations::visibility::{PhotoVisibility, viewer};
 use crate::public::constant::runtime::QUERY_RAYON_POOL;
 use crate::public::db::query_snapshot::QUERY_SNAPSHOT;
 use crate::public::db::tree::TREE;
@@ -319,6 +320,7 @@ pub(crate) fn cache_prefetch(query_hash: u64, prefetch: Prefetch) {
 fn check_query_cache(
     query_hash: u64,
     resolved_share_option: &mut Option<ResolvedShare>,
+    visibility: &PhotoVisibility,
 ) -> Option<Json<PrefetchReturn>> {
     let find_cache_start_time = Instant::now();
 
@@ -329,7 +331,12 @@ fn check_query_cache(
             find_cache_start_time,
             "Query cache found"
         );
-        let claims = ClaimsTimestamp::new(mem::take(resolved_share_option), prefetch.timestamp);
+        let claims = ClaimsTimestamp::new(
+            mem::take(resolved_share_option),
+            prefetch.timestamp,
+            visibility.viewer,
+            visibility.revision(),
+        );
         return Some(Json(PrefetchReturn::new(
             prefetch,
             claims.encode(),
@@ -351,6 +358,7 @@ fn filter_items(
     resolved_share_option: Option<&ResolvedShare>,
     locate_option: Option<&String>,
     sort_order: GallerySortOrder,
+    visibility: &PhotoVisibility,
 ) -> Result<(PendingTreeSnapshot, Option<usize>), AppError> {
     let filter_items_start_time = Instant::now();
 
@@ -374,12 +382,15 @@ fn filter_items(
 
     let locate_slot = locate_option.and_then(|hash| tree_guard.find(hash));
     if sort_order == GallerySortOrder::Random {
-        let collect_random_chunk = |slot_refs: &[SlotRef]| {
+        let collect_random_chunk = |slot_refs: &[SlotRef]| -> AppResult<Vec<SlotRef>> {
             let mut matches = Vec::new();
             for slot_ref in slot_refs {
                 let Some(record) = tree_guard.get(*slot_ref) else {
                     continue;
                 };
+                if !visibility.allows_cached(&tree_guard, *slot_ref)? {
+                    continue;
+                }
                 if compiled_expression
                     .as_ref()
                     .is_some_and(|expression| !expression.matches(record, slot_ref.index()))
@@ -388,7 +399,7 @@ fn filter_items(
                 }
                 matches.push(*slot_ref);
             }
-            matches
+            Ok(matches)
         };
         let mut matches = if tree_guard.order.len() >= PARALLEL_FILTER_THRESHOLD {
             QUERY_RAYON_POOL
@@ -397,13 +408,13 @@ fn filter_items(
                         .order
                         .par_chunks(PARALLEL_FILTER_CHUNK_ITEMS)
                         .map(collect_random_chunk)
-                        .collect::<Vec<_>>()
-                })
+                        .collect::<AppResult<Vec<_>>>()
+                })?
                 .into_iter()
                 .flatten()
                 .collect::<Vec<_>>()
         } else {
-            collect_random_chunk(tree_guard.order.as_slice())
+            collect_random_chunk(tree_guard.order.as_slice())?
         };
         matches.shuffle(&mut rand::rng());
 
@@ -430,34 +441,38 @@ fn filter_items(
         return result;
     }
 
-    let collect_chunk = |slot_refs: &[SlotRef], reverse: bool| {
+    let collect_chunk = |slot_refs: &[SlotRef], reverse: bool| -> AppResult<PrefetchMatchChunk> {
         let mut chunk = PrefetchMatchChunk::default();
-        let mut push_if_matching = |slot_ref: &SlotRef| {
+        let mut push_if_matching = |slot_ref: &SlotRef| -> AppResult<()> {
             let Some(record) = tree_guard.get(*slot_ref) else {
-                return;
+                return Ok(());
             };
+            if !visibility.allows_cached(&tree_guard, *slot_ref)? {
+                return Ok(());
+            }
             if compiled_expression
                 .as_ref()
                 .is_some_and(|expression| !expression.matches(record, slot_ref.index()))
             {
-                return;
+                return Ok(());
             }
             chunk.push(
                 *slot_ref,
                 record.timestamp,
                 locate_slot.is_some_and(|target| target == *slot_ref),
             );
+            Ok(())
         };
         if reverse {
             for slot_ref in slot_refs.iter().rev() {
-                push_if_matching(slot_ref);
+                push_if_matching(slot_ref)?;
             }
         } else {
             for slot_ref in slot_refs {
-                push_if_matching(slot_ref);
+                push_if_matching(slot_ref)?;
             }
         }
-        chunk
+        Ok(chunk)
     };
     let chunks = if tree_guard.order.len() >= PARALLEL_FILTER_THRESHOLD {
         match sort_order {
@@ -466,22 +481,22 @@ fn filter_items(
                     .order
                     .par_chunks(PARALLEL_FILTER_CHUNK_ITEMS)
                     .map(|chunk| collect_chunk(chunk, false))
-                    .collect::<Vec<_>>()
-            }),
+                    .collect::<AppResult<Vec<_>>>()
+            })?,
             GallerySortOrder::Ascending => QUERY_RAYON_POOL.install(|| {
                 tree_guard
                     .order
                     .par_rchunks(PARALLEL_FILTER_CHUNK_ITEMS)
                     .map(|chunk| collect_chunk(chunk, true))
-                    .collect::<Vec<_>>()
-            }),
+                    .collect::<AppResult<Vec<_>>>()
+            })?,
             GallerySortOrder::Random => unreachable!("random sorting returns before chunking"),
         }
     } else {
         vec![collect_chunk(
             tree_guard.order.as_slice(),
             sort_order == GallerySortOrder::Ascending,
-        )]
+        )?]
     };
 
     crate::perf_timing!(
@@ -582,6 +597,7 @@ fn create_json_response(
     reduced_data_vector_length: usize,
     query_hash: Option<u64>,
     resolved_share_option: Option<ResolvedShare>,
+    visibility: &PhotoVisibility,
 ) -> Json<PrefetchReturn> {
     let json_start_time = Instant::now();
 
@@ -597,7 +613,12 @@ fn create_json_response(
     }
 
     // Build response
-    let claims = ClaimsTimestamp::new(resolved_share_option, timestamp_millis);
+    let claims = ClaimsTimestamp::new(
+        resolved_share_option,
+        timestamp_millis,
+        visibility.viewer,
+        visibility.revision(),
+    );
     let json = Json(PrefetchReturn::new(
         prefetch,
         claims.encode(),
@@ -622,16 +643,22 @@ fn execute_prefetch_logic(
     locate_option: Option<&String>,
     mut resolved_share_option: Option<ResolvedShare>,
     sort_order: GallerySortOrder,
+    visibility: &PhotoVisibility,
 ) -> Result<Json<PrefetchReturn>, AppError> {
     // Start timer
     let start_time = Instant::now();
 
     // Step 1: Build cache key for response creation
-    let query_hash = query_cache_key(expression_option, locate_option, sort_order);
+    let query_hash = query_cache_key(expression_option, locate_option, sort_order).map(|key| {
+        let mut hasher = DefaultHasher::new();
+        (key, visibility.viewer, visibility.revision()).hash(&mut hasher);
+        hasher.finish()
+    });
 
     // Step 2: Check if query cache is available
     if let Some(query_hash) = query_hash
-        && let Some(cached_response) = check_query_cache(query_hash, &mut resolved_share_option)
+        && let Some(cached_response) =
+            check_query_cache(query_hash, &mut resolved_share_option, visibility)
     {
         return Ok(cached_response);
     }
@@ -642,6 +669,7 @@ fn execute_prefetch_logic(
         resolved_share_option.as_ref(),
         locate_option,
         sort_order,
+        visibility,
     )?;
 
     // Step 6: Insert data into TREE_SNAPSHOT
@@ -654,6 +682,7 @@ fn execute_prefetch_logic(
         reduced_data_vector_length,
         query_hash,
         resolved_share_option,
+        visibility,
     );
 
     // Total elapsed time
@@ -693,6 +722,7 @@ pub async fn prefetch(
     sort: Option<String>,
 ) -> AppResult<Json<PrefetchReturn>> {
     let auth_guard = auth_guard?;
+    let request_viewer = viewer(&auth_guard.claims.role);
     // Combine album filter (if any) with the client‑supplied query.
     let client_expression = constrain_public_query(
         query_data.map(rocket::serde::json::Json::into_inner),
@@ -711,11 +741,13 @@ pub async fn prefetch(
 
     // Execute on blocking thread
     let job_handle = tokio::task::spawn_blocking(move || {
+        let visibility = PhotoVisibility::new(request_viewer)?;
         execute_prefetch_logic(
             combined_expression_option.as_ref(),
             locate.as_ref(),
             resolved_share_option,
             sort_order,
+            &visibility,
         )
     })
     .await

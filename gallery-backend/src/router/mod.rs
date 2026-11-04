@@ -16,3 +16,6 @@ pub use builder::build_rocket;
 
 #[cfg(test)]
 mod share_edit_http_tests;
+
+#[cfg(test)]
+mod audience_http_tests;

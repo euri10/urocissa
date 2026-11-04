@@ -28,6 +28,7 @@ pub async fn get_data(
         let start_time = Instant::now();
 
         let resolved_share_opt = guard_timestamp.claims.resolved_share_opt;
+        let visibility = guard_timestamp.visibility;
         let (show_download, show_metadata) = resolve_show_download_and_metadata(resolved_share_opt);
 
         let data_table = open_data_table();
@@ -63,6 +64,8 @@ pub async fn get_data(
                         )
                     })?;
 
+                visibility.require_data(&abstract_data)?;
+
                 let database_timestamp_return = abstract_data_to_database_timestamp_return(
                     abstract_data,
                     timestamp,
@@ -90,12 +93,19 @@ pub async fn get_rows(
     index: usize,
     timestamp: i64,
 ) -> AppResult<Json<Row>> {
-    let _ = auth?;
+    let auth = auth?;
     tokio::task::spawn_blocking(move || {
         let start_time = Instant::now();
         let filtered_rows = TREE_SNAPSHOT
             .read_row(index, timestamp)
             .or_raise(|| (ErrorKind::Database, "Failed to read row from snapshot"))?;
+        let snapshot = open_tree_snapshot_table(timestamp)
+            .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot table"))?;
+        auth.visibility.require_snapshot_range(
+            &snapshot,
+            filtered_rows.start,
+            filtered_rows.start + filtered_rows.display_elements.len(),
+        )?;
         crate::perf_timing!(
             "get_data.read_rows",
             start_time,

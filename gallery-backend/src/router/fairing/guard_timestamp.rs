@@ -1,3 +1,4 @@
+use crate::operations::visibility::{PhotoVisibility, viewer};
 use jsonwebtoken::{DecodingKey, decode};
 use log::warn;
 use rocket::Request;
@@ -18,6 +19,7 @@ use super::guard_share::GuardShare;
 
 pub struct GuardTimestamp {
     pub claims: ClaimsTimestamp,
+    pub visibility: PhotoVisibility,
 }
 
 #[rocket::async_trait]
@@ -35,7 +37,7 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
             }
         };
 
-        let claims: ClaimsTimestamp = match my_decode_token(token, &VALIDATION) {
+        let mut claims: ClaimsTimestamp = match my_decode_token(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => {
                 return Outcome::Error((
@@ -72,8 +74,27 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
                 AppError::new(ErrorKind::Auth, "Timestamp mismatch"),
             ));
         }
-
-        Outcome::Success(GuardTimestamp { claims })
+        let auth = match req.guard::<GuardShare>().await {
+            Outcome::Success(auth) => auth,
+            Outcome::Error(error) => return Outcome::Error(error),
+            Outcome::Forward(status) => return Outcome::Forward(status),
+        };
+        let visibility = match PhotoVisibility::new(viewer(&auth.claims.role)) {
+            Ok(visibility) => visibility,
+            Err(error) => return Outcome::Error((error.http_status(), error)),
+        };
+        if claims.viewer != visibility.viewer || claims.audience_revision != visibility.revision() {
+            return Outcome::Error((
+                Status::Unauthorized,
+                AppError::new(
+                    ErrorKind::Auth,
+                    "Gallery visibility changed; refresh the snapshot",
+                ),
+            ));
+        }
+        // Revalidate share permissions on every read instead of trusting old token settings.
+        claims.resolved_share_opt = auth.claims.get_share();
+        Outcome::Success(GuardTimestamp { claims, visibility })
     }
 }
 
@@ -98,7 +119,7 @@ pub async fn renew_timestamp_token(
     auth: GuardResult<GuardShare>,
     token_request: Json<RenewTimestampToken>,
 ) -> AppResult<Json<RenewTimestampTokenReturn>> {
-    let _ = auth?;
+    let auth = auth?;
     tokio::task::spawn_blocking(move || {
         let token = token_request.into_inner().token;
         let token_data = match decode::<ClaimsTimestamp>(
@@ -124,7 +145,19 @@ pub async fn renew_timestamp_token(
         };
 
         let claims = token_data.claims;
-        let new_claims = ClaimsTimestamp::new(claims.resolved_share_opt, claims.timestamp);
+        let visibility = PhotoVisibility::new(viewer(&auth.claims.role))?;
+        if claims.viewer != visibility.viewer || claims.audience_revision != visibility.revision() {
+            return Err(AppError::new(
+                ErrorKind::Auth,
+                "Gallery visibility changed; refresh the snapshot",
+            ));
+        }
+        let new_claims = ClaimsTimestamp::new(
+            auth.claims.get_share(),
+            claims.timestamp,
+            visibility.viewer,
+            visibility.revision(),
+        );
         let new_token = new_claims.encode();
 
         Ok(Json(RenewTimestampTokenReturn { token: new_token }))

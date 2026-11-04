@@ -1,5 +1,6 @@
 pub mod abstract_data;
 pub mod album;
+pub mod audience;
 pub mod common;
 pub mod config;
 pub mod expression;

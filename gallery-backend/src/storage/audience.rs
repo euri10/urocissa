@@ -1,0 +1,127 @@
+//! Separate redb tables preserve the frozen V6 record bytes and old-reader compatibility.
+use anyhow::{Context, Result, bail};
+use redb::{Durability, ReadOnlyTable, ReadableDatabase, ReadableTable, TableDefinition};
+
+use super::{DataStore, store::RECORDS_TABLE};
+use crate::public::structure::audience::Audience;
+
+pub(super) const PHOTO_AUDIENCE: TableDefinition<&str, u8> = TableDefinition::new("audience");
+const AUDIENCE_META: TableDefinition<&str, u64> = TableDefinition::new("audience_meta");
+const MIGRATION: &str = "existing_photos_public_v1";
+const REVISION: &str = "revision";
+
+pub struct PhotoAudiences {
+    table: ReadOnlyTable<&'static str, u8>,
+    pub revision: u64,
+}
+
+impl PhotoAudiences {
+    pub fn get(&self, hash: &str) -> Result<Audience> {
+        // Missing and unknown values fail closed, including future enum values.
+        Ok(
+            if self
+                .table
+                .get(hash)?
+                .is_some_and(|entry| entry.value() == 1)
+            {
+                Audience::Public
+            } else {
+                Audience::Private
+            },
+        )
+    }
+}
+
+impl DataStore {
+    pub(super) fn initialize_audience_tables(&self) -> Result<()> {
+        let txn = self.db.begin_write()?;
+        txn.open_table(PHOTO_AUDIENCE)?;
+        txn.open_table(AUDIENCE_META)?;
+        txn.commit()?;
+        Ok(())
+    }
+
+    pub fn photo_audiences(&self) -> Result<PhotoAudiences> {
+        let txn = self.db.begin_read()?;
+        let revision = txn
+            .open_table(AUDIENCE_META)?
+            .get(REVISION)?
+            .map_or(0, |v| v.value());
+        Ok(PhotoAudiences {
+            table: txn.open_table(PHOTO_AUDIENCE)?,
+            revision,
+        })
+    }
+
+    /// Run before ingestion or HTTP startup. The marker and all entries commit atomically.
+    pub(crate) fn migrate_photo_audience(&self) -> Result<()> {
+        let mut txn = self.db.begin_write()?;
+        txn.set_durability(Durability::Immediate)?;
+        {
+            let mut meta = txn.open_table(AUDIENCE_META)?;
+            if meta.get(MIGRATION)?.is_some() {
+                return Ok(());
+            }
+            let records = txn.open_table(RECORDS_TABLE)?;
+            let mut audiences = txn.open_table(PHOTO_AUDIENCE)?;
+            for entry in records.iter()? {
+                let (hash, bytes) = entry?;
+                let record = bitcode::decode::<super::v6::V6AbstractData>(bytes.value())
+                    .with_context(|| {
+                        format!(
+                            "failed to decode V6 record {} for audience migration",
+                            hash.value()
+                        )
+                    })?;
+                if !matches!(record, super::v6::V6AbstractData::Album(_))
+                    && audiences.get(hash.value())?.is_none()
+                {
+                    audiences.insert(hash.value(), 1)?;
+                }
+            }
+            let revision = meta
+                .get(REVISION)?
+                .map_or(0, |v| v.value())
+                .checked_add(1)
+                .context("photo audience revision exhausted")?;
+            meta.insert(REVISION, revision)?;
+            meta.insert(MIGRATION, 1)?;
+        }
+        txn.commit()?;
+        Ok(())
+    }
+
+    /// Publishing is explicit; normal record writes never insert an audience entry.
+    #[allow(
+        dead_code,
+        reason = "owner publish controls are implemented by task .8"
+    )]
+    pub fn set_photo_audience(&self, hash: &str, audience: Audience) -> Result<()> {
+        let mut txn = self.db.begin_write()?;
+        txn.set_durability(Durability::Immediate)?;
+        {
+            let records = txn.open_table(RECORDS_TABLE)?;
+            let bytes = records.get(hash)?.context("photo not found")?;
+            if matches!(
+                bitcode::decode::<super::v6::V6AbstractData>(bytes.value())?,
+                super::v6::V6AbstractData::Album(_)
+            ) {
+                bail!("album audience is managed separately");
+            }
+            let mut audiences = txn.open_table(PHOTO_AUDIENCE)?;
+            audiences.insert(hash, u8::from(audience == Audience::Public))?;
+            let mut meta = txn.open_table(AUDIENCE_META)?;
+            let revision = meta
+                .get(REVISION)?
+                .map_or(0, |v| v.value())
+                .checked_add(1)
+                .context("photo audience revision exhausted")?;
+            meta.insert(REVISION, revision)?;
+        }
+        txn.commit()?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests;

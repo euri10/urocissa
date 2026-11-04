@@ -254,7 +254,7 @@ async fn success_case(video: bool, previous_grid: bool) {
     assert_eq!(response.status(), Status::Ok);
     assert_eq!(
         response.headers().get_one("Cache-Control"),
-        Some("max-age=31536000, public")
+        Some("no-store")
     );
     assert_eq!(
         response.into_bytes().await.unwrap(),

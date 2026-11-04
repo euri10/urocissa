@@ -1,4 +1,5 @@
 use crate::operations::transitor::abstract_data_to_database_timestamp_return;
+use crate::operations::visibility::{PhotoVisibility, viewer};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::state::TargetSet;
 use crate::public::db::tree_snapshot::{PendingTreeSnapshot, TREE_SNAPSHOT};
@@ -133,7 +134,10 @@ fn get_or_create_resource_prefetch(resource_id: &str) -> AppResult<Prefetch> {
     Ok(prefetch)
 }
 
-fn create_resource_snapshot(resource_id: &str, is_admin: bool) -> AppResult<RouteResourceSnapshot> {
+fn create_resource_snapshot(
+    resource_id: &str,
+    visibility: &PhotoVisibility,
+) -> AppResult<RouteResourceSnapshot> {
     validate_resource_id(resource_id)?;
 
     let durable = TREE
@@ -153,11 +157,14 @@ fn create_resource_snapshot(resource_id: &str, is_admin: bool) -> AppResult<Rout
             )
         })?;
 
-    if !is_admin && abstract_data.is_trashed() {
-        return Err(AppError::new(ErrorKind::NotFound, "Item not found"));
-    }
+    visibility.require_data(&abstract_data)?;
     let prefetch = get_or_create_resource_prefetch(resource_id)?;
-    let claims = ClaimsTimestamp::new(None, prefetch.timestamp);
+    let claims = ClaimsTimestamp::new(
+        None,
+        prefetch.timestamp,
+        visibility.viewer,
+        visibility.revision(),
+    );
     let token = claims.encode();
     let data =
         abstract_data_to_database_timestamp_return(abstract_data, prefetch.timestamp, true, true);
@@ -174,10 +181,13 @@ pub async fn get_resource(
     auth: GuardResult<GuardGallery>,
     resource_id: String,
 ) -> AppResult<Json<RouteResourceSnapshot>> {
-    let is_admin = auth?.claims.is_admin();
-    tokio::task::spawn_blocking(move || create_resource_snapshot(&resource_id, is_admin).map(Json))
-        .await
-        .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))?
+    let request_viewer = viewer(&auth?.claims.role);
+    tokio::task::spawn_blocking(move || {
+        let visibility = PhotoVisibility::new(request_viewer)?;
+        create_resource_snapshot(&resource_id, &visibility).map(Json)
+    })
+    .await
+    .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))?
 }
 
 #[cfg(test)]
