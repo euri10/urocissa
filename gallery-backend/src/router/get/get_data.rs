@@ -1,6 +1,7 @@
 // src/router/get/get_data.rs
 
 use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
+use crate::operations::public_metadata::ViewerKind;
 use crate::operations::resolve_show_download_and_metadata;
 use crate::operations::transitor::{abstract_data_to_database_timestamp_return, index_to_hash};
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
@@ -9,6 +10,7 @@ use crate::public::structure::response::database_timestamp::DataBaseTimestampRet
 use crate::public::structure::response::row::{Row, ScrollBarData};
 
 use crate::public::error::{AppError, ErrorKind, ResultExt};
+use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_timestamp::GuardTimestamp;
 use crate::router::{AppResult, GuardResult};
 use anyhow::Result;
@@ -19,11 +21,17 @@ use std::time::Instant;
 #[get("/get/get-data?<timestamp>&<start>&<end>")]
 pub async fn get_data(
     guard_timestamp: GuardResult<GuardTimestamp>,
+    owner: Option<GuardAuth>,
     timestamp: i64,
     start: usize,
     mut end: usize,
 ) -> AppResult<Json<Vec<DataBaseTimestampReturn>>> {
     let guard_timestamp = guard_timestamp?;
+    // Snapshot capabilities authorize a collection, never owner metadata access.
+    let viewer = ViewerKind::for_response(
+        owner.is_some(),
+        guard_timestamp.claims.resolved_share_opt.is_some(),
+    );
     tokio::task::spawn_blocking(move || {
         let start_time = Instant::now();
 
@@ -71,6 +79,7 @@ pub async fn get_data(
                     timestamp,
                     show_download,
                     show_metadata,
+                    viewer,
                 );
                 Ok(database_timestamp_return)
             })

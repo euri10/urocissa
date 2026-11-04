@@ -82,6 +82,33 @@ describe('thumbnail cacheVersion schema', () => {
   })
 })
 
+describe('public metadata records', () => {
+  it.each(['image', 'video'])('accepts a redacted %s without private fields', (type) => {
+    const media = BackendDataParser.parse({
+      type, id: 'public-media', pending: false, width: 1920, height: 1080, ext: 'jpg',
+      size: 1000, exifVec: { Make: 'Camera' }, cacheVersion: 7
+    })
+    if (media.type === 'album') throw new Error('expected media')
+    expect(media.alias).toEqual([])
+    expect(media.updateAt).toBe(0)
+    expect(media.width).toBe(1920)
+    expect(media.exif).toEqual({ Make: 'Camera' })
+    expect(media.cacheVersion).toBe(7)
+  })
+
+  it('accepts an album with hidden date range and share credentials', () => {
+    const album = BackendDataParser.parse({
+      type: 'album', id: 'public-album', pending: false, title: 'Album', cover: null,
+      startTime: null, endTime: null, lastModifiedTime: Date.UTC(2026, 5, 1),
+      itemCount: 2, itemSize: 1000
+    })
+    if (album.type !== 'album') throw new Error('expected album')
+    expect(album.startTime).toBeNull()
+    expect(album.endTime).toBeNull()
+    expect(album.shareList).toEqual({})
+  })
+})
+
 describe('search facets schema', () => {
   it('accepts independent tag, make, and model arrays', () => {
     expect(

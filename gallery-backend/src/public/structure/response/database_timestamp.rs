@@ -7,7 +7,7 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DataBaseTimestampReturn {
-    pub abstract_data: AbstractData,
+    pub abstract_data: serde_json::Value,
     pub timestamp: i64,
     pub token: String,
 }
@@ -36,7 +36,8 @@ impl DataBaseTimestampReturn {
             }
         };
         Self {
-            abstract_data,
+            abstract_data: serde_json::to_value(abstract_data)
+                .expect("item records must serialize to JSON"),
             timestamp,
             token,
         }

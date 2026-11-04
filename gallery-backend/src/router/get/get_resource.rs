@@ -1,3 +1,4 @@
+use crate::operations::public_metadata::ViewerKind;
 use crate::operations::transitor::abstract_data_to_database_timestamp_return;
 use crate::operations::visibility::{PhotoVisibility, viewer};
 use crate::public::db::tree::TREE;
@@ -5,6 +6,7 @@ use crate::public::db::tree::state::TargetSet;
 use crate::public::db::tree_snapshot::{PendingTreeSnapshot, TREE_SNAPSHOT};
 use crate::public::db::write_behind::WRITE_BEHIND;
 use crate::public::error::{AppError, ErrorKind};
+use crate::public::structure::audience::Viewer;
 use crate::public::structure::response::database_timestamp::DataBaseTimestampReturn;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
 use crate::router::fairing::guard_gallery::GuardGallery;
@@ -166,8 +168,13 @@ fn create_resource_snapshot(
         visibility.revision(),
     );
     let token = claims.encode();
-    let data =
-        abstract_data_to_database_timestamp_return(abstract_data, prefetch.timestamp, true, true);
+    let data = abstract_data_to_database_timestamp_return(
+        abstract_data,
+        prefetch.timestamp,
+        true,
+        true,
+        ViewerKind::for_response(visibility.viewer == Viewer::Owner, false),
+    );
 
     Ok(RouteResourceSnapshot {
         prefetch,

@@ -163,7 +163,14 @@ pub async fn imported_file(
     hash_guard: GuardResult<GuardHashOriginal>,
     file_path: PathBuf,
 ) -> AppResult<CompressedFileResponse<'static>> {
-    check_media_visibility(&auth?, &file_path)?;
+    let auth = auth?;
+    check_media_visibility(&auth, &file_path)?;
+    if matches!(auth.claims.role, crate::router::claims::Role::Public) {
+        return Err(AppError::new(
+            ErrorKind::PermissionDenied,
+            "Original files require owner or share authorization",
+        ));
+    }
     let _ = hash_guard?;
     let root = get_data_path();
     let imported_file_path = root.join("object/imported").join(&file_path);

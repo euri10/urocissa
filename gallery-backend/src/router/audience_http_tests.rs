@@ -274,10 +274,11 @@ async fn public_checks(client: &Client, records: &[AbstractData]) {
             let url = format!("/{}?token={token}", path.to_str().unwrap());
             let response = client.get(url.clone()).dispatch().await;
             let public = matches!(hash.as_str(), PUBLIC | PUBLIC_VIDEO);
-            // Original-download policy is implemented separately by .2.
             if !public {
                 assert_eq!(response.status(), Status::NotFound, "{url}");
-            } else if !path.starts_with("object/imported") {
+            } else if path.starts_with("object/imported") {
+                assert_eq!(response.status(), Status::Forbidden, "{url}");
+            } else {
                 assert_eq!(response.status(), Status::Ok, "{url}");
                 assert_eq!(
                     response.headers().get_one("Cache-Control"),
@@ -288,7 +289,11 @@ async fn public_checks(client: &Client, records: &[AbstractData]) {
             assert_eq!(response.status(), Status::Ok, "owner: {url}");
             assert_eq!(
                 response.headers().get_one("Cache-Control"),
-                Some("no-store")
+                Some(if path.starts_with("object/imported") {
+                    "private, no-store"
+                } else {
+                    "no-store"
+                })
             );
             // Share access is an explicit grant, bounded by current album membership.
             let response = client

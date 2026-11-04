@@ -3,7 +3,9 @@ use rocket::fairing::AdHoc;
 pub fn cache_control_fairing() -> AdHoc {
     AdHoc::on_response("Add Cache-Control header", |req, res| {
         Box::pin(async move {
-            if req.uri().path().starts_with("/get")
+            if req.uri().path().starts_with("/object/imported/") {
+                res.set_raw_header("Cache-Control", "private, no-store");
+            } else if req.uri().path().starts_with("/get")
                 || req.uri().path().starts_with("/post")
                 || req.uri().path().starts_with("/object")
             {

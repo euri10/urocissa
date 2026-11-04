@@ -4,6 +4,7 @@ pub mod hash;
 pub mod indexation;
 pub mod initialization;
 pub mod open_db;
+pub mod public_metadata;
 pub mod transitor;
 pub mod utils;
 pub mod visibility;

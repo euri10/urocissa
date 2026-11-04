@@ -1,3 +1,4 @@
+use crate::operations::public_metadata::{ViewerKind, presentation_timestamp, redact_record};
 use crate::public::{
     db::tree_snapshot::read_tree_snapshot::MyCow,
     structure::{
@@ -62,22 +63,23 @@ pub fn abstract_data_to_database_timestamp_return(
     timestamp: i64,
     show_download: bool,
     show_metadata: bool,
+    viewer: ViewerKind,
 ) -> DataBaseTimestampReturn {
     // Create the return object first (which computes timestamp from abstract_data)
-    let result = DataBaseTimestampReturn::new(
+    let mut result = DataBaseTimestampReturn::new(
         abstract_data.clone(),
         crate::public::constant::DEFAULT_PRIORITY_LIST,
         timestamp,
-        show_download,
+        show_download && viewer != ViewerKind::Anonymous,
     );
 
     // Then clear metadata from the abstract_data
     clear_abstract_data_metadata(&mut abstract_data, show_metadata);
 
-    // Return with the cleared abstract_data but the original computed timestamp
-    DataBaseTimestampReturn {
-        abstract_data,
-        timestamp: result.timestamp,
-        token: result.token,
-    }
+    result.abstract_data = redact_record(
+        viewer,
+        serde_json::to_value(abstract_data).expect("item records must serialize to JSON"),
+    );
+    result.timestamp = presentation_timestamp(viewer, result.timestamp);
+    result
 }
