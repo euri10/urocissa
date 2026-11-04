@@ -1,9 +1,31 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useCollectionStore } from './collectionStore'
+import { useConfigStore } from './configStore'
+import type { AppConfig } from '@/api/config'
 
 describe('collection selection store', () => {
   beforeEach(() => setActivePinia(createPinia()))
+
+  it.each(['mainId', 'subId', 'tempId'] as const)(
+    'only lets the owner enter selection mode in %s',
+    (isolationId) => {
+      const store = useCollectionStore(isolationId)
+      const config = useConfigStore('mainId')
+      store.enterEdit(2)
+      expect(store.editModeOn).toBe(false)
+      expect(store.hasSelection(10)).toBe(false)
+      config.config = { isAdmin: false } as AppConfig
+      store.enterEdit(2)
+      expect(store.editModeOn).toBe(false)
+      expect(store.lastClick).toBeNull()
+      config.config = { isAdmin: true } as AppConfig
+      store.enterEdit(2)
+      expect(store.editModeOn).toBe(true)
+      expect(store.isSelected(2)).toBe(true)
+      expect(store.lastClick).toBe(2)
+    }
+  )
 
   it('keeps Select All as a flag plus exceptions', () => {
     const store = useCollectionStore('tempId')

@@ -15,4 +15,6 @@ pub type GuardError = AppError;
 pub use builder::build_rocket;
 
 #[cfg(test)]
+mod anonymous_route_tests;
+#[cfg(test)]
 mod share_edit_http_tests;

@@ -7,6 +7,7 @@ import type { GallerySearchSubmission } from '@/script/utils/gallerySort'
 import { parseGallerySortOrder } from '@/script/utils/gallerySort'
 import { createGallerySearchRouteUpdate } from '@/components/Search/gallerySearchRoute'
 import { useCollectionStore } from '@/store/collectionStore'
+import { useConfigStore } from '@/store/configStore'
 import { useFilterStore } from '@/store/filterStore'
 import { useModalStore } from '@/store/modalStore'
 import { useCollectionReloadStore } from '@/store/collectionReloadStore'
@@ -24,6 +25,7 @@ const props = defineProps<{
 
 const modalStore = useModalStore('mainId')
 const collectionStore = useCollectionStore('subId')
+const configStore = useConfigStore('mainId')
 const filterStore = useFilterStore('subId')
 const collectionReloadStore = useCollectionReloadStore('mainId')
 
@@ -105,6 +107,7 @@ watch(
         >
           <v-card-title>
             <v-text-field
+              v-if="configStore.isAdmin"
               v-model="titleModel"
               class="album-title-field"
               data-testid="album-title"
@@ -112,6 +115,7 @@ watch(
               :placeholder="titleModel === '' ? 'Untitled' : undefined"
               @blur="editTitle(props.album, titleModel)"
             />
+            <template v-else>{{ props.album.title?.trim() || 'Untitled' }}</template>
           </v-card-title>
         </v-card>
 
@@ -131,11 +135,13 @@ watch(
         <v-spacer />
 
         <v-btn
+          v-if="configStore.isAdmin"
           icon="mdi-share-variant"
           aria-label="Share album"
           @click="modalStore.showShareModal = true"
         />
         <v-btn
+          v-if="configStore.isAdmin"
           icon="mdi-image-plus"
           aria-label="Add album items"
           @click="modalStore.showHomeTempModal = true"
@@ -144,9 +150,9 @@ watch(
 
       <EditBar v-else />
 
-      <HomeTemp v-if="modalStore.showHomeTempModal" :album="props.album" />
+      <HomeTemp v-if="configStore.isAdmin && modalStore.showHomeTempModal" :album="props.album" />
       <CreateShareModal
-        v-if="modalStore.showShareModal"
+        v-if="configStore.isAdmin && modalStore.showShareModal"
         :album-id="props.album.id"
         mode="create"
       />

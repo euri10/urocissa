@@ -1,6 +1,7 @@
 import type { IsolationId } from '@type/types'
 import type { SelectionDescriptor } from '@/type/selection'
 import { defineStore } from 'pinia'
+import { useConfigStore } from './configStore'
 
 export const useCollectionStore = (isolationId: IsolationId) =>
   defineStore('collectionStore' + isolationId, {
@@ -16,6 +17,14 @@ export const useCollectionStore = (isolationId: IsolationId) =>
       lastClick: null
     }),
     actions: {
+      enterEdit(index?: number) {
+        if (!useConfigStore('mainId').isAdmin) return
+        this.editModeOn = true
+        if (index !== undefined) {
+          this.addApi(index)
+          this.lastClick = index
+        }
+      },
       leaveEdit() {
         this.clearSelection()
         this.editModeOn = false

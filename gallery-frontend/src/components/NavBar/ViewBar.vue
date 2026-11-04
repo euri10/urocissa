@@ -1,3 +1,40 @@
+<script setup lang="ts">
+import { setFavorite, setArchived } from '@/api/editFlags'
+import { EnrichedUnifiedData, IsolationId } from '@type/types'
+import DatabaseMenu from '@Menu/SingleMenu.vue'
+import AlbumMenu from '@Menu/AlbumMenu.vue'
+import ShareMenu from '@Menu/ShareMenu.vue'
+import LeaveView from '@Menu/MenuButton/BtnLeaveView.vue'
+import ShowInfo from '@Menu/MenuButton/BtnShowInfo.vue'
+import { useRoute } from 'vue-router'
+import { useShareStore } from '@/store/shareStore'
+import { onMounted } from 'vue'
+import { useConstStore } from '@/store/constStore'
+import { useConfigStore } from '@/store/configStore'
+
+const route = useRoute()
+const shareStore = useShareStore('mainId')
+
+defineProps<{
+  isolationId: IsolationId
+  hash: string
+  index: number
+  abstractData: EnrichedUnifiedData | undefined
+}>()
+
+const constStore = useConstStore('mainId')
+const configStore = useConfigStore('mainId')
+
+onMounted(() => {
+  constStore.loadViewBarOverlay().catch((error: unknown) => {
+    console.error('Failed to load viewBarOverlay:', error)
+  })
+})
+
+
+const share = shareStore.resolvedShare?.share ?? null
+</script>
+
 <template>
   <v-toolbar
     :class="[
@@ -13,7 +50,7 @@
     <LeaveView />
     <v-spacer></v-spacer>
     <ShowInfo />
-    <template v-if="route.meta.baseName !== 'share'">
+    <template v-if="configStore.isAdmin && route.meta.baseName !== 'share'">
       <v-btn
         v-if="abstractData && (abstractData.type === 'image' || abstractData.type === 'video')"
         :icon="abstractData.isFavorite ? 'mdi-star' : 'mdi-star-outline'"
@@ -63,40 +100,7 @@
     />
   </v-toolbar>
 </template>
-<script setup lang="ts">
-import { setFavorite, setArchived } from '@/api/editFlags'
-import { EnrichedUnifiedData, IsolationId } from '@type/types'
-import DatabaseMenu from '@Menu/SingleMenu.vue'
-import AlbumMenu from '@Menu/AlbumMenu.vue'
-import ShareMenu from '@Menu/ShareMenu.vue'
-import LeaveView from '@Menu/MenuButton/BtnLeaveView.vue'
-import ShowInfo from '@Menu/MenuButton/BtnShowInfo.vue'
-import { useRoute } from 'vue-router'
-import { useShareStore } from '@/store/shareStore'
-import { onMounted } from 'vue'
-import { useConstStore } from '@/store/constStore'
 
-const route = useRoute()
-const shareStore = useShareStore('mainId')
-
-defineProps<{
-  isolationId: IsolationId
-  hash: string
-  index: number
-  abstractData: EnrichedUnifiedData | undefined
-}>()
-
-const constStore = useConstStore('mainId')
-
-onMounted(() => {
-  constStore.loadViewBarOverlay().catch((error: unknown) => {
-    console.error('Failed to load viewBarOverlay:', error)
-  })
-})
-
-
-const share = shareStore.resolvedShare?.share ?? null
-</script>
 <style scoped>
 .my-toolbar {
   z-index: 2;
