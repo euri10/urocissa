@@ -204,7 +204,7 @@ function handleOpenClick(event: MouseEvent): void {
 }
 
 function handlePointerdown(event: PointerEvent): void {
-  if (isScrolling.value) {
+  if (isScrolling.value || !configStore.isAdmin) {
     return
   }
 
@@ -264,9 +264,7 @@ function handleContextMenu(event: Event): void {
 
 function handleLongPressClick(event: MouseEvent, currentIndex: number): void {
   if (!collectionStore.editModeOn) {
-    collectionStore.editModeOn = true
-    collectionStore.addApi(currentIndex)
-    collectionStore.lastClick = currentIndex
+    collectionStore.enterEdit(currentIndex)
   } else {
     handleClick(event, currentIndex)
   }
@@ -275,9 +273,7 @@ function handleLongPressClick(event: MouseEvent, currentIndex: number): void {
 function handleSelectClick(event: MouseEvent): void {
   const currentIndex = getCurrentTargetIndex(event)
   if (!collectionStore.editModeOn) {
-    collectionStore.editModeOn = true
-    collectionStore.addApi(currentIndex)
-    collectionStore.lastClick = currentIndex
+    collectionStore.enterEdit(currentIndex)
   } else {
     handleClick(event, currentIndex)
   }
@@ -397,7 +393,7 @@ onBeforeUnmount(() => {
     v-on="rowInteractionListeners"
   >
     <DesktopHoverIcon
-      v-if="!mobile && hoveredTile !== null"
+      v-if="configStore.isAdmin && !mobile && hoveredTile !== null"
       class="icon-hover"
       :index="hoveredTile.index"
       :left="hoveredTile.leftPixel"

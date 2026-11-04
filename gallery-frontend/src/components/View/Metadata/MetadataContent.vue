@@ -1,3 +1,77 @@
+<script setup lang="ts">
+import { useClipboard } from '@vueuse/core'
+import { computed, shallowRef, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { useConstStore } from '@/store/constStore'
+import { useConfigStore } from '@/store/configStore'
+import { useMessageStore } from '@/store/messageStore'
+import { useShareStore } from '@/store/shareStore'
+import { editUserDefinedDescription } from '@utils/editDescription'
+import { EnrichedUnifiedData, IsolationId } from '@type/types'
+import ItemExif from './ItemExif.vue'
+import ItemSize from './ItemSize.vue'
+import ItemPath from './ItemPath.vue'
+import ItemDate from './ItemDate.vue'
+import ItemTag from './ItemTag.vue'
+import ItemAlbum from './ItemAlbum.vue'
+import ItemTitle from './ItemTitle.vue'
+import ItemCount from './ItemCount.vue'
+import { serializeMetadataAsJson } from './metadataJson'
+import { provideMetadataItemLayout } from './useMetadataItemLayout'
+
+const route = useRoute()
+const userDefinedDescriptionModel = shallowRef('')
+
+const props = defineProps<{
+  isolationId: IsolationId
+  hash: string
+  index: number
+  abstractData: EnrichedUnifiedData
+}>()
+
+const showMetadata = computed(() => {
+  return route.meta.baseName !== 'share' || shareStore.resolvedShare?.share.showMetadata
+})
+
+const isShareMode = computed(() => {
+  return route.meta.baseName === 'share'
+})
+
+const constStore = useConstStore('mainId')
+const configStore = useConfigStore('mainId')
+const canEditDescription = computed(() => configStore.isAdmin && !isShareMode.value)
+const messageStore = useMessageStore('mainId')
+const shareStore = useShareStore('mainId')
+const { copy } = useClipboard({ legacy: true })
+const { metadataItemDensity, metadataItemSlim } = provideMetadataItemLayout()
+
+function toggleInfo() {
+  void constStore.updateShowInfo(!constStore.showInfo)
+}
+
+async function copyMetadataAsJson(): Promise<void> {
+  try {
+    await copy(serializeMetadataAsJson(props.abstractData))
+    messageStore.success('Metadata copied as JSON.')
+  } catch (error) {
+    console.error('Failed to copy metadata as JSON:', error)
+    messageStore.error('Failed to copy metadata as JSON.')
+  }
+}
+
+function getUserDefinedDescription(abstractData: EnrichedUnifiedData): string {
+  return abstractData.description ?? ''
+}
+
+watch(
+  () => props.hash,
+  () => {
+    userDefinedDescriptionModel.value = getUserDefinedDescription(props.abstractData)
+  },
+  { immediate: true }
+)
+</script>
+
 <template>
   <div class="metadata-content h-100 w-100 bg-surface">
     <div class="metadata-content__scroll position-relative h-100">
@@ -17,16 +91,16 @@
           />
         </v-toolbar>
       </div>
-      <v-card-item v-if="!isShareMode || userDefinedDescriptionModel">
+      <v-card-item v-if="canEditDescription || userDefinedDescriptionModel">
         <v-textarea
+          v-if="canEditDescription"
           v-model="userDefinedDescriptionModel"
           data-testid="edit-description"
-          :variant="isShareMode ? 'plain' : 'underlined'"
-          :readonly="isShareMode"
+          variant="underlined"
           rows="1"
           auto-grow
           @blur="
-            !isShareMode &&
+            canEditDescription &&
             editUserDefinedDescription(
               props.abstractData,
               userDefinedDescriptionModel,
@@ -35,9 +109,12 @@
             )
           "
           :placeholder="
-            !isShareMode && userDefinedDescriptionModel === '' ? 'Add description' : undefined
+            userDefinedDescriptionModel === '' ? 'Add description' : undefined
           "
         />
+        <v-card-text v-else class="pa-0 text-pre-wrap text-break" data-testid="readonly-description">
+          {{ userDefinedDescriptionModel }}
+        </v-card-text>
       </v-card-item>
       <div v-if="abstractData.type === 'image' || abstractData.type === 'video'" class="w-100">
         <v-list
@@ -92,77 +169,6 @@
     </div>
   </div>
 </template>
-
-<script setup lang="ts">
-import { useClipboard } from '@vueuse/core'
-import { computed, shallowRef, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { useConstStore } from '@/store/constStore'
-import { useMessageStore } from '@/store/messageStore'
-import { useShareStore } from '@/store/shareStore'
-import { editUserDefinedDescription } from '@utils/editDescription'
-import { EnrichedUnifiedData, IsolationId } from '@type/types'
-import ItemExif from './ItemExif.vue'
-import ItemSize from './ItemSize.vue'
-import ItemPath from './ItemPath.vue'
-import ItemDate from './ItemDate.vue'
-import ItemTag from './ItemTag.vue'
-import ItemAlbum from './ItemAlbum.vue'
-import ItemTitle from './ItemTitle.vue'
-import ItemCount from './ItemCount.vue'
-import { serializeMetadataAsJson } from './metadataJson'
-import { provideMetadataItemLayout } from './useMetadataItemLayout'
-
-const route = useRoute()
-const userDefinedDescriptionModel = shallowRef('')
-
-const props = defineProps<{
-  isolationId: IsolationId
-  hash: string
-  index: number
-  abstractData: EnrichedUnifiedData
-}>()
-
-const showMetadata = computed(() => {
-  return route.meta.baseName !== 'share' || shareStore.resolvedShare?.share.showMetadata
-})
-
-const isShareMode = computed(() => {
-  return route.meta.baseName === 'share'
-})
-
-const constStore = useConstStore('mainId')
-const messageStore = useMessageStore('mainId')
-const shareStore = useShareStore('mainId')
-const { copy } = useClipboard({ legacy: true })
-const { metadataItemDensity, metadataItemSlim } = provideMetadataItemLayout()
-
-function toggleInfo() {
-  void constStore.updateShowInfo(!constStore.showInfo)
-}
-
-async function copyMetadataAsJson(): Promise<void> {
-  try {
-    await copy(serializeMetadataAsJson(props.abstractData))
-    messageStore.success('Metadata copied as JSON.')
-  } catch (error) {
-    console.error('Failed to copy metadata as JSON:', error)
-    messageStore.error('Failed to copy metadata as JSON.')
-  }
-}
-
-function getUserDefinedDescription(abstractData: EnrichedUnifiedData): string {
-  return abstractData.description ?? ''
-}
-
-watch(
-  () => props.hash,
-  () => {
-    userDefinedDescriptionModel.value = getUserDefinedDescription(props.abstractData)
-  },
-  { immediate: true }
-)
-</script>
 
 <style scoped>
 .metadata-content {

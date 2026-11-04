@@ -1,3 +1,34 @@
+<script setup lang="ts">
+import { useImgStore } from '@/store/imgStore'
+import { useAlbumStore } from '@/store/albumStore'
+import { useConfigStore } from '@/store/configStore'
+import { filesize } from 'filesize'
+import { useRoute } from 'vue-router'
+import { dater } from '@utils/dater'
+import type { GalleryAlbum, IsolationId } from '@type/types'
+import { ref, watch } from 'vue'
+import { editTitle } from '@utils/createAlbums'
+
+const titleModel = ref('')
+const route = useRoute()
+const albumStore = useAlbumStore('mainId')
+const configStore = useConfigStore('mainId')
+const props = defineProps<{
+  index: number
+  album: GalleryAlbum
+  isolationId: IsolationId
+}>()
+const imgStore = useImgStore(props.isolationId)
+
+watch(
+  () => props.album.title,
+  () => {
+    titleModel.value = props.album.title ?? ''
+  },
+  { immediate: true }
+)
+</script>
+
 <template>
   <div class="h-100 d-flex align-center justify-center">
     <div class="card-pair">
@@ -18,11 +49,15 @@
       <v-card class="square album-info-card d-flex flex-column pa-4 rounded-0">
         <v-card-item>
           <v-text-field
+            v-if="configStore.isAdmin"
             v-model="titleModel"
             variant="underlined"
             @blur="editTitle(props.album, titleModel, isolationId)"
             :placeholder="titleModel === '' ? 'Add Title' : undefined"
           />
+          <v-card-title v-else class="pa-0 text-wrap">
+            {{ props.album.title?.trim() || 'Untitled' }}
+          </v-card-title>
         </v-card-item>
 
         <v-list class="album-meta-list">
@@ -58,35 +93,6 @@
     </div>
   </div>
 </template>
-
-<script setup lang="ts">
-import { useImgStore } from '@/store/imgStore'
-import { useAlbumStore } from '@/store/albumStore'
-import { filesize } from 'filesize'
-import { useRoute } from 'vue-router'
-import { dater } from '@utils/dater'
-import type { GalleryAlbum, IsolationId } from '@type/types'
-import { ref, watch } from 'vue'
-import { editTitle } from '@utils/createAlbums'
-
-const titleModel = ref('')
-const route = useRoute()
-const albumStore = useAlbumStore('mainId')
-const props = defineProps<{
-  index: number
-  album: GalleryAlbum
-  isolationId: IsolationId
-}>()
-const imgStore = useImgStore(props.isolationId)
-
-watch(
-  () => props.album.title,
-  () => {
-    titleModel.value = props.album.title ?? ''
-  },
-  { immediate: true }
-)
-</script>
 
 <style scoped>
 .card-pair {

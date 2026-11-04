@@ -1,38 +1,3 @@
-<template>
-  <HomeBarTemplate isolation-id="tempId">
-    <template #content>
-      <v-toolbar class="bg-surface"
-        ><v-btn icon="mdi-close" @click="modalStore.showHomeTempModal = false"></v-btn>
-        <v-card
-          variant="flat"
-          class="w-100"
-          :title="`Add ${collectionStore.selectedCount(prefetchStore.dataLength)} items to ${album.title?.trim() || 'Untitled'}`"
-        >
-        </v-card>
-        <v-spacer></v-spacer>
-        <SelectInverse isolation-id="tempId" />
-        <SelectAll
-          isolation-id="tempId"
-          v-if="
-            prefetchStore.dataLength === 0 ||
-            prefetchStore.dataLength !== collectionStore.selectedCount(prefetchStore.dataLength)
-          "
-        />
-        <SelectClear v-else isolation-id="tempId" />
-        <v-btn
-          :loading="waiting"
-          :disabled="!collectionStore.hasSelection(prefetchStore.dataLength)"
-          color="teal-accent-4"
-          variant="flat"
-          class="ma-2 button button-submit"
-          @click="submit"
-        >
-          Add
-        </v-btn>
-      </v-toolbar>
-    </template>
-  </HomeBarTemplate>
-</template>
 <script setup lang="ts">
 import { useCollectionStore } from '@/store/collectionStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
@@ -88,7 +53,43 @@ const submit = async () => {
 watchEffect(() => {
   // persist to edit mode
   if (!collectionStore.editModeOn) {
-    collectionStore.editModeOn = true
+    collectionStore.enterEdit()
   }
 })
 </script>
+
+<template>
+  <HomeBarTemplate isolation-id="tempId">
+    <template #content>
+      <v-toolbar class="bg-surface"
+        ><v-btn icon="mdi-close" @click="modalStore.showHomeTempModal = false"></v-btn>
+        <v-card
+          variant="flat"
+          class="w-100"
+          :title="`Add ${collectionStore.selectedCount(prefetchStore.dataLength)} items to ${album.title?.trim() || 'Untitled'}`"
+        >
+        </v-card>
+        <v-spacer></v-spacer>
+        <SelectInverse isolation-id="tempId" />
+        <SelectAll
+          isolation-id="tempId"
+          v-if="
+            prefetchStore.dataLength === 0 ||
+            prefetchStore.dataLength !== collectionStore.selectedCount(prefetchStore.dataLength)
+          "
+        />
+        <SelectClear v-else isolation-id="tempId" />
+        <v-btn
+          :loading="waiting"
+          :disabled="!collectionStore.hasSelection(prefetchStore.dataLength)"
+          color="teal-accent-4"
+          variant="flat"
+          class="ma-2 button button-submit"
+          @click="submit"
+        >
+          Add
+        </v-btn>
+      </v-toolbar>
+    </template>
+  </HomeBarTemplate>
+</template>

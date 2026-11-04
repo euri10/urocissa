@@ -1,29 +1,3 @@
-<template>
-  <v-menu location="start">
-    <template #activator="{ props: MenuBtn }">
-      <v-btn v-bind="MenuBtn" icon="mdi-dots-vertical" aria-label="Media actions"></v-btn>
-    </template>
-    <v-list>
-      <ItemViewOriginalFile
-        :src="getSrc(database.id, true, database.ext, database.updateAt)"
-        :isolation-id="props.isolationId"
-        :hash="database.id"
-      />
-      <ItemDownload :index-list="[props.index]" />
-      <ItemFindInTimeline :hash="props.hash" />
-      <v-divider></v-divider>
-      <ItemEditTags />
-      <ItemEditAlbums />
-      <ItemDelete v-if="!database.isTrashed" :index-list="[props.index]" />
-      <ItemRestore v-if="database.isTrashed" :index-list="[props.index]" />
-      <ItemPermanentlyDelete v-if="database.isTrashed" :index-list="[props.index]" />
-      <v-divider></v-divider>
-      <ItemRegenerateMetadata :index-list="[props.index]" />
-      <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
-      <ItemRotateImage v-if="database.type === 'image'" />
-    </v-list>
-  </v-menu>
-</template>
 <script setup lang="ts">
 import { GalleryImage, GalleryVideo, IsolationId } from '@type/types'
 import { getSrc } from '@utils/getter'
@@ -39,6 +13,8 @@ import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
 import ItemRegenerateThumbnailByFrame from '@Menu/MenuItem/ItemRegenerateThumbnailByFrame.vue'
 import ItemRotateImage from '@Menu/MenuItem/ItemRotateImage.vue'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
+import { useConfigStore } from '@/store/configStore'
+
 const props = defineProps<{
   isolationId: IsolationId
   hash: string
@@ -46,4 +22,35 @@ const props = defineProps<{
   database: GalleryImage | GalleryVideo
 }>()
 const currentFrameStore = useCurrentFrameStore(props.isolationId)
+const configStore = useConfigStore('mainId')
 </script>
+
+<template>
+  <v-menu location="start">
+    <template #activator="{ props: MenuBtn }">
+      <v-btn v-bind="MenuBtn" icon="mdi-dots-vertical" aria-label="Media actions"></v-btn>
+    </template>
+    <v-list>
+      <ItemViewOriginalFile
+        v-if="configStore.isAdmin"
+        :src="getSrc(database.id, true, database.ext, database.updateAt)"
+        :isolation-id="props.isolationId"
+        :hash="database.id"
+      />
+      <ItemDownload v-if="configStore.isAdmin" :index-list="[props.index]" />
+      <ItemFindInTimeline :hash="props.hash" />
+      <template v-if="configStore.isAdmin">
+        <v-divider></v-divider>
+        <ItemEditTags />
+        <ItemEditAlbums />
+        <ItemDelete v-if="!database.isTrashed" :index-list="[props.index]" />
+        <ItemRestore v-if="database.isTrashed" :index-list="[props.index]" />
+        <ItemPermanentlyDelete v-if="database.isTrashed" :index-list="[props.index]" />
+        <v-divider></v-divider>
+        <ItemRegenerateMetadata :index-list="[props.index]" />
+        <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
+        <ItemRotateImage v-if="database.type === 'image'" />
+      </template>
+    </v-list>
+  </v-menu>
+</template>

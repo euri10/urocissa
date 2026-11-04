@@ -1,6 +1,7 @@
 import { Router, RouteLocationNormalizedLoaded } from 'vue-router'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useDataStore } from '@/store/dataStore'
+import { useConfigStore } from '@/store/configStore'
 import { IsolationId } from '@type/types'
 
 export function useHandleClick(
@@ -10,6 +11,7 @@ export function useHandleClick(
 ) {
   const handleClick = (event: MouseEvent, currentIndex: number) => {
     const collectionStore = useCollectionStore(isolationId)
+    if (!useConfigStore('mainId').isAdmin) collectionStore.leaveEdit()
     if (collectionStore.editModeOn) {
       if (event.shiftKey && collectionStore.lastClick !== null) {
         const start = Math.min(collectionStore.lastClick, currentIndex)

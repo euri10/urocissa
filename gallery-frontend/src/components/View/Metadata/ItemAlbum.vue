@@ -1,3 +1,34 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { useModalStore } from '@/store/modalStore'
+import { useConfigStore } from '@/store/configStore'
+import { useAlbumStore } from '@/store/albumStore'
+import type { IsolationId } from '@type/types'
+import { navigateToAlbum } from '@/route/navigator'
+import { useMetadataItemLayout } from './useMetadataItemLayout'
+
+const props = defineProps<{
+  isolationId: IsolationId
+  index: number
+  albums: string[]
+}>()
+
+const modalStore = useModalStore('mainId')
+const configStore = useConfigStore('mainId')
+const albumStore = useAlbumStore('mainId')
+const router = useRouter()
+const { metadataChipSize } = useMetadataItemLayout()
+
+const visibleAlbumIds = computed(() =>
+  props.albums.filter((albumId) => albumStore.albums.has(albumId))
+)
+
+function openEditAlbumsModal() {
+  modalStore.showEditAlbumsModal = true
+}
+</script>
+
 <template>
   <v-list-item>
     <template #prepend>
@@ -18,6 +49,7 @@
         {{ albumStore.albums.get(albumId)?.displayName }}
       </v-chip>
       <v-chip
+        v-if="configStore.isAdmin"
         prepend-icon="mdi-pencil"
         color="surface-variant"
         variant="outlined"
@@ -29,32 +61,3 @@
     </div>
   </v-list-item>
 </template>
-
-<script setup lang="ts">
-import { computed } from 'vue'
-import { useRouter } from 'vue-router'
-import { useModalStore } from '@/store/modalStore'
-import { useAlbumStore } from '@/store/albumStore'
-import type { IsolationId } from '@type/types'
-import { navigateToAlbum } from '@/route/navigator'
-import { useMetadataItemLayout } from './useMetadataItemLayout'
-
-const props = defineProps<{
-  isolationId: IsolationId
-  index: number
-  albums: string[]
-}>()
-
-const modalStore = useModalStore('mainId')
-const albumStore = useAlbumStore('mainId')
-const router = useRouter()
-const { metadataChipSize } = useMetadataItemLayout()
-
-const visibleAlbumIds = computed(() =>
-  props.albums.filter((albumId) => albumStore.albums.has(albumId))
-)
-
-function openEditAlbumsModal() {
-  modalStore.showEditAlbumsModal = true
-}
-</script>
