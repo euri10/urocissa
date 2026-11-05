@@ -60,26 +60,6 @@ pub(super) async fn read(path: &Path) -> Result<Value> {
     Ok(probe)
 }
 
-pub(super) async fn stream_hashes(path: &Path) -> Result<Vec<u8>> {
-    let hashes = run(Command::new("ffmpeg")
-        .args(["-v", "error", "-nostdin", "-xerror", "-i"])
-        .arg(path)
-        .args([
-            "-map",
-            "0",
-            "-c",
-            "copy",
-            "-f",
-            "streamhash",
-            "-hash",
-            "sha256",
-            "-",
-        ]))
-    .await?;
-    ensure!(!hashes.is_empty(), "no stream hashes produced");
-    Ok(hashes)
-}
-
 fn duration(value: &Value) -> Result<f64> {
     let duration: f64 = value["duration"]
         .as_str()
@@ -120,6 +100,7 @@ pub(super) fn verify_playback(before: &Value, after: &Value) -> Result<()> {
             "side_data_list",
             "time_base",
             "start_pts",
+            "duration_ts",
             "extradata_hash",
         ] {
             ensure!(before[key] == after[key], "stream property changed: {key}");

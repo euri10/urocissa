@@ -1,6 +1,8 @@
 //! Owner maintenance of existing canonical compressed MP4s. Originals and
 //! database metadata are never opened or mutated by this operation.
+mod packets;
 mod probe;
+mod timing;
 
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -116,7 +118,12 @@ async fn strip_one(path: &Path) -> Result<bool> {
     if tags_are_clean(&before) && !probe::has_location(&before) {
         return Ok(false);
     }
-    let hashes = probe::stream_hashes(path).await?;
+    let timing_options = timing::copy_options(&before)?;
+    let stream_count = before["streams"]
+        .as_array()
+        .context("missing streams")?
+        .len();
+    let fingerprints = packets::fingerprints(path, stream_count).await?;
     let staged_path = path.with_file_name(format!(
         ".{}.{}.metadata.tmp.mp4",
         path.file_stem()
@@ -137,6 +144,7 @@ async fn strip_one(path: &Path) -> Result<bool> {
         .arg(path)
         .args(["-map", "0", "-c", "copy"])
         .args(STRIP_SOURCE_METADATA_ARGS)
+        .args(timing_options)
         .args(["-movflags", "+faststart"])
         .arg(&staged.0);
     probe::run(&mut command)
@@ -151,8 +159,8 @@ async fn strip_one(path: &Path) -> Result<bool> {
     );
     probe::verify_playback(&before, &after)?;
     ensure!(
-        hashes == probe::stream_hashes(&staged.0).await?,
-        "stream payload changed"
+        fingerprints == packets::fingerprints(&staged.0, stream_count).await?,
+        "stream packets changed"
     );
     let output = OpenOptions::new().write(true).open(&staged.0)?;
     fs::set_permissions(&staged.0, fs::metadata(path)?.permissions())?;

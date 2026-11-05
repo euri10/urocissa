@@ -1,8 +1,8 @@
 //! Disposable media only: no installed data path, database, or production configuration.
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
 use std::time::Duration;
+use std::{collections::BTreeMap, fs};
 
 use serde_json::Value;
 use tokio::process::Command;
@@ -78,13 +78,23 @@ async fn packets(path: &Path) -> Value {
             "-show_data_hash",
             "sha256",
             "-show_entries",
-            "packet=stream_index,pts,dts,duration,data_hash,size",
+            "packet=stream_index,pts,dts,duration,data_hash,size,flags:packet_side_data",
             "-of",
             "json",
         ])
         .arg(path))
     .await;
-    serde_json::from_slice::<Value>(&output.stdout).unwrap()["packets"].clone()
+    let probe: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let mut streams = BTreeMap::<u64, Vec<Value>>::new();
+    for packet in probe["packets"].as_array().unwrap() {
+        streams
+            .entry(packet["stream_index"].as_u64().unwrap())
+            .or_default()
+            .push(packet.clone());
+    }
+    // Remuxing may interleave streams differently; each stream's packet order,
+    // exact timestamps, payload and skip/discard-sample data must stay intact.
+    serde_json::to_value(streams).unwrap()
 }
 
 async fn decoded_frames(path: &Path) -> Vec<u8> {
@@ -109,6 +119,10 @@ fn copy(source: &Path, destination: &Path) {
 }
 
 async fn tagged_fixture(path: &Path) {
+    tagged_fixture_at_rate(path, 48000).await;
+}
+
+async fn tagged_fixture_at_rate(path: &Path, sample_rate: u32) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     let mut command = Command::new("ffmpeg");
     command.args([
@@ -122,7 +136,7 @@ async fn tagged_fixture(path: &Path) {
         "-f",
         "lavfi",
         "-i",
-        "sine=frequency=440:sample_rate=48000",
+        &format!("sine=frequency=440:sample_rate={sample_rate}"),
         "-t",
         "0.5",
         "-c:v",
@@ -164,7 +178,7 @@ async fn tagged_fixture(path: &Path) {
     }
 }
 
-fn assert_sanitized(metadata: &Value) {
+fn assert_sanitized(metadata: &Value, sample_rate: u32) {
     for (key, value) in metadata["format"]["tags"].as_object().unwrap() {
         match key.as_str() {
             "major_brand" | "minor_version" | "compatible_brands" => {}
@@ -183,7 +197,7 @@ fn assert_sanitized(metadata: &Value) {
         } else {
             assert_eq!(stream["codec_type"], "audio");
             assert_eq!(stream["codec_name"], "aac");
-            assert_eq!(stream["sample_rate"], "48000");
+            assert_eq!(stream["sample_rate"], sample_rate.to_string());
             "SoundHandler"
         };
         for (key, value) in stream["tags"].as_object().unwrap() {
@@ -282,7 +296,7 @@ async fn strips_existing_orphan_videos_without_changing_originals_or_media() {
     }
     let outputs = [&clean, &tagged[0], &tagged[1]];
     for path in outputs {
-        assert_sanitized(&probe(path).await);
+        assert_sanitized(&probe(path).await, 48000);
         assert_eq!(
             packets(path).await,
             original_packets,
@@ -400,7 +414,7 @@ async fn nested_and_versioned_videos_are_sanitized_but_scratch_files_are_ignored
     assert_eq!(report.verification.checked, 2);
     assert!(report.verification.passed);
     for destination in &destinations {
-        assert_sanitized(&probe(destination).await);
+        assert_sanitized(&probe(destination).await, 48000);
     }
     for path in &ignored {
         assert_eq!(fs::read(path).unwrap(), b"ignored fixture bytes");
@@ -423,9 +437,23 @@ async fn nested_and_versioned_videos_are_sanitized_but_scratch_files_are_ignored
 
 #[tokio::test]
 async fn positive_audio_video_offsets_keep_exact_packet_timing() {
+    assert_offset_timing("2", 48000).await;
+}
+
+#[tokio::test]
+async fn fractional_audio_video_offsets_keep_exact_packet_timing() {
+    assert_offset_timing("2.123456", 48000).await;
+}
+
+#[tokio::test]
+async fn audio_at_44100_hz_keeps_exact_packet_timing() {
+    assert_offset_timing("2.123456", 44100).await;
+}
+
+async fn assert_offset_timing(offset_seconds: &str, sample_rate: u32) {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("tagged-fixture.mp4");
-    tagged_fixture(&source).await;
+    tagged_fixture_at_rate(&source, sample_rate).await;
     let offset = root.path().join("offset-fixture.mp4");
     run(Command::new("ffmpeg")
         .args([
@@ -434,7 +462,7 @@ async fn positive_audio_video_offsets_keep_exact_packet_timing() {
             "-nostdin",
             "-copyts",
             "-itsoffset",
-            "2",
+            offset_seconds,
             "-i",
         ])
         .arg(&source)
@@ -443,19 +471,15 @@ async fn positive_audio_video_offsets_keep_exact_packet_timing() {
     .await;
     let destination = compressed_path(root.path(), 10);
     fs::create_dir_all(destination.parent().unwrap()).unwrap();
-    // A second fixture remux settles the AAC encoder's final partial-packet
-    // trim. The regression below then measures only preservation of timing.
-    run(Command::new("ffmpeg")
-        .args(["-v", "error", "-nostdin", "-copyts", "-i"])
-        .arg(&offset)
-        .args(["-map", "0", "-c", "copy", "-movflags", "+use_metadata_tags"])
-        .arg(&destination))
-    .await;
+    // Do not pre-remux the fixture: that hides the AAC final partial-packet
+    // trim which the first metadata cleanup must preserve.
+    copy(&offset, &destination);
     let before = probe(&destination).await;
     for stream in before["streams"].as_array().unwrap() {
         assert!(stream["start_pts"].as_i64().unwrap() > 0);
     }
     let timing = packets(&destination).await;
+    let decoded = decoded_frames(&destination).await;
     let report = strip_compressed_videos(root.path()).await.unwrap();
     assert_eq!(
         (report.total, report.changed, report.failed),
@@ -465,18 +489,25 @@ async fn positive_audio_video_offsets_keep_exact_packet_timing() {
     );
     assert!(report.verification.passed);
     let after = probe(&destination).await;
-    assert_sanitized(&after);
+    assert_sanitized(&after, sample_rate);
     for (before, after) in before["streams"]
         .as_array()
         .unwrap()
         .iter()
         .zip(after["streams"].as_array().unwrap())
     {
-        for key in ["start_pts", "start_time", "time_base", "duration"] {
+        for key in [
+            "start_pts",
+            "start_time",
+            "time_base",
+            "duration",
+            "duration_ts",
+        ] {
             assert_eq!(before[key], after[key], "stream timing changed: {key}");
         }
     }
     assert_eq!(packets(&destination).await, timing);
+    assert_eq!(decoded_frames(&destination).await, decoded);
 }
 
 #[test]
@@ -484,7 +515,7 @@ fn playback_verification_rejects_changed_timing_and_codec_extradata() {
     let before = serde_json::json!({
         "format": { "duration": "1.0" },
         "streams": [{
-            "time_base": "1/48000", "start_pts": 96000,
+            "time_base": "1/48000", "start_pts": 96000, "duration_ts": 48000,
             "extradata_hash": "SHA256:original-fixture-codec-data",
         }],
     });
@@ -492,6 +523,7 @@ fn playback_verification_rejects_changed_timing_and_codec_extradata() {
     for (key, value) in [
         ("time_base", serde_json::json!("1/24000")),
         ("start_pts", serde_json::json!(0)),
+        ("duration_ts", serde_json::json!(48001)),
         (
             "extradata_hash",
             serde_json::json!("SHA256:changed-fixture-codec-data"),
@@ -578,7 +610,7 @@ async fn cancelling_before_replace_cleans_staging_and_preserves_source() {
     let task = tokio::spawn(async move { strip_compressed_videos(&task_root).await });
     let staged = wait_before_replace(&destination).await;
     assert!(staged.is_file());
-    assert_sanitized(&probe(&staged).await);
+    assert_sanitized(&probe(&staged).await, 48000);
     assert_eq!(fs::read(&destination).unwrap(), original_bytes);
     task.abort();
     assert!(task.await.unwrap_err().is_cancelled());
@@ -641,7 +673,7 @@ async fn killed_process_leaves_original_intact_and_orphan_does_not_block_retry()
         (1, 1, 0, 0)
     );
     assert!(retry.verification.passed);
-    assert_sanitized(&probe(&destination).await);
+    assert_sanitized(&probe(&destination).await, 48000);
     assert!(
         staged.is_file(),
         "retry must ignore unrelated/orphan staging files"
