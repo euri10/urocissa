@@ -22,4 +22,6 @@ mod public_metadata_http_tests;
 mod share_edit_http_tests;
 
 #[cfg(test)]
+mod album_audience_http_tests;
+#[cfg(test)]
 mod audience_http_tests;

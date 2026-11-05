@@ -111,6 +111,7 @@ const VideoSchemaRaw = BaseObjectRaw.extend({
 // 3. Album Schema
 const AlbumSchemaRaw = BaseObjectRaw.extend({
   type: z.literal('album'),
+  audience: z.enum(['private', 'public']).default('private'),
   title: z.string().nullable(),
   startTime: z.number().nullable(),
   endTime: z.number().nullable(),
@@ -121,6 +122,7 @@ const AlbumSchemaRaw = BaseObjectRaw.extend({
   shareList: z.record(z.string(), z.any()).default({})
 }).transform((data) => ({
   type: 'album' as const,
+  audience: data.audience,
   id: data.id,
   title: data.title,
   startTime: data.startTime,
@@ -236,11 +238,13 @@ export const albumInfoSchema = z
   .object({
     albumId: z.string(),
     albumName: z.string().nullable(),
+    audience: z.enum(['private', 'public']).default('private'),
     shareList: z.record(z.string(), ShareSchema)
   })
   .transform((albumData) => ({
     albumId: albumData.albumId,
     albumName: albumData.albumName,
+    audience: albumData.audience,
     shareList: new Map(Object.entries(albumData.shareList)),
     displayName: albumData.albumName ?? 'Untitled'
   }))

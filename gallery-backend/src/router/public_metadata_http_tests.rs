@@ -137,6 +137,9 @@ fn seed() {
             .set_photo_audience(hash, Audience::Public)
             .unwrap();
     }
+    TREE.store
+        .set_album_audience(ALBUM, Audience::Public, false)
+        .unwrap();
     *TREE.state.write().unwrap() = crate::public::db::tree::state::TreeState::from_records(records);
 }
 

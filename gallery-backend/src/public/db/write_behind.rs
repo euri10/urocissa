@@ -840,18 +840,16 @@ impl DirtyDeltaStore {
         }
     }
 
-    #[cfg(feature = "performance-test")]
     pub async fn flush(&self, timeout: Duration) -> bool {
         let deadline = tokio::time::Instant::now() + timeout;
         loop {
+            // Register before checking status so a completed flush cannot be missed.
+            let changed = self.capacity_changed.notified();
             self.wake_worker.notify_one();
             if self.status().pending_operations == 0 {
                 return true;
             }
-            if tokio::time::timeout_at(deadline, self.capacity_changed.notified())
-                .await
-                .is_err()
-            {
+            if tokio::time::timeout_at(deadline, changed).await.is_err() {
                 return false;
             }
         }

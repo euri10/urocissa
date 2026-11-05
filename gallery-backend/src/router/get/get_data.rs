@@ -1,9 +1,10 @@
 // src/router/get/get_data.rs
 
+use crate::operations::album_visibility::visible_data_to_database_timestamp_return;
 use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
 use crate::operations::public_metadata::ViewerKind;
 use crate::operations::resolve_show_download_and_metadata;
-use crate::operations::transitor::{abstract_data_to_database_timestamp_return, index_to_hash};
+use crate::operations::transitor::index_to_hash;
 use crate::public::db::tree_snapshot::TREE_SNAPSHOT;
 use crate::public::db::write_behind::WRITE_BEHIND;
 use crate::public::structure::response::database_timestamp::DataBaseTimestampReturn;
@@ -74,13 +75,14 @@ pub async fn get_data(
 
                 visibility.require_data(&abstract_data)?;
 
-                let database_timestamp_return = abstract_data_to_database_timestamp_return(
+                let database_timestamp_return = visible_data_to_database_timestamp_return(
                     abstract_data,
                     timestamp,
                     show_download,
                     show_metadata,
                     viewer,
-                );
+                    &visibility,
+                )?;
                 Ok(database_timestamp_return)
             })
             .collect();

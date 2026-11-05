@@ -60,6 +60,11 @@ fn probe_body(path: &str) -> Value {
         // must fail, and must not be exempted from the route enumeration.
         return json!("incorrect-dummy-password");
     }
+    if path == "/put/album_audience" {
+        return json!({
+            "albumId": "dummy-album", "audience": "public", "publishPhotos": false
+        });
+    }
     // Valid shapes for the mounted JSON handlers let their authorization checks
     // run. A future route with a different schema must add a valid probe here:
     // 400/404/415/422/500 do not count as authorization rejection.

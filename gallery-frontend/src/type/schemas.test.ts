@@ -109,6 +109,26 @@ describe('public metadata records', () => {
   })
 })
 
+describe('album audience schema', () => {
+  const album = {
+    type: 'album', id: 'album', pending: false, title: 'Album', cover: null,
+    startTime: null, endTime: null, lastModifiedTime: 1, itemCount: 0, itemSize: 0
+  }
+
+  it.each(['private', 'public'] as const)('preserves explicit %s audience', (audience) => {
+    const parsed = BackendDataParser.parse({ ...album, audience })
+    if (parsed.type !== 'album') throw new Error('expected album')
+    expect(parsed.audience).toBe(audience)
+  })
+
+  it('defaults missing audience to private and rejects unknown values', () => {
+    const parsed = BackendDataParser.parse(album)
+    if (parsed.type !== 'album') throw new Error('expected album')
+    expect(parsed.audience).toBe('private')
+    expect(BackendDataParser.safeParse({ ...album, audience: 'shared' }).success).toBe(false)
+  })
+})
+
 describe('search facets schema', () => {
   it('accepts independent tag, make, and model arrays', () => {
     expect(

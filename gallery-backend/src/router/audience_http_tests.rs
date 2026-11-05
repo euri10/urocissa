@@ -120,6 +120,7 @@ fn seed() -> Vec<AbstractData> {
         })
         .unwrap();
     store.migrate_photo_audience().unwrap();
+    store.migrate_album_audience().unwrap();
     let new = vec![
         photo(PRIVATE, false, true),
         photo(MISSING, false, false),

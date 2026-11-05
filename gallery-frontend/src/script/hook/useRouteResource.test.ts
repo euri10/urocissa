@@ -184,6 +184,7 @@ describe('route resource resolver', () => {
     detail.data.set(0, {
       ...image(id.value),
       type: 'album',
+      audience: 'private',
       title: null,
       startTime: null,
       endTime: null,

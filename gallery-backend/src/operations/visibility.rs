@@ -50,7 +50,7 @@ impl PhotoVisibility {
             }
             _ => false,
         };
-        self.allows(hash.as_str(), is_album, data.is_trashed(), share_member)
+        self.allows(hash.as_str(), data.is_trashed(), share_member)
     }
 
     pub fn allows_cached(&self, state: &TreeState, slot: SlotRef) -> AppResult<bool> {
@@ -74,26 +74,18 @@ impl PhotoVisibility {
         };
         self.allows(
             record.id.as_str(),
-            is_album,
             state.query.trashed.contains(slot.index()),
             share_member,
         )
     }
 
-    fn allows(
-        &self,
-        hash: &str,
-        is_album: bool,
-        trashed: bool,
-        share_member: bool,
-    ) -> AppResult<bool> {
-        // Album audience/cover policy is the separate album task (.9).
-        let audience = if is_album {
-            Audience::Public
-        } else {
-            self.audiences.get(hash).map_err(database_error)?
-        };
+    fn allows(&self, hash: &str, trashed: bool, share_member: bool) -> AppResult<bool> {
+        let audience = self.audience(hash)?;
         Ok(self.viewer.can_view(audience, trashed, share_member))
+    }
+
+    pub fn audience(&self, hash: &str) -> AppResult<Audience> {
+        self.audiences.get(hash).map_err(database_error)
     }
 
     pub fn require_data(&self, data: &AbstractData) -> AppResult<()> {

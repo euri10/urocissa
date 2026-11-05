@@ -1,5 +1,5 @@
+use crate::operations::album_visibility::visible_data_to_database_timestamp_return;
 use crate::operations::public_metadata::ViewerKind;
-use crate::operations::transitor::abstract_data_to_database_timestamp_return;
 use crate::operations::visibility::{PhotoVisibility, viewer};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::state::TargetSet;
@@ -168,13 +168,14 @@ fn create_resource_snapshot(
         visibility.revision(),
     );
     let token = claims.encode();
-    let data = abstract_data_to_database_timestamp_return(
+    let data = visible_data_to_database_timestamp_return(
         abstract_data,
         prefetch.timestamp,
         true,
         true,
         ViewerKind::for_response(visibility.viewer == Viewer::Owner, false),
-    );
+        visibility,
+    )?;
 
     Ok(RouteResourceSnapshot {
         prefetch,

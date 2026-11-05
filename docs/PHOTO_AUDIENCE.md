@@ -1,9 +1,9 @@
-# Photo audience storage and read policy
+# Photo and album audience storage and read policy
 
 `audience` is a separate table in `db/index_v6.redb`, keyed by photo/video
-hash. `0` means private and `1` means public. Missing entries and unknown values
+hash or album ID. `0` means private and `1` means public. Missing entries and unknown values
 mean private. The frozen V6 `records` table, bitcode types and payloads are
-unchanged. Albums retain their existing behavior until the album audience task.
+unchanged. Photo and album audience are independent.
 
 Before ingestion or HTTP startup, storage preparation runs the one-time
 `existing_photos_public_v1` migration. It inserts public entries for existing
@@ -14,7 +14,14 @@ retrying cannot leave partially published data. After the marker exists,
 restarts never publish missing entries. A fresh database is marked while empty,
 before any upload, folder import or sync can run.
 
-Normal record writers do not publish photos. Upload, folder import, sync and
+The independent `existing_albums_public_v1` migration grants public audience to
+existing albums only, preserving explicit entries. Its entries, revision and
+completion marker commit atomically with immediate durability. It does not run
+the photo migration or alter photo audience. Startup checks each migration's own
+marker; an already completed photo migration remains completed. Fresh databases
+receive both markers before ingestion or album creation, so new albums are private.
+
+Normal record writers do not publish photos or albums. Upload, folder import, sync and
 pending write-behind records therefore default to private. Removing a record
 removes its grant in the same transaction; new records also discard stale grants
 left by an older binary, so reingestion of a deleted hash stays private.
@@ -22,7 +29,7 @@ Explicit publication uses `DataStore::set_photo_audience`. Audience changes
 increment a durable revision atomically with the audience write.
 
 `Viewer::can_view` is the pure policy: owners see public/private/missing entries,
-anonymous visitors see only public non-trashed photos, and a validated share
+anonymous visitors see only public non-trashed photos and albums, and a validated share
 visitor sees non-trashed members of that specific share's album regardless of
 photo audience. `PhotoVisibility` adapts this policy for durable/logical records
 and cached tree records. Use it for additional read paths rather than adding
@@ -38,6 +45,33 @@ Media responses use `Cache-Control: no-store` (originals also specify `private`)
 so future requests cannot bypass visibility checks through a shared or browser
 cache. Data already downloaded
 before a privacy change cannot be recalled.
+
+## Album publication and presentation
+
+The owner-only `PUT /put/album_audience` accepts `albumId`, `audience` (`private`
+or `public`) and an optional `publishPhotos` boolean, defaulting to false.
+Publishing an album alone never changes photo audience. Making an album private
+also leaves its photos unchanged. Only the explicit "Publish album and all its
+photos" action sets `publishPhotos: true`; it requires public audience and
+publishes all current non-trashed image/video members in the same transaction
+as the album. Adding photos later preserves their own audience; private photos
+remain private unless explicitly published.
+
+The route waits up to 30 seconds for pending writes, then holds the persistence
+lock and tree read lock while confirming no new pending edits and committing.
+`DataStore::set_album_audience` validates the durable album and uses durable
+membership for the combined action. A failure rolls back every audience change;
+a successful action advances the shared durable audience revision once.
+
+Anonymous album lists, direct resources and prefetch results exclude private
+albums. Album membership filters cannot expose a hidden album's members, and
+anonymous photo responses omit hidden album IDs. Public album counts and sizes
+include only visible public photos. The selected cover is used only if it is a
+visible current member; otherwise the newest public member supplies the cover,
+thumbnail hash and cache version, or all cover fields are empty for a placeholder.
+This response projection never rewrites the owner's chosen cover or stored counts.
+Share access remains governed by the integrated share policy; share-link changes
+belong to `.10`.
 
 ## Fail-closed rollback
 
@@ -83,13 +117,20 @@ configuration test. Then, from `gallery-backend`:
 cargo test --offline --locked storage::audience
 cargo test --offline --locked public::structure::audience
 cargo test --offline --locked router::audience_http_tests
+cargo test --offline --locked router::album_audience_http_tests
 cargo test --offline --locked
 cargo fmt --all -- --check
 cargo clippy --offline --locked --all-targets
 ```
 
-Counts/facets/tags belong to `.7`, publish controls to `.8`, album audience and
-private-cover handling to `.9`, and further share-link changes to `.10`.
+Album fixtures cover private list/direct/search exclusion, visible member counts
+and sizes, cover fallback and empty placeholders, unchanged owner covers,
+owner-only publication, pending membership edits, later private additions, and
+snapshot invalidation. Frontend tests cover all three album actions, writable
+owner gating, rejected requests, schema defaults and snapshot refresh.
+
+Generic counts/facets/tags belong to `.7`, photo publish controls to `.8`, album
+audience and private-cover handling to `.9`, and further share-link changes to `.10`.
 
 ## Integrated first batch
 
@@ -122,16 +163,27 @@ exception. New video compression strips source container and stream metadata;
 existing files still require `.5`.
 
 This batch is source integration, not a complete private-gallery rollout.
-Do not repin or deploy it as completion of the epic while `.5`, `.7`, `.8`, `.9`,
+Do not repin or deploy it as completion of the epic while `.5`, `.7`, `.8`,
 `.10` and the production gates in `.11` remain outstanding.
 
 ## Interfaces for remaining tasks
 
 `.7` can use `PhotoVisibility::allows_cached` for tree-backed aggregates and
-`allows_data` for logical records. `.8` can use
+`allows_data` for logical records; both now apply audience to albums as well as
+photos. `.9` changes only the album-list branch of `router/get/get_list.rs`;
+reconcile that branch with `.7`'s generic facets changes. The shared
+`operations::album_visibility::visible_data_to_database_timestamp_return` helper
+owns anonymous album counts/covers and hidden album membership redaction for
+both data and direct-resource responses. Keep those projections when adding
+other response fields.
+
+`.8` can use
 `DataStore::photo_audiences().get(hash)` and `set_photo_audience`; the setter
-invalidates previous snapshots through its durable revision. `.9` must replace
-the adapter's documented album compatibility behavior and add album migration
-without rerunning the photo migration. Cache expectations in thumbnail mutation
+invalidates previous snapshots through its durable revision. The existing
+`photo_audiences()` accessor also reads album IDs, and `Audience` serializes as
+lowercase `private`/`public`. `.9` adds `set_album_audience(hash, audience,
+publish_photos)` without changing the photo setter or frozen V6 schema. Preserve
+the independent album migration marker when reconciling storage changes; never
+clear or rerun the completed photo migration. Cache expectations in thumbnail mutation
 tests require `no-store` for both tiers. Preserve owner-only selection entry
 through `collectionStore.enterEdit()` when adding publishing controls.

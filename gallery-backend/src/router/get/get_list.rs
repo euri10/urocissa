@@ -1,7 +1,12 @@
+use crate::operations::visibility::{PhotoVisibility, viewer};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::read_tags::SearchFacets;
 use crate::public::error::AppError; // Import AppError
 use crate::public::structure::album::Share;
+use crate::public::structure::{
+    abstract_data::AbstractData,
+    audience::{Audience, Viewer},
+};
 use crate::router::fairing::guard_gallery::GuardGallery;
 use crate::router::{AppResult, GuardResult};
 use arrayvec::ArrayString;
@@ -43,18 +48,24 @@ pub struct AlbumInfo {
     pub album_id: String,
     pub album_name: Option<String>,
     pub share_list: HashMap<ArrayString<64>, Share>,
+    pub audience: Audience,
 }
 
 #[get("/get/get-albums")]
 pub async fn get_albums(auth: GuardResult<GuardGallery>) -> AppResult<Json<Vec<AlbumInfo>>> {
-    let is_admin = auth?.claims.is_admin();
+    let request_viewer = viewer(&auth?.claims.role);
     tokio::task::spawn_blocking(move || -> AppResult<Json<Vec<AlbumInfo>>> {
+        let visibility = PhotoVisibility::new(request_viewer)?;
+        let is_admin = request_viewer == Viewer::Owner;
         let start_time = Instant::now();
         let album_list = TREE.read_albums();
-        let album_info_list: Vec<AlbumInfo> = album_list
-            .into_iter()
-            .filter(|album| is_admin || !album.object.is_trashed)
-            .map(|album| AlbumInfo {
+        let mut album_info_list = Vec::new();
+        for album in album_list {
+            if !visibility.allows_data(&AbstractData::Album(album.clone()))? {
+                continue;
+            }
+            album_info_list.push(AlbumInfo {
+                audience: visibility.audience(album.object.id.as_str())?,
                 album_id: album.object.id.to_string(),
                 album_name: album.metadata.title,
                 share_list: if is_admin {
@@ -62,8 +73,8 @@ pub async fn get_albums(auth: GuardResult<GuardGallery>) -> AppResult<Json<Vec<A
                 } else {
                     HashMap::new()
                 },
-            })
-            .collect();
+            });
+        }
         crate::perf_timing!(
             "get_list.read_albums_response",
             start_time,

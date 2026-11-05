@@ -11,6 +11,8 @@ use crate::public::structure::{
 };
 use crate::storage::v6::V6AbstractData;
 
+mod albums;
+
 fn photo(id: &str) -> AbstractData {
     let id = ArrayString::from(id).unwrap();
     AbstractData::Image(ImageCombined {

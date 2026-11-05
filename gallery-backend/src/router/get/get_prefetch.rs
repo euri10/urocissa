@@ -372,7 +372,16 @@ fn filter_items(
         )
     })?;
     let compile_start = Instant::now();
-    let compiled_expression = expression_option.map(|expression| {
+    let visible_expression = expression_option
+        .map(|expression| {
+            crate::operations::album_visibility::visible_album_expression(
+                expression,
+                &tree_guard,
+                visibility,
+            )
+        })
+        .transpose()?;
+    let compiled_expression = visible_expression.as_ref().map(|expression| {
         tree_guard.compile_expression(expression, hidden_metadata_album, hide_paths)
     });
     crate::perf_timing!(

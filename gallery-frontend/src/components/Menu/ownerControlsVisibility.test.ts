@@ -128,6 +128,27 @@ describe('owner-only controls', () => {
     expect(menu).toContain('Find In Timeline')
     expect(menu.includes('Edit Tags')).toBe(owner)
     expect(menu.includes('Delete')).toBe(owner)
+    expect(menu.includes('Publish album')).toBe(owner)
+    expect(menu.includes('Private album')).toBe(owner)
+  })
+
+  it.each(['private', 'public'] as const)('offers separate owner actions for a %s album', async (audience) => {
+    const menu = await renderControls(AlbumMenu, {
+      isolationId: 'mainId', hash: 'dummy-album', index: 0,
+      album: { isTrashed: false, audience }
+    }, true)
+    expect(menu).toContain('Publish album and all its photos')
+    expect(menu.includes('>Publish album<')).toBe(audience === 'private')
+    expect(menu.includes('Make private')).toBe(audience === 'public')
+  })
+
+  it('does not offer publishing for trashed albums', async () => {
+    const menu = await renderControls(AlbumMenu, {
+      isolationId: 'mainId', hash: 'dummy-album', index: 0,
+      album: { isTrashed: true, audience: 'private' }
+    }, true)
+    expect(menu).not.toContain('Publish album')
+    expect(menu).toContain('Restore')
   })
 
   it.each([false, true])('renders status chips and metadata editing for owner=%s', async (owner) => {
