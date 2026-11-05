@@ -1,3 +1,101 @@
+<script setup lang="ts">
+import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue'
+import { useClipboard } from '@vueuse/core'
+import EditShareModal from '@/components/Modal/EditShareModal.vue'
+import ShareDeleteConfirmModal from '@/components/Modal/ShareDeleteConfirmModal.vue'
+
+import { useInitializedStore } from '@/store/initializedStore'
+import { useAlbumStore } from '@/store/albumStore'
+import { useModalStore } from '@/store/modalStore'
+import { useMessageStore } from '@/store/messageStore'
+import { useConfigStore } from '@/store/configStore'
+import type { EditShareData } from '@/type/types'
+import { ShareSchema } from '@/type/schemas'
+import PageTemplate from './PageLayout/PageTemplate.vue'
+
+const initializedStore = useInitializedStore('mainId')
+const albumStore = useAlbumStore('mainId')
+const modalStore = useModalStore('mainId')
+const messageStore = useMessageStore('mainId')
+const configStore = useConfigStore('mainId')
+
+const locationOrigin = window.location.origin
+const { copy } = useClipboard()
+
+const currentEditShareData = ref<EditShareData | null>(null)
+const currentDeleteShareData = ref<EditShareData | null>(null)
+
+const headers = [
+  {
+    title: 'Description',
+    key: 'share.description',
+    width: '200px',
+    maxWidth: '200px',
+    nowrap: true
+  },
+  { title: 'Password', key: 'share.password' },
+  { title: 'Expires', key: 'share.exp', nowrap: true },
+  { title: 'Download', key: 'share.showDownload' },
+  { title: 'Upload', key: 'share.showUpload' },
+  { title: 'Metadata', key: 'share.showMetadata' },
+  { title: 'Actions', key: 'actions', sortable: false }
+]
+
+const tableItems = computed(() => {
+  const arr: (EditShareData & { hasPrivatePhotos: boolean })[] = []
+  for (const album of albumStore.albums.values()) {
+    for (const [, share] of album.shareList) {
+      const validatedShare = ShareSchema.parse(share)
+      arr.push({
+        albumId: album.albumId,
+        displayName: album.displayName,
+        hasPrivatePhotos: album.hasPrivatePhotos,
+        share: validatedShare
+      })
+    }
+  }
+  return arr
+})
+
+function clickEditShare(data: EditShareData) {
+  currentEditShareData.value = data
+  modalStore.showEditShareModal = true
+}
+
+function openDeleteConfirm(data: EditShareData) {
+  currentDeleteShareData.value = data
+  modalStore.showDeleteShareModal = true
+}
+
+async function performCopy(item: EditShareData) {
+  await copy(`${locationOrigin}/share/${item.albumId}-${item.share.url}`)
+  messageStore.success('Share URL copied to clipboard.')
+}
+
+function formatExpiration(exp: number): string {
+  const date = new Date(exp * 1000)
+  return date.toLocaleString()
+}
+
+onMounted(async () => {
+  await albumStore.refreshAlbums()
+  initializedStore.initialized = true
+  await nextTick()
+
+  // auto-expand all groups
+  const groupButtons = Array.from(document.querySelectorAll('button.v-btn')).filter((btn) =>
+    btn.querySelector('.mdi-chevron-right')
+  ) as HTMLButtonElement[]
+  groupButtons.forEach((btn) => {
+    btn.click()
+  })
+})
+
+onBeforeUnmount(() => {
+  initializedStore.initialized = false
+})
+</script>
+
 <template>
   <PageTemplate
     preset="card"
@@ -30,14 +128,25 @@
       >
         <!-- Description with tooltip -->
         <template #[`item.share.description`]="{ item }">
-          <v-tooltip location="top" :open-on-click="true">
-            <template #activator="{ props }">
-              <span v-bind="props" class="text-truncate">
-                {{ item.share.description }}
-              </span>
-            </template>
-            <span>{{ item.share.description }}</span>
-          </v-tooltip>
+          <v-sheet color="transparent" class="d-flex flex-column align-start ga-1 py-1 overflow-hidden">
+            <v-chip
+              v-if="configStore.isAdmin && item.hasPrivatePhotos"
+              prepend-icon="mdi-lock-outline"
+              size="small"
+              variant="tonal"
+              data-testid="share-private-photos"
+            >
+              Private photos
+            </v-chip>
+            <v-tooltip location="top" :open-on-click="true">
+              <template #activator="{ props }">
+                <span v-bind="props" class="text-truncate w-100">
+                  {{ item.share.description }}
+                </span>
+              </template>
+              <span>{{ item.share.description }}</span>
+            </v-tooltip>
+          </v-sheet>
         </template>
 
         <!-- Password -->
@@ -141,94 +250,3 @@
     </template>
   </PageTemplate>
 </template>
-
-<script setup lang="ts">
-import { computed, nextTick, ref, onMounted, onBeforeUnmount } from 'vue'
-import { useClipboard } from '@vueuse/core'
-import EditShareModal from '@/components/Modal/EditShareModal.vue'
-import ShareDeleteConfirmModal from '@/components/Modal/ShareDeleteConfirmModal.vue'
-
-import { useInitializedStore } from '@/store/initializedStore'
-import { useAlbumStore } from '@/store/albumStore'
-import { useModalStore } from '@/store/modalStore'
-import { useMessageStore } from '@/store/messageStore'
-import type { EditShareData } from '@/type/types'
-import { ShareSchema } from '@/type/schemas'
-import PageTemplate from './PageLayout/PageTemplate.vue'
-
-const initializedStore = useInitializedStore('mainId')
-const albumStore = useAlbumStore('mainId')
-const modalStore = useModalStore('mainId')
-const messageStore = useMessageStore('mainId')
-
-const locationOrigin = window.location.origin
-const { copy } = useClipboard()
-
-const currentEditShareData = ref<EditShareData | null>(null)
-const currentDeleteShareData = ref<EditShareData | null>(null)
-
-const headers = [
-  {
-    title: 'Description',
-    key: 'share.description',
-    width: '200px',
-    maxWidth: '200px',
-    nowrap: true
-  },
-  { title: 'Password', key: 'share.password' },
-  { title: 'Expires', key: 'share.exp', nowrap: true },
-  { title: 'Download', key: 'share.showDownload' },
-  { title: 'Upload', key: 'share.showUpload' },
-  { title: 'Metadata', key: 'share.showMetadata' },
-  { title: 'Actions', key: 'actions', sortable: false }
-]
-
-const tableItems = computed<EditShareData[]>(() => {
-  const arr: EditShareData[] = []
-  for (const album of albumStore.albums.values()) {
-    for (const [, share] of album.shareList) {
-      const validatedShare = ShareSchema.parse(share)
-      arr.push({ albumId: album.albumId, displayName: album.displayName, share: validatedShare })
-    }
-  }
-  return arr
-})
-
-function clickEditShare(data: EditShareData) {
-  currentEditShareData.value = data
-  modalStore.showEditShareModal = true
-}
-
-function openDeleteConfirm(data: EditShareData) {
-  currentDeleteShareData.value = data
-  modalStore.showDeleteShareModal = true
-}
-
-async function performCopy(item: EditShareData) {
-  await copy(`${locationOrigin}/share/${item.albumId}-${item.share.url}`)
-  messageStore.success('Share URL copied to clipboard.')
-}
-
-function formatExpiration(exp: number): string {
-  const date = new Date(exp * 1000)
-  return date.toLocaleString()
-}
-
-onMounted(async () => {
-  if (!albumStore.fetched) await albumStore.fetchAlbums()
-  initializedStore.initialized = true
-  await nextTick()
-
-  // auto-expand all groups
-  const groupButtons = Array.from(document.querySelectorAll('button.v-btn')).filter((btn) =>
-    btn.querySelector('.mdi-chevron-right')
-  ) as HTMLButtonElement[]
-  groupButtons.forEach((btn) => {
-    btn.click()
-  })
-})
-
-onBeforeUnmount(() => {
-  initializedStore.initialized = false
-})
-</script>

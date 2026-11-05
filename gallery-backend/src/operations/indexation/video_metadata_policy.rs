@@ -1,7 +1,14 @@
 //! Shared source-metadata policy for new compression and existing derivatives.
 use serde_json::Value;
 
-pub const STRIP_SOURCE_METADATA_ARGS: [&str; 4] = ["-map_metadata", "-1", "-map_metadata:s", "-1"];
+pub const STRIP_SOURCE_METADATA_ARGS: [&str; 6] = [
+    "-map_metadata",
+    "-1",
+    "-map_metadata:s",
+    "-1",
+    "-map_chapters",
+    "-1",
+];
 
 // MP4 muxers regenerate these technical tags even when source tags are disabled.
 // Keep the allow-list aligned with compressed_video_metadata_tests.rs (.4).

@@ -40,6 +40,7 @@ fn probe(path: &Path) -> Value {
             "error",
             "-show_format",
             "-show_streams",
+            "-show_chapters",
             "-of",
             "json",
         ])
@@ -91,6 +92,12 @@ fn tagged_fixture(width: u32, height: u32) -> AbstractData {
     });
     let source = data.imported_path();
     fs::create_dir_all(source.parent().unwrap()).unwrap();
+    let chapters = source.with_extension("ffmetadata");
+    fs::write(
+        &chapters,
+        ";FFMETADATA1\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=500\ntitle=private chapter\n",
+    )
+    .unwrap();
     let mut fixture = Command::new("ffmpeg");
     fixture
         .args(["-v", "error", "-nostdin", "-f", "lavfi", "-i"])
@@ -100,6 +107,18 @@ fn tagged_fixture(width: u32, height: u32) -> AbstractData {
             "lavfi",
             "-i",
             "sine=frequency=440:sample_rate=48000",
+            "-f",
+            "ffmetadata",
+            "-i",
+        ])
+        .arg(&chapters)
+        .args([
+            "-map",
+            "0:v",
+            "-map",
+            "1:a",
+            "-map_chapters",
+            "2",
             "-t",
             "0.5",
             "-c:v",
@@ -130,7 +149,13 @@ fn tagged_fixture(width: u32, height: u32) -> AbstractData {
     for (key, value) in GLOBAL_TAGS {
         assert_eq!(tagged["format"]["tags"][key], *value, "fixture lacks {key}");
     }
-    let source_streams = tagged["streams"].as_array().unwrap();
+    assert_eq!(tagged["chapters"][0]["tags"]["title"], "private chapter");
+    let source_streams: Vec<_> = tagged["streams"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|stream| stream["codec_type"] != "data")
+        .collect();
     assert_eq!(source_streams.len(), 2);
     for (stream, handler, language) in [
         (&source_streams[0], "private video handler", "fra"),

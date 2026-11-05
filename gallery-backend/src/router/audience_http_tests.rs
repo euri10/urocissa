@@ -14,6 +14,7 @@ use rocket::{
 };
 use serde_json::Value;
 
+mod media;
 mod mutations;
 
 use crate::{
@@ -35,7 +36,8 @@ use crate::{
     router::{
         claims::{Claims, claims_hash::ClaimsHash},
         fairing::{
-            cache_control_fairing::cache_control_fairing, guard_timestamp::renew_timestamp_token,
+            cache_control_fairing::cache_control_fairing, guard_hash::renew_hash_token,
+            guard_timestamp::renew_timestamp_token,
         },
         get::{
             get_data::{get_data, get_rows, get_scroll_bar},
@@ -45,7 +47,7 @@ use crate::{
             get_resource::get_resource,
         },
         post::post_upload::upload,
-        put::edit_photo_audience::edit_photo_audience,
+        put::{edit_photo_audience::edit_photo_audience, edit_share::edit_share},
     },
     storage::DataStore,
 };
@@ -659,6 +661,8 @@ async fn http_child() {
                 small_thumbnail_file,
                 imported_file,
                 renew_timestamp_token,
+                renew_hash_token,
+                edit_share,
                 edit_photo_audience,
                 upload,
             ],
@@ -666,6 +670,10 @@ async fn http_child() {
     )
     .await
     .unwrap();
+    if std::env::var_os("UROCISSA_DOWNLOAD_TEST").is_some() {
+        media::download_revocation(&client, &records).await;
+        return;
+    }
     if crate::router::fairing::guard_gallery::public_gallery_enabled() {
         public_checks(&client, &records).await;
     } else {
@@ -674,10 +682,14 @@ async fn http_child() {
     mutations::check(&client).await;
 }
 
-fn isolated(public: bool) {
+fn isolated(public: bool, download: bool) {
     let root = tempfile::tempdir().unwrap();
-    let mut child = Command::new(std::env::current_exe().unwrap())
-        .env_clear()
+    let mut command = Command::new(std::env::current_exe().unwrap());
+    command.env_clear();
+    if download {
+        command.env("UROCISSA_DOWNLOAD_TEST", "1");
+    }
+    let mut child = command
         .env("UROCISSA_AUDIENCE_TEST_ROOT", root.path())
         .env("UROCISSA_PUBLIC_GALLERY", if public { "1" } else { "0" })
         .args([
@@ -709,10 +721,10 @@ fn isolated(public: bool) {
 
 #[test]
 fn public_audience_http() {
-    isolated(true);
+    isolated(true, false);
 }
 
 #[test]
 fn disabled_public_gallery_fails_closed_http() {
-    isolated(false);
+    isolated(false, false);
 }

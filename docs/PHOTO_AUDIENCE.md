@@ -226,9 +226,21 @@ preserving the owner's chosen cover. The real worker parser also checks photo
 and album audience fields together. All validation uses disposable fixtures;
 no live data is migrated or cleaned by these checks.
 
-The next implementation task is `.10`. Production source pinning, verified
-backup, rollout, migration and the existing-video job require the separately
-approved `.11` workflow. Merging this source authorizes none of those operations.
+Share completion (`.10`) adds the owner-only `hasPrivatePhotos` album summary and
+Links lock marker. It is derived from current non-trashed photo/video membership,
+including missing audience entries, independently of the album's own audience.
+The Links view refreshes summaries on entry; expired links retain the marker
+alongside their expiration status. Anonymous/share responses omit the summary.
+
+Original-file reads recheck the current share download setting on every request.
+Disabling downloads rejects previously issued original tokens immediately;
+renewal intersects the old capability with current permission and cannot promote
+a preview token. Disposable HTTP regressions cover both gallery modes, image and
+video originals, header/query share credentials, previews and owner access.
+
+Production source pinning, verified backup, rollout, migration and the
+existing-video job belong to the `.11` workflow. Source tests do not establish
+production completion.
 
 ## Existing compressed-video metadata maintenance (`.5`)
 

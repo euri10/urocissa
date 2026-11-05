@@ -4,10 +4,21 @@ use rocket::request::{FromRequest, Outcome};
 use super::auth_utils::{try_resolve_share_from_headers, try_resolve_share_from_query};
 use super::guard_gallery::GuardGallery;
 use crate::router::GuardError;
+use crate::router::claims::Role;
 use crate::router::claims::claims::Claims;
 
 pub struct GuardShare {
     pub claims: Claims,
+}
+
+impl GuardShare {
+    pub fn allows_original(&self) -> bool {
+        match &self.claims.role {
+            Role::Admin => true,
+            Role::Public => false,
+            Role::Share(share) => share.share.show_download,
+        }
+    }
 }
 
 #[rocket::async_trait]

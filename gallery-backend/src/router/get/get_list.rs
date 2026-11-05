@@ -1,10 +1,11 @@
 use crate::operations::visibility::{PhotoVisibility, viewer};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::read_tags::SearchFacets;
-use crate::public::error::AppError; // Import AppError
+use crate::public::error::{AppError, ErrorKind};
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Share;
 use crate::public::structure::audience::Audience;
+use crate::public::structure::object::ObjectType;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
 use arrayvec::ArrayString;
@@ -58,6 +59,8 @@ pub struct AlbumInfo {
     pub album_name: Option<String>,
     pub share_list: HashMap<ArrayString<64>, Share>,
     pub audience: Audience,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_private_photos: Option<bool>,
 }
 
 #[get("/get/get-albums")]
@@ -69,13 +72,39 @@ pub async fn get_albums(auth: GuardResult<GuardShare>) -> AppResult<Json<Vec<Alb
         let start_time = Instant::now();
         let visibility = PhotoVisibility::new(request_viewer)?;
         let album_list = TREE.read_albums();
+        let state = TREE
+            .state
+            .read()
+            .map_err(|_| AppError::new(ErrorKind::Internal, "Tree state lock poisoned"))?;
         let mut album_info_list = Vec::new();
         for album in album_list {
             if !visibility.allows_data(&AbstractData::Album(album.clone()))? {
                 continue;
             }
+            let mut has_private_photos = false;
+            if is_admin {
+                for ordinal in state
+                    .query
+                    .albums
+                    .get(&album.object.id)
+                    .into_iter()
+                    .flat_map(|members| members.iter())
+                {
+                    if !state.query.trashed.contains(ordinal)
+                        && let Some(record) = state
+                            .slot_for_ordinal(ordinal)
+                            .and_then(|slot| state.get(slot))
+                        && record.object_type != ObjectType::Album
+                        && visibility.audience(record.id.as_str())? == Audience::Private
+                    {
+                        has_private_photos = true;
+                        break;
+                    }
+                }
+            }
             album_info_list.push(AlbumInfo {
                 audience: visibility.audience(album.object.id.as_str())?,
+                has_private_photos: is_admin.then_some(has_private_photos),
                 album_id: album.object.id.to_string(),
                 album_name: album.metadata.title,
                 share_list: if is_admin {

@@ -245,12 +245,14 @@ export const albumInfoSchema = z
     albumId: z.string(),
     albumName: z.string().nullable(),
     audience: z.enum(['private', 'public']).default('private'),
+    hasPrivatePhotos: z.boolean().default(false),
     shareList: z.record(z.string(), ShareSchema)
   })
   .transform((albumData) => ({
     albumId: albumData.albumId,
     albumName: albumData.albumName,
     audience: albumData.audience,
+    hasPrivatePhotos: albumData.hasPrivatePhotos,
     shareList: new Map(Object.entries(albumData.shareList)),
     displayName: albumData.albumName ?? 'Untitled'
   }))

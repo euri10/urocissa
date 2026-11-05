@@ -137,7 +137,7 @@ async fn strip_one(path: &Path) -> Result<bool> {
         .arg(path)
         .args(["-map", "0", "-c", "copy"])
         .args(STRIP_SOURCE_METADATA_ARGS)
-        .args(["-map_chapters", "-1", "-movflags", "+faststart"])
+        .args(["-movflags", "+faststart"])
         .arg(&staged.0);
     probe::run(&mut command)
         .await

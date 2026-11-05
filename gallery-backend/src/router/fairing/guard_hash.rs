@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use super::VALIDATION_ALLOW_EXPIRED;
 use super::auth_utils::{extract_bearer_token, extract_hash_from_path, my_decode_token};
+use super::guard_share::GuardShare;
 
 pub struct GuardHash;
 
@@ -145,8 +146,10 @@ use crate::router::AppResult;
 #[post("/post/renew-hash-token", format = "json", data = "<token_request>")]
 pub async fn renew_hash_token(
     auth: TimestampGuardModified,
+    current: crate::router::GuardResult<GuardShare>,
     token_request: Json<RenewHashToken>,
 ) -> AppResult<Json<RenewHashTokenReturn>> {
+    let allow_original = current?.allows_original();
     tokio::task::spawn_blocking(move || {
         let expired_hash_token = token_request.into_inner().expired_hash_token;
         let token_data = match decode::<ClaimsHash>(
@@ -183,7 +186,11 @@ pub async fn renew_hash_token(
         }
 
         let claims = token_data.claims;
-        let new_hash_claims = ClaimsHash::new(claims.hash, claims.timestamp, claims.allow_original);
+        let new_hash_claims = ClaimsHash::new(
+            claims.hash,
+            claims.timestamp,
+            claims.allow_original && allow_original,
+        );
         let new_hash_token = new_hash_claims.encode();
 
         Ok(Json(RenewHashTokenReturn {

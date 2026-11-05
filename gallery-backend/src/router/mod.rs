@@ -21,6 +21,8 @@ mod anonymous_route_tests;
 mod public_metadata_http_tests;
 #[cfg(test)]
 mod share_edit_http_tests;
+#[cfg(test)]
+mod share_marker_http_tests;
 
 #[cfg(test)]
 mod album_audience_http_tests;

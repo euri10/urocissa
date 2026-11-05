@@ -165,10 +165,10 @@ pub async fn imported_file(
 ) -> AppResult<CompressedFileResponse<'static>> {
     let auth = auth?;
     check_media_visibility(&auth, &file_path)?;
-    if matches!(auth.claims.role, crate::router::claims::Role::Public) {
+    if !auth.allows_original() {
         return Err(AppError::new(
             ErrorKind::PermissionDenied,
-            "Original files require owner or share authorization",
+            "Original files require current download permission",
         ));
     }
     let _ = hash_guard?;
