@@ -1,4 +1,5 @@
 use crate::operations::public_metadata::ViewerKind;
+use crate::operations::resolve_show_download_and_metadata;
 use crate::operations::transitor::abstract_data_to_database_timestamp_return;
 use crate::operations::visibility::{PhotoVisibility, viewer};
 use crate::public::db::tree::TREE;
@@ -6,10 +7,11 @@ use crate::public::db::tree::state::TargetSet;
 use crate::public::db::tree_snapshot::{PendingTreeSnapshot, TREE_SNAPSHOT};
 use crate::public::db::write_behind::WRITE_BEHIND;
 use crate::public::error::{AppError, ErrorKind};
+use crate::public::structure::album::ResolvedShare;
 use crate::public::structure::audience::Viewer;
 use crate::public::structure::response::database_timestamp::DataBaseTimestampReturn;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
-use crate::router::fairing::guard_gallery::GuardGallery;
+use crate::router::fairing::guard_share::GuardShare;
 use crate::router::get::get_prefetch::{
     Prefetch, cache_prefetch, insert_data_into_tree_snapshot, read_current_cached_prefetch,
 };
@@ -139,6 +141,7 @@ fn get_or_create_resource_prefetch(resource_id: &str) -> AppResult<Prefetch> {
 fn create_resource_snapshot(
     resource_id: &str,
     visibility: &PhotoVisibility,
+    resolved_share: Option<ResolvedShare>,
 ) -> AppResult<RouteResourceSnapshot> {
     validate_resource_id(resource_id)?;
 
@@ -150,7 +153,7 @@ fn create_resource_snapshot(
                 .map(|value| value.map(crate::storage::store::RecordValue::into_value))
         })
         .map_err(|error| AppError::from_err(ErrorKind::Database, error))?;
-    let abstract_data = WRITE_BEHIND
+    let mut abstract_data = WRITE_BEHIND
         .logical_record(resource_id, durable)
         .ok_or_else(|| {
             AppError::new(
@@ -160,20 +163,24 @@ fn create_resource_snapshot(
         })?;
 
     visibility.require_data(&abstract_data)?;
+    visibility.project_album_counts(&mut abstract_data)?;
     let prefetch = get_or_create_resource_prefetch(resource_id)?;
     let claims = ClaimsTimestamp::new(
-        None,
+        resolved_share.clone(),
         prefetch.timestamp,
         visibility.viewer,
         visibility.revision(),
     );
     let token = claims.encode();
+    let response_viewer =
+        ViewerKind::for_response(visibility.viewer == Viewer::Owner, resolved_share.is_some());
+    let (show_download, show_metadata) = resolve_show_download_and_metadata(resolved_share);
     let data = abstract_data_to_database_timestamp_return(
         abstract_data,
         prefetch.timestamp,
-        true,
-        true,
-        ViewerKind::for_response(visibility.viewer == Viewer::Owner, false),
+        show_download,
+        show_metadata,
+        response_viewer,
     );
 
     Ok(RouteResourceSnapshot {
@@ -185,13 +192,14 @@ fn create_resource_snapshot(
 
 #[get("/get/resource/<resource_id>")]
 pub async fn get_resource(
-    auth: GuardResult<GuardGallery>,
+    auth: GuardResult<GuardShare>,
     resource_id: String,
 ) -> AppResult<Json<RouteResourceSnapshot>> {
-    let request_viewer = viewer(&auth?.claims.role);
+    let claims = auth?.claims;
+    let request_viewer = viewer(&claims.role);
     tokio::task::spawn_blocking(move || {
         let visibility = PhotoVisibility::new(request_viewer)?;
-        create_resource_snapshot(&resource_id, &visibility).map(Json)
+        create_resource_snapshot(&resource_id, &visibility, claims.get_share()).map(Json)
     })
     .await
     .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))?

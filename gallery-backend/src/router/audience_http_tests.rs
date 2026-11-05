@@ -7,6 +7,7 @@ use std::{
 };
 
 use arrayvec::ArrayString;
+use chrono::{TimeZone, Utc};
 use rocket::{
     http::{ContentType, Cookie, Header, Status},
     local::asynchronous::{Client, LocalRequest},
@@ -37,6 +38,7 @@ use crate::{
         get::{
             get_data::{get_data, get_rows, get_scroll_bar},
             get_img::{compressed_file, imported_file, small_thumbnail_file},
+            get_list::{get_albums, get_search_facets},
             get_prefetch::{PrefetchReturn, prefetch},
             get_resource::get_resource,
         },
@@ -52,6 +54,8 @@ const MISSING: &str = "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 const PRIVATE_VIDEO: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const TRASHED: &str = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 const ALBUM: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+
+mod aggregates;
 
 fn id(value: &str) -> ArrayString<64> {
     ArrayString::from(value).unwrap()
@@ -77,28 +81,51 @@ fn photo(hash: &str, video: bool, shared: bool) -> AbstractData {
             metadata,
         })
     };
+    let (month, tag, make, model) = match hash {
+        PUBLIC => (1, "public-search-tag", "Canon", "Visible model"),
+        PUBLIC_VIDEO => (2, "outside-share-tag", "Canon", "Visible model"),
+        PRIVATE => (3, "private-search-tag", "Private make", "Private model"),
+        MISSING => (4, "unshared-private-tag", "CANON", "Unshared model"),
+        PRIVATE_VIDEO => (5, "private-video-tag", "CANON", "Private model"),
+        TRASHED => (6, "trash-tag", "Trash make", "Trash model"),
+        _ => unreachable!(),
+    };
+    let timestamp = Utc
+        .with_ymd_and_hms(2024, month, 15, 12, 0, 0)
+        .single()
+        .unwrap()
+        .timestamp_millis();
     data.alias_mut().unwrap().push(FileModify {
         file: format!("/private-path-marker/{hash}"),
-        modified: 1_781_454_912_345,
-        scan_time: 1_781_454_912_345,
+        modified: timestamp,
+        scan_time: timestamp,
     });
     data.exif_vec_mut()
         .unwrap()
         .insert("GPSLatitude".into(), "private-gps-marker".into());
-    if hash == PUBLIC {
-        data.tag_mut().insert("public-search-tag".into());
-    } else if hash == PRIVATE {
-        data.tag_mut().insert("private-search-tag".into());
-    }
+    data.exif_vec_mut()
+        .unwrap()
+        .insert("Make".into(), make.into());
+    data.exif_vec_mut()
+        .unwrap()
+        .insert("Model".into(), model.into());
+    data.tag_mut().insert(tag.into());
+    data.tag_mut().insert("common-tag".into());
     data.set_cache_version(7);
     data
 }
 
 fn seed() -> Vec<AbstractData> {
     let mut album = Album::new(id(ALBUM), Some("Fixture album".into()));
-    album
-        .share_list
-        .insert(id("fixture-share"), Share::default());
+    album.item_count = 3;
+    album.item_size = 39;
+    album.share_list.insert(
+        id("fixture-share"),
+        Share {
+            show_metadata: true,
+            ..Share::default()
+        },
+    );
     let mut trashed = photo(TRASHED, false, true);
     trashed.set_trashed(true);
     let mut records = vec![
@@ -278,6 +305,7 @@ async fn search_privacy_checks(client: &Client) {
 #[allow(clippy::too_many_lines)]
 async fn public_checks(client: &Client, records: &[AbstractData]) {
     search_privacy_checks(client).await;
+    aggregates::checks(client, false).await;
     let expected = HashSet::from([PUBLIC.to_owned(), PUBLIC_VIDEO.to_owned(), ALBUM.to_owned()]);
     for sort in ["descending", "ascending", "random"] {
         let owner_snapshot = snapshot(client, true, sort).await;
@@ -459,6 +487,7 @@ async fn public_checks(client: &Client, records: &[AbstractData]) {
         .await;
     assert_eq!(response.status(), Status::Unauthorized);
     let current = snapshot(client, false, "descending").await;
+    aggregates::checks(client, true).await;
     assert_eq!(
         hashes(client, &current, false).await,
         HashSet::from([PUBLIC_VIDEO.to_owned(), ALBUM.to_owned()])
@@ -508,9 +537,11 @@ async fn public_checks(client: &Client, records: &[AbstractData]) {
             .status(),
         Status::Unauthorized
     );
+    aggregates::share_revocation_checks(client, records).await;
 }
 
 async fn private_checks(client: &Client, records: &[AbstractData]) {
+    aggregates::private_gallery_checks(client).await;
     let owner_snapshot = snapshot(client, true, "descending").await;
     assert_eq!(
         hashes(client, &owner_snapshot, true).await.len(),
@@ -595,6 +626,8 @@ async fn http_child() {
                 get_rows,
                 get_scroll_bar,
                 get_resource,
+                get_search_facets,
+                get_albums,
                 compressed_file,
                 small_thumbnail_file,
                 imported_file,

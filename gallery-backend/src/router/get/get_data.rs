@@ -63,7 +63,7 @@ pub async fn get_data(
                     .get(hash.as_str())
                     .or_raise(|| (ErrorKind::Database, "Failed to read durable data"))?
                     .map(crate::storage::store::RecordValue::into_value);
-                let abstract_data = WRITE_BEHIND
+                let mut abstract_data = WRITE_BEHIND
                     .logical_record(hash.as_str(), durable)
                     .ok_or_else(|| {
                         AppError::new(
@@ -73,6 +73,7 @@ pub async fn get_data(
                     })?;
 
                 visibility.require_data(&abstract_data)?;
+                visibility.project_album_counts(&mut abstract_data)?;
 
                 let database_timestamp_return = abstract_data_to_database_timestamp_return(
                     abstract_data,
@@ -132,7 +133,11 @@ pub fn get_scroll_bar(
     auth: GuardResult<GuardTimestamp>,
     timestamp: i64,
 ) -> AppResult<Json<Vec<ScrollBarData>>> {
-    let _ = auth?;
+    let auth = auth?;
+    let snapshot = open_tree_snapshot_table(timestamp)
+        .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot table"))?;
+    auth.visibility
+        .require_snapshot_range(&snapshot, 0, snapshot.len())?;
     let scrollbar_data = TREE_SNAPSHOT.read_scrollbar(timestamp);
     Ok(Json(scrollbar_data))
 }

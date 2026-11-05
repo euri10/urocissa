@@ -1,8 +1,10 @@
+use crate::operations::visibility::{PhotoVisibility, viewer};
 use crate::public::db::tree::TREE;
 use crate::public::db::tree::read_tags::SearchFacets;
 use crate::public::error::AppError; // Import AppError
+use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::Share;
-use crate::router::fairing::guard_gallery::GuardGallery;
+use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
 use arrayvec::ArrayString;
 use rocket::serde::json::Json;
@@ -12,19 +14,30 @@ use std::time::Instant;
 
 #[get("/get/get-search-facets?<trashed>")]
 pub async fn get_search_facets(
-    auth: GuardResult<GuardGallery>,
+    auth: GuardResult<GuardShare>,
     trashed: Option<bool>,
 ) -> AppResult<Json<SearchFacets>> {
-    let trashed = if auth?.claims.is_admin() {
+    let claims = auth?.claims;
+    let request_viewer = viewer(&claims.role);
+    let trashed = if claims.is_admin() {
         trashed
     } else {
         Some(false)
     };
     tokio::task::spawn_blocking(move || -> AppResult<Json<SearchFacets>> {
         let start_time = Instant::now();
-        let facets = match trashed {
-            Some(trashed) => TREE.read_search_facets_for_trash_state(trashed),
-            None => TREE.read_search_facets(),
+        let visibility = PhotoVisibility::new(request_viewer)?;
+        let facets = if claims
+            .get_share()
+            .is_some_and(|share| !share.share.show_metadata)
+        {
+            SearchFacets {
+                tags: vec![],
+                makes: vec![],
+                models: vec![],
+            }
+        } else {
+            TREE.read_search_facets(&visibility, trashed)?
         };
         crate::perf_timing!(
             "get_list.read_search_facets_response",
@@ -46,15 +59,20 @@ pub struct AlbumInfo {
 }
 
 #[get("/get/get-albums")]
-pub async fn get_albums(auth: GuardResult<GuardGallery>) -> AppResult<Json<Vec<AlbumInfo>>> {
-    let is_admin = auth?.claims.is_admin();
+pub async fn get_albums(auth: GuardResult<GuardShare>) -> AppResult<Json<Vec<AlbumInfo>>> {
+    let claims = auth?.claims;
+    let is_admin = claims.is_admin();
+    let request_viewer = viewer(&claims.role);
     tokio::task::spawn_blocking(move || -> AppResult<Json<Vec<AlbumInfo>>> {
         let start_time = Instant::now();
+        let visibility = PhotoVisibility::new(request_viewer)?;
         let album_list = TREE.read_albums();
-        let album_info_list: Vec<AlbumInfo> = album_list
-            .into_iter()
-            .filter(|album| is_admin || !album.object.is_trashed)
-            .map(|album| AlbumInfo {
+        let mut album_info_list = Vec::new();
+        for album in album_list {
+            if !visibility.allows_data(&AbstractData::Album(album.clone()))? {
+                continue;
+            }
+            album_info_list.push(AlbumInfo {
                 album_id: album.object.id.to_string(),
                 album_name: album.metadata.title,
                 share_list: if is_admin {
@@ -62,8 +80,8 @@ pub async fn get_albums(auth: GuardResult<GuardGallery>) -> AppResult<Json<Vec<A
                 } else {
                     HashMap::new()
                 },
-            })
-            .collect();
+            });
+        }
         crate::perf_timing!(
             "get_list.read_albums_response",
             start_time,
