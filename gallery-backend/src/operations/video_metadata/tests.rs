@@ -123,24 +123,35 @@ async fn tagged_fixture(path: &Path) {
 }
 
 async fn tagged_fixture_at_rate(path: &Path, sample_rate: u32) {
+    tagged_fixture_with_audio_offset(path, sample_rate, None, "mpeg4").await;
+}
+
+async fn tagged_fixture_with_audio_offset(
+    path: &Path,
+    sample_rate: u32,
+    audio_offset: Option<&str>,
+    video_codec: &str,
+) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let (video_input, duration, encoder) = if video_codec == "h264" {
+        ("testsrc2=size=96x64:rate=30", "0.7", "libx264")
+    } else {
+        ("testsrc2=size=96x64:rate=4", "0.5", "mpeg4")
+    };
     let mut command = Command::new("ffmpeg");
+    command.args(["-v", "error", "-nostdin", "-f", "lavfi", "-i", video_input]);
+    if let Some(offset) = audio_offset {
+        command.args(["-itsoffset", offset]);
+    }
     command.args([
-        "-v",
-        "error",
-        "-nostdin",
-        "-f",
-        "lavfi",
-        "-i",
-        "testsrc2=size=96x64:rate=4",
         "-f",
         "lavfi",
         "-i",
         &format!("sine=frequency=440:sample_rate={sample_rate}"),
         "-t",
-        "0.5",
+        duration,
         "-c:v",
-        "mpeg4",
+        encoder,
         "-threads:v",
         "1",
         "-c:a",
@@ -179,6 +190,10 @@ async fn tagged_fixture_at_rate(path: &Path, sample_rate: u32) {
 }
 
 fn assert_sanitized(metadata: &Value, sample_rate: u32) {
+    assert_sanitized_with_codec(metadata, sample_rate, "mpeg4");
+}
+
+fn assert_sanitized_with_codec(metadata: &Value, sample_rate: u32, video_codec: &str) {
     for (key, value) in metadata["format"]["tags"].as_object().unwrap() {
         match key.as_str() {
             "major_brand" | "minor_version" | "compatible_brands" => {}
@@ -190,7 +205,7 @@ fn assert_sanitized(metadata: &Value, sample_rate: u32) {
     assert_eq!(streams.len(), 2, "video and audio must both survive");
     for stream in streams {
         let handler = if stream["codec_type"] == "video" {
-            assert_eq!(stream["codec_name"], "mpeg4", "video was re-encoded");
+            assert_eq!(stream["codec_name"], video_codec, "video was re-encoded");
             assert_eq!(stream["width"], 96);
             assert_eq!(stream["height"], 64);
             "VideoHandler"
@@ -450,6 +465,117 @@ async fn audio_at_44100_hz_keeps_exact_packet_timing() {
     assert_offset_timing("2.123456", 44100).await;
 }
 
+#[tokio::test]
+async fn positive_aac_offset_at_48000_hz_keeps_exact_tail_timing() {
+    assert_aac_offset_timing(48000, "0.037333", false, "h264").await;
+}
+
+#[tokio::test]
+async fn positive_aac_offset_at_44100_hz_keeps_exact_tail_timing() {
+    assert_aac_offset_timing(44100, "0.038333", false, "mpeg4").await;
+}
+
+#[tokio::test]
+async fn positive_aac_offset_preserves_irregular_interior_packet_timing() {
+    assert_aac_offset_timing(48000, "0.037333", true, "mpeg4").await;
+}
+
+async fn assert_aac_offset_timing(
+    sample_rate: u32,
+    offset: &str,
+    irregular: bool,
+    video_codec: &str,
+) {
+    let root = tempfile::tempdir().unwrap();
+    let generated = root.path().join("generated.mp4");
+    tagged_fixture_with_audio_offset(&generated, sample_rate, Some(offset), video_codec).await;
+    let original = root.path().join("object/imported/original-fixture.mp4");
+    fs::create_dir_all(original.parent().unwrap()).unwrap();
+    if irregular {
+        let generated_probe = probe(&generated).await;
+        let generated_packets = packets(&generated).await;
+        let audio = generated_packets["1"].as_array().unwrap();
+        let last = audio.len() - 1;
+        let endpoint = generated_probe["streams"][1]["start_pts"].as_i64().unwrap()
+            + generated_probe["streams"][1]["duration_ts"]
+                .as_i64()
+                .unwrap();
+        let shift = format!("between(N\\,2\\,{})", last - 1);
+        run(Command::new("ffmpeg")
+            .args(["-v", "error", "-nostdin", "-copyts", "-i"])
+            .arg(&generated)
+            .args([
+                "-map", "0", "-c", "copy", "-bsf:a",
+                &format!(
+                    "setts=pts=if({shift}\\,PTS-128\\,PTS):dts=if({shift}\\,DTS-128\\,DTS):duration=if(eq(N\\,{last})\\,{endpoint}-PTS\\,DURATION)"
+                ),
+                "-movflags", "+use_metadata_tags",
+            ])
+            .arg(&original))
+        .await;
+    } else {
+        copy(&generated, &original);
+    }
+    let original_bytes = fs::read(&original).unwrap();
+    let destination = compressed_path(root.path(), 11);
+    copy(&original, &destination);
+    let before = probe(&destination).await;
+    assert_eq!(before["streams"][0]["start_pts"], 0);
+    if video_codec == "h264" {
+        assert!(before["streams"][0]["has_b_frames"].as_u64().unwrap() > 0);
+    }
+    let start = before["streams"][1]["start_pts"].as_i64().unwrap();
+    assert!(start > 0 && start < 1024);
+    let timing = packets(&destination).await;
+    let audio = timing["1"].as_array().unwrap();
+    let last = audio.last().unwrap();
+    let tail = last["duration"].as_i64().unwrap();
+    assert!(
+        tail > 0 && tail < 1024,
+        "fixture must expose clipped AAC tail"
+    );
+    // MOV's edited timeline clips this packet at duration_ts, omitting start_pts.
+    assert_eq!(
+        last["pts"].as_i64().unwrap() + tail,
+        before["streams"][1]["duration_ts"].as_i64().unwrap()
+    );
+    if irregular {
+        assert!(
+            audio[..audio.len() - 1]
+                .iter()
+                .any(|p| p["duration"] != 1024)
+        );
+    }
+    let decoded = decoded_frames(&destination).await;
+    let report = strip_compressed_videos(root.path()).await.unwrap();
+    assert_eq!(
+        (report.total, report.changed, report.failed),
+        (1, 1, 0),
+        "{report:?}"
+    );
+    assert!(report.verification.passed);
+    let after = probe(&destination).await;
+    assert_sanitized_with_codec(&after, sample_rate, video_codec);
+    assert_stream_timing_unchanged(&before, &after);
+    assert_eq!(packets(&destination).await, timing);
+    assert_eq!(decoded_frames(&destination).await, decoded);
+    assert_eq!(fs::read(&original).unwrap(), original_bytes);
+    let clean_bytes = fs::read(&destination).unwrap();
+    let repeat = strip_compressed_videos(root.path()).await.unwrap();
+    assert_eq!(
+        (
+            repeat.total,
+            repeat.changed,
+            repeat.unchanged,
+            repeat.failed
+        ),
+        (1, 0, 1, 0)
+    );
+    assert!(repeat.verification.passed);
+    assert_eq!(fs::read(&destination).unwrap(), clean_bytes);
+    assert_eq!(fs::read(&original).unwrap(), original_bytes);
+}
+
 async fn assert_offset_timing(offset_seconds: &str, sample_rate: u32) {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("tagged-fixture.mp4");
@@ -490,6 +616,12 @@ async fn assert_offset_timing(offset_seconds: &str, sample_rate: u32) {
     assert!(report.verification.passed);
     let after = probe(&destination).await;
     assert_sanitized(&after, sample_rate);
+    assert_stream_timing_unchanged(&before, &after);
+    assert_eq!(packets(&destination).await, timing);
+    assert_eq!(decoded_frames(&destination).await, decoded);
+}
+
+fn assert_stream_timing_unchanged(before: &Value, after: &Value) {
     for (before, after) in before["streams"]
         .as_array()
         .unwrap()
@@ -506,8 +638,6 @@ async fn assert_offset_timing(offset_seconds: &str, sample_rate: u32) {
             assert_eq!(before[key], after[key], "stream timing changed: {key}");
         }
     }
-    assert_eq!(packets(&destination).await, timing);
-    assert_eq!(decoded_frames(&destination).await, decoded);
 }
 
 #[test]

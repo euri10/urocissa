@@ -57,12 +57,23 @@ pub(super) fn copy_options(probe: &Value) -> Result<Vec<String>> {
                 && (-EXACT_INTEGER..=EXACT_INTEGER).contains(&end),
             "AAC timing exceeds exact expression range"
         );
-        // AAC stream copy can expand a final partial packet to a full frame.
-        // Keep its original endpoint and preserve both timestamps explicitly.
+        let packet_count: i64 = stream["nb_read_packets"]
+            .as_str()
+            .context("missing AAC packet count")?
+            .parse()
+            .context("invalid AAC packet count")?;
+        ensure!(
+            (1..=EXACT_INTEGER).contains(&packet_count),
+            "AAC packet count exceeds exact expression range"
+        );
+        let last_packet = packet_count - 1;
+        // MOV may clip the demuxed AAC tail against duration_ts without adding
+        // start_pts. Reconstruct only the final duration from the source endpoint;
+        // earlier packet durations can legitimately be irregular.
         // The independent packet gate must still prove exact source equality.
         options.push(format!("-bsf:{index}"));
         options.push(format!(
-            "setts=pts=PTS:dts=DTS:duration=min(DURATION\\,{end}-PTS)"
+            "setts=pts=PTS:dts=DTS:duration=if(eq(N\\,{last_packet})\\,{end}-PTS\\,DURATION)"
         ));
     }
     options.extend(["-movie_timescale".to_owned(), timescale.to_string()]);
@@ -73,13 +84,14 @@ pub(super) fn copy_options(probe: &Value) -> Result<Vec<String>> {
 mod tests {
     use serde_json::json;
 
-    use super::copy_options;
+    use super::{EXACT_INTEGER, copy_options};
 
     fn source() -> serde_json::Value {
         json!({"streams": [
             {"codec_type": "video", "codec_name": "h264", "time_base": "1/16384"},
             {"codec_type": "audio", "codec_name": "aac", "time_base": "1/48000",
-             "sample_rate": "48000", "start_pts": 94944, "duration_ts": 25024}
+             "sample_rate": "48000", "start_pts": 94944, "duration_ts": 25024,
+             "nb_read_packets": "25"}
         ]})
     }
 
@@ -89,7 +101,7 @@ mod tests {
             copy_options(&source()).unwrap(),
             [
                 "-bsf:1",
-                "setts=pts=PTS:dts=DTS:duration=min(DURATION\\,119968-PTS)",
+                "setts=pts=PTS:dts=DTS:duration=if(eq(N\\,24)\\,119968-PTS\\,DURATION)",
                 "-movie_timescale",
                 "6144000"
             ]
@@ -97,6 +109,8 @@ mod tests {
         let mut source = source();
         source["streams"][1]["start_pts"] = json!(-1024);
         assert!(copy_options(&source).unwrap()[1].contains("24000-PTS"));
+        source["streams"][1]["nb_read_packets"] = json!("1");
+        assert!(copy_options(&source).unwrap()[1].contains("eq(N\\,0)"));
     }
 
     #[test]
@@ -114,6 +128,14 @@ mod tests {
             ("duration_ts", json!(0)),
             ("duration_ts", json!(-1)),
             ("duration_ts", json!(i64::MAX)),
+            ("nb_read_packets", json!(null)),
+            ("nb_read_packets", json!("0")),
+            ("nb_read_packets", json!("-1")),
+            ("nb_read_packets", json!("1.5")),
+            ("nb_read_packets", json!(1)),
+            ("nb_read_packets", json!("invalid")),
+            ("nb_read_packets", json!((EXACT_INTEGER + 1).to_string())),
+            ("nb_read_packets", json!(u64::MAX.to_string())),
         ] {
             let mut probe = source();
             probe["streams"][1][field] = value;
