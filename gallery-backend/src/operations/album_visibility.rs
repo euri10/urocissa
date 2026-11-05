@@ -84,6 +84,9 @@ pub fn visible_data_to_database_timestamp_return(
     let album_audience = matches!(&data, AbstractData::Album(_))
         .then(|| visibility.audience(data.hash().as_str()))
         .transpose()?;
+    if matches!(visibility.viewer, Viewer::Share(_)) {
+        visibility.project_album_counts(&mut data)?;
+    }
     if visibility.viewer == Viewer::Anonymous {
         let state = TREE
             .state

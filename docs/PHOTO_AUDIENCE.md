@@ -129,8 +129,9 @@ owner-only publication, pending membership edits, later private additions, and
 snapshot invalidation. Frontend tests cover all three album actions, writable
 owner gating, rejected requests, schema defaults and snapshot refresh.
 
-Generic counts/facets/tags belong to `.7`, photo publish controls to `.8`, album
-audience and private-cover handling to `.9`, and further share-link changes to `.10`.
+Counts/facets/tags are covered by `.7`, album audience and private-cover handling
+by `.9`. Photo publish controls belong to `.8`, and further share-link changes
+to `.10`.
 
 ## Integrated first batch
 
@@ -163,18 +164,17 @@ exception. New video compression strips source container and stream metadata;
 existing files still require `.5`.
 
 This batch is source integration, not a complete private-gallery rollout.
-Do not repin or deploy it as completion of the epic while `.5`, `.7`, `.8`,
+Do not repin or deploy it as completion of the epic while `.5`, `.8`,
 `.10` and the production gates in `.11` remain outstanding.
 
 ## Interfaces for remaining tasks
 
-`.7` can use `PhotoVisibility::allows_cached` for tree-backed aggregates and
-`allows_data` for logical records; both now apply audience to albums as well as
-photos. `.9` changes only the album-list branch of `router/get/get_list.rs`;
-reconcile that branch with `.7`'s generic facets changes. The shared
+Aggregate reads use `PhotoVisibility::allows_cached` for tree-backed aggregates
+and `allows_data` for logical records; both apply audience to albums as well as
+photos. The shared
 `operations::album_visibility::visible_data_to_database_timestamp_return` helper
-owns anonymous album counts/covers and hidden album membership redaction for
-both data and direct-resource responses. Keep those projections when adding
+owns visitor album counts, anonymous covers and hidden album membership redaction
+for both data and direct-resource responses. Keep those projections when adding
 other response fields.
 
 `.8` can use
@@ -187,3 +187,44 @@ the independent album migration marker when reconciling storage changes; never
 clear or rerun the completed photo migration. Cache expectations in thumbnail mutation
 tests require `no-store` for both tiers. Preserve owner-only selection entry
 through `collectionStore.enterEdit()` when adding publishing controls.
+
+## Visible-set aggregates (.7)
+
+`Tree::read_search_facets(&PhotoVisibility, trashed)` intersects tags, makes and
+models with the current viewer's visible records before counting or choosing a
+camera spelling. The Tags page consumes this same endpoint. Owners retain the
+complete index and optional trash scope; visitors never include trash. Share
+facets include only album members, not the container, and return empty lists
+when the current share hides metadata. No visitor facet response is cached in
+the backend; the existing HTTP fairing sends `Cache-Control: no-store`.
+
+Prefetch counts come from the visible snapshot in every sort order; ascending
+and descending month boundaries use that same filtered order (random order has
+no month scrollbar). Cached queries remain scoped by viewer and audience
+revision. Scrollbar reads additionally recheck every snapshot
+member, so removing a member from a share or trashing it cannot expose old month
+boundaries even when the photo-audience revision has not changed. Such reads
+fail with 404 and require a fresh prefetch; an audience revision change rejects
+the old timestamp with 401.
+
+Both `get_data` and `get_resource` authorize records before invoking the shared
+album response wrapper. It projects share `itemCount` and `itemSize` through
+`PhotoVisibility::project_album_counts(&mut AbstractData)`; anonymous totals
+are calculated in the same member pass as their cover projection. These use
+current tree membership and `allows_cached` for each media member, without
+persisting projected totals or changing owner aggregates. Direct
+resources now resolve share context and retain its permissions in the response
+and timestamp token. Album-directory reads also use the existing visibility
+adapter, including share scoping.
+
+Album authorization remains solely in `PhotoVisibility`; facet filtering,
+member-total projection, cover selection and membership redaction consume that
+same policy. Independent album tags follow the album's visibility; they are not
+derived from private member tags.
+
+The fixture-only `router::audience_http_tests` suite exercises exact facet values,
+counts and camera spelling, private-only months, owner completeness, scoped
+shares of public and private albums, projected album count/size, repeated warm
+reads, publication revocation, membership removal and share revocation. All
+records, media and credentials are synthetic and live in disposable
+child-process databases.

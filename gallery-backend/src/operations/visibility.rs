@@ -95,6 +95,40 @@ impl PhotoVisibility {
         Ok(())
     }
 
+    /// Project member totals for a response without changing stored owner aggregates.
+    /// Album authorization and cover policy remain separate from these photo totals.
+    pub fn project_album_counts(&self, data: &mut AbstractData) -> AppResult<()> {
+        if self.viewer == Viewer::Owner {
+            return Ok(());
+        }
+        let AbstractData::Album(album) = data else {
+            return Ok(());
+        };
+        let state = TREE
+            .state
+            .read()
+            .map_err(|_| AppError::new(ErrorKind::Internal, "Tree state lock poisoned"))?;
+        album.metadata.item_count = 0;
+        album.metadata.item_size = 0;
+        for slot in state
+            .query
+            .albums
+            .get(&album.object.id)
+            .into_iter()
+            .flat_map(|members| members.iter())
+            .filter_map(|ordinal| state.slot_for_ordinal(ordinal))
+        {
+            if self.allows_cached(&state, slot)?
+                && let Some(record) = state.get(slot)
+                && record.object_type != ObjectType::Album
+            {
+                album.metadata.item_count += 1;
+                album.metadata.item_size = album.metadata.item_size.saturating_add(record.size);
+            }
+        }
+        Ok(())
+    }
+
     pub fn require_snapshot_range(
         &self,
         snapshot: &crate::public::db::tree_snapshot::read_tree_snapshot::MyCow,
