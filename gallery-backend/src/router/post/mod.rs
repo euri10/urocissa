@@ -17,6 +17,7 @@ pub fn generate_post_routes() -> Vec<Route> {
         import_config::import_config_handler,
         import_folder::start_folder_import_handler,
         import_folder::cancel_folder_import_handler,
+        crate::router::strip_video_metadata::start_video_metadata_strip,
         crate::router::saved_searches::create_saved_search
     ]
 }

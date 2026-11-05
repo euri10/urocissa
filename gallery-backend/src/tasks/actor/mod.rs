@@ -7,4 +7,5 @@ pub mod index;
 pub mod open_file;
 pub mod reindex;
 pub mod remove_tree_snapshot;
+pub mod strip_video_metadata;
 pub mod video;
