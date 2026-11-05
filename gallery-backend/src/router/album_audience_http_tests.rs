@@ -42,7 +42,10 @@ use crate::{
             get_resource::get_resource,
         },
         post::create_album::create_empty_album,
-        put::{album_audience::set_album_audience, edit_album::edit_album},
+        put::{
+            album_audience::set_album_audience, edit_album::edit_album,
+            edit_photo_audience::edit_photo_audience,
+        },
     },
     storage::DataStore,
 };
@@ -589,9 +592,28 @@ async fn publication_checks(client: &Client) {
     let previous = snapshot(client, &Expression::Trashed(false), true, "descending").await;
     publish(client, &created, "public", Some(true)).await;
     stale_snapshot(client, &previous, true).await;
+    for photo in members(client, &created, true).await {
+        assert_eq!(photo["audience"], "public");
+        let hash = photo["abstractData"]["id"].as_str().unwrap();
+        assert_eq!(
+            resource(client, hash, true).await["data"]["audience"],
+            "public"
+        );
+        assert!(
+            resource(client, hash, false).await["data"]
+                .get("audience")
+                .is_none()
+        );
+    }
+    let public_members = members(client, &created, false).await;
     assert_eq!(
-        hashes(&members(client, &created, false).await),
+        hashes(&public_members),
         HashSet::from([PRIVATE_ONLY, PRIVATE_COVER])
+    );
+    assert!(
+        public_members
+            .iter()
+            .all(|photo| photo.get("audience").is_none())
     );
     assert_eq!(WRITE_BEHIND.status().pending_operations, 0);
 
@@ -640,8 +662,52 @@ async fn publication_checks(client: &Client) {
         TREE.store.photo_audiences().unwrap().get(TRASHED).unwrap(),
         Audience::Private
     );
+    photo_publication_checks(client).await;
     worker.abort();
     assert!(worker.await.unwrap_err().is_cancelled());
+}
+
+async fn photo_publication_checks(client: &Client) {
+    let published = resource(client, PUBLIC_ALBUM, false).await;
+    assert_eq!(published["data"]["abstractData"]["cover"], PRIVATE_COVER);
+    assert_eq!(published["data"]["abstractData"]["itemCount"], 3);
+    let previous = snapshot(client, &Expression::Trashed(false), false, "descending").await;
+    assert_eq!(
+        owner(
+            client.put("/put/edit_photo_audience").json(&json!({
+                "hash": PRIVATE_COVER,
+                "audience": "private"
+            })),
+            true,
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Ok
+    );
+    stale_snapshot(client, &previous, false).await;
+    assert_eq!(
+        resource(client, PRIVATE_COVER, true).await["data"]["audience"],
+        "private"
+    );
+    let anonymous = resource(client, PUBLIC_ALBUM, false).await;
+    let album = &anonymous["data"]["abstractData"];
+    assert_eq!(album["cover"], PUBLIC_NEW);
+    assert_eq!(album["itemCount"], 2);
+    assert_eq!(album["itemSize"], 26);
+    assert_eq!(album["thumbhash"], json!([2]));
+    let current = snapshot(client, &Expression::Trashed(false), false, "descending").await;
+    let records = data(client, &current, false).await;
+    assert_eq!(
+        &records
+            .iter()
+            .find(|record| record["abstractData"]["id"] == PUBLIC_ALBUM)
+            .unwrap()["abstractData"],
+        album
+    );
+    let owned = resource(client, PUBLIC_ALBUM, true).await;
+    assert_eq!(owned["data"]["abstractData"]["cover"], PRIVATE_COVER);
+    assert_eq!(owned["data"]["abstractData"]["thumbhash"], json!([3]));
 }
 
 #[rocket::async_test]
@@ -674,6 +740,7 @@ async fn http_child() {
                 small_thumbnail_file,
                 renew_timestamp_token,
                 set_album_audience,
+                edit_photo_audience,
                 create_empty_album,
                 edit_album,
             ],

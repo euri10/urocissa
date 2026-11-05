@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   BackendDataParser,
+  databaseTimestampSchema,
   PublicConfigSchema,
   savedSearchListSchema,
   searchFacetsSchema
@@ -126,6 +127,32 @@ describe('album audience schema', () => {
     if (parsed.type !== 'album') throw new Error('expected album')
     expect(parsed.audience).toBe('private')
     expect(BackendDataParser.safeParse({ ...album, audience: 'shared' }).success).toBe(false)
+  })
+})
+
+describe('photo audience metadata', () => {
+  it.each(['image', 'video'])('preserves explicit owner audiences on %s', (type) => {
+    const media = { type, id: 'photo', pending: false, width: 100, height: 80, ext: 'jpg', size: 42 }
+    for (const audience of ['private', 'public']) {
+      expect(BackendDataParser.parse({ ...media, audience })).toHaveProperty('audience', audience)
+    }
+    expect(BackendDataParser.parse(media)).not.toHaveProperty('audience')
+    expect(BackendDataParser.safeParse({ ...media, audience: 'unknown' }).success).toBe(false)
+  })
+
+  it('does not replace nested album audience with a photo envelope audience', () => {
+    const parsed = databaseTimestampSchema.parse({
+      abstractData: {
+        type: 'album', id: 'album', pending: false, title: null, startTime: null,
+        endTime: null, lastModifiedTime: 1, cover: null, itemCount: 0, itemSize: 0,
+        audience: 'private'
+      },
+      timestamp: 1,
+      token: '',
+      audience: 'public'
+    })
+    expect(parsed.abstractData).toHaveProperty('audience', 'private')
+    expect(parsed).not.toHaveProperty('audience')
   })
 })
 

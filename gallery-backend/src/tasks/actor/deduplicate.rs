@@ -17,6 +17,7 @@ use uuid::Uuid;
 pub struct PresignedMetadata {
     pub album_ids: HashSet<ArrayString<64>>,
     pub tags: HashSet<String>,
+    pub publish_immediately: bool,
 }
 
 pub struct DeduplicateTask {
@@ -59,7 +60,9 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
             .alias_mut()
             .and_then(Vec::pop)
             .ok_or_else(|| anyhow::anyhow!("new duplicate record has no file alias"))?;
-        let PresignedMetadata { album_ids, tags } = task.presigned.clone();
+        let PresignedMetadata {
+            album_ids, tags, ..
+        } = task.presigned.clone();
         let (slot_ref, _) = load_logical_media(task.hash)?;
         let publisher = ArtifactPublisher::new(format!("deduplicate-{}", Uuid::new_v4()));
         publish_media_mutation(slot_ref, task.hash, publisher, move |latest| {

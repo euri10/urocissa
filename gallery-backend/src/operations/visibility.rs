@@ -37,6 +37,17 @@ impl PhotoVisibility {
         self.audiences.revision
     }
 
+    pub fn owner_audience(&self, data: &AbstractData) -> AppResult<Option<Audience>> {
+        if self.viewer == Viewer::Owner && !matches!(data, AbstractData::Album(_)) {
+            self.audiences
+                .get(data.hash().as_str())
+                .map(Some)
+                .map_err(database_error)
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn allows_data(&self, data: &AbstractData) -> AppResult<bool> {
         let hash = data.hash();
         let is_album = matches!(data, AbstractData::Album(_));

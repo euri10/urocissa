@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    public::structure::abstract_data::AbstractData, router::claims::claims_hash::ClaimsHash,
+    public::structure::{abstract_data::AbstractData, audience::Audience},
+    router::claims::claims_hash::ClaimsHash,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -10,6 +11,8 @@ pub struct DataBaseTimestampReturn {
     pub abstract_data: serde_json::Value,
     pub timestamp: i64,
     pub token: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audience: Option<Audience>,
 }
 
 impl DataBaseTimestampReturn {
@@ -40,6 +43,7 @@ impl DataBaseTimestampReturn {
                 .expect("item records must serialize to JSON"),
             timestamp,
             token,
+            audience: None,
         }
     }
 }

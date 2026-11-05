@@ -2,13 +2,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { createSSRApp, h, ref, type Component, type FunctionalComponent } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import { createPinia, setActivePinia } from 'pinia'
-import { createMemoryHistory, createRouter } from 'vue-router'
+import { createMemoryHistory, createRouter, type RouteMeta } from 'vue-router'
 import type { AppConfig } from '@/api/config'
 import { BackendDataParser } from '@/type/schemas'
 import { useConfigStore } from '@/store/configStore'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import SingleMenu from './SingleMenu.vue'
+import BatchMenu from './BatchMenu.vue'
 import AlbumMenu from './AlbumMenu.vue'
 import ViewBar from '@/components/NavBar/ViewBar.vue'
 import ItemTag from '@/components/View/Metadata/ItemTag.vue'
@@ -45,7 +46,9 @@ async function renderControls(
   component: Component,
   props: Record<string, unknown>,
   owner: boolean | undefined,
-  captureFrame = false
+  captureFrame = false,
+  baseName: RouteMeta['baseName'] = 'all',
+  level = 1
 ): Promise<string> {
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -60,7 +63,7 @@ async function renderControls(
       path: '/all',
       component: { render: () => null },
       meta: {
-        baseName: 'all', level: 1,
+        baseName, level,
         getParentPage: () => ({ name: 'all', params: {}, query: {} }),
         getChildPage: () => ({ name: 'all', params: {}, query: {} })
       }
@@ -93,7 +96,7 @@ describe('owner-only controls', () => {
         expect(html).toContain('Find In Timeline')
         for (const action of [
           'View Original File', 'Download', 'Edit Tags', 'Edit Albums', 'Delete',
-          'Restore', 'Reindex', 'Capture Frame as Thumb', 'Rotate Left'
+          'Restore', 'Reindex', 'Capture Frame as Thumb', 'Rotate Left', 'Publish', 'Make private'
         ]) expect(html).not.toContain(action)
       }
     }
@@ -114,6 +117,37 @@ describe('owner-only controls', () => {
       expect(video).toContain(action)
     }
     expect(video).not.toContain('Rotate Left')
+  })
+
+  it('offers the matching audience action in the owner single-photo menu', async () => {
+    const props = { isolationId: 'mainId', hash: 'dummy-photo', index: 0 }
+    const privatePhoto = await renderControls(SingleMenu, {
+      ...props, database: { ...media('image'), audience: 'private' }
+    }, true)
+    expect(privatePhoto).toContain('title="Publish"')
+    expect(privatePhoto).not.toContain('title="Make private"')
+    const publicPhoto = await renderControls(SingleMenu, {
+      ...props, database: { ...media('video'), audience: 'public' }
+    }, true)
+    expect(publicPhoto).toContain('title="Make private"')
+    expect(publicPhoto).not.toContain('title="Publish"')
+  })
+
+  it('offers photo batch audience actions only to the owner outside the album list', async () => {
+    const owner = await renderControls(BatchMenu, {}, true)
+    expect(owner).toContain('title="Publish"')
+    expect(owner).toContain('title="Make private"')
+    const albumPhotos = await renderControls(BatchMenu, {}, true, false, 'albums', 3)
+    expect(albumPhotos).toContain('title="Publish"')
+    expect(albumPhotos).toContain('title="Make private"')
+    for (const html of [
+      await renderControls(BatchMenu, {}, false),
+      await renderControls(BatchMenu, {}, undefined),
+      await renderControls(BatchMenu, {}, true, false, 'albums')
+    ]) {
+      expect(html).not.toContain('title="Publish"')
+      expect(html).not.toContain('title="Make private"')
+    }
   })
 
   it.each([false, true])('gates photo toolbar and album menu for owner=%s', async (owner) => {

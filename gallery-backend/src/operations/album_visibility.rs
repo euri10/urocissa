@@ -81,6 +81,7 @@ pub fn visible_data_to_database_timestamp_return(
     viewer: ViewerKind,
     visibility: &PhotoVisibility,
 ) -> AppResult<DataBaseTimestampReturn> {
+    let photo_audience = visibility.owner_audience(&data)?;
     let album_audience = matches!(&data, AbstractData::Album(_))
         .then(|| visibility.audience(data.hash().as_str()))
         .transpose()?;
@@ -147,6 +148,7 @@ pub fn visible_data_to_database_timestamp_return(
         show_metadata,
         viewer,
     );
+    result.audience = photo_audience;
     if let Some(audience) = album_audience {
         result.abstract_data["audience"] =
             serde_json::to_value(audience).expect("audience serializes");

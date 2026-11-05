@@ -6,6 +6,7 @@ pub mod edit_album;
 pub mod edit_config;
 pub mod edit_description;
 pub mod edit_flags;
+pub mod edit_photo_audience;
 pub mod edit_share;
 pub mod edit_tag;
 pub mod regenerate_thumbnail;
@@ -21,6 +22,7 @@ pub fn generate_put_routes() -> Vec<Route> {
         edit_album::set_album_title,
         edit_description::set_user_defined_description,
         edit_flags::edit_flags,
+        edit_photo_audience::edit_photo_audience,
         edit_share::edit_share,
         edit_share::delete_share,
         edit_tag::edit_tag,

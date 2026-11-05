@@ -8,6 +8,7 @@ import { useConstStore } from '@/store/constStore'
 import { useLocationStore } from '@/store/locationStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useQueueStore } from '@/store/queueStore'
+import { useShareStore } from '@/store/shareStore'
 import { useWorkerStore } from '@/store/workerStore'
 import { useHandleClick } from '@/script/hook/useHandleClick'
 import { useRowMediaRequests } from '@/script/hook/useRowMediaRequests'
@@ -26,11 +27,13 @@ import DesktopHoverIcon from './FunctionalComponent/DesktopHoverIcon'
 import DurationChip from './FunctionalComponent/DurationChip'
 import FilenameChip from './FunctionalComponent/FilenameChip'
 import ProcessingChip from './FunctionalComponent/ProcessingChip'
+import PrivateChip from './FunctionalComponent/PrivateChip'
 
 interface RenderTile {
   key: string
   index: number
   pending: boolean
+  privatePhoto: boolean
   durationLabel: string | null
   filenameLabel: string | null
   albumLabel: string | null
@@ -51,6 +54,7 @@ const router = useRouter()
 const route = useRoute()
 const constStore = useConstStore('mainId')
 const configStore = useConfigStore('mainId')
+const shareStore = useShareStore('mainId')
 const prefetchStore = usePrefetchStore(props.isolationId)
 const collectionStore = useCollectionStore(props.isolationId)
 const queueStore = useQueueStore(props.isolationId)
@@ -143,6 +147,9 @@ const tiles = computed<RenderTile[]>(() => {
       key: `${props.row.start}-${subIndex}-${timestamp}`,
       index,
       pending: isMedia && abstractData.pending,
+      privatePhoto:
+        configStore.isAdmin && shareStore.shareId === null &&
+        isMedia && abstractData.audience !== 'public',
       durationLabel: duration === undefined ? null : formatDuration(duration),
       filenameLabel: showFilenameChip ? filenameLabel : null,
       albumLabel: abstractData?.type === 'album' ? (abstractData.title ?? 'Untitled') : null,
@@ -408,6 +415,7 @@ onBeforeUnmount(() => {
         tile.tileStyle,
         tile.thumbnailClass,
         tile.pending,
+        tile.privatePhoto,
         tile.durationLabel,
         tile.filenameLabel,
         tile.albumLabel,
@@ -422,6 +430,7 @@ onBeforeUnmount(() => {
       :style="tile.tileStyle"
     >
       <ProcessingChip v-if="tile.pending" />
+      <PrivateChip v-if="tile.privatePhoto" />
       <DurationChip v-if="tile.durationLabel !== null" :label="tile.durationLabel" />
       <FilenameChip
         v-if="tile.filenameLabel !== null"

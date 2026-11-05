@@ -57,6 +57,7 @@ export interface UploadTarget {
   albums?: UploadPresetAlbum[]
   tags?: string[]
   share?: UploadShareContext
+  publishImmediately?: boolean
 }
 
 export interface UploadPresentationOptions {
@@ -141,6 +142,8 @@ function cloneTarget(target: UploadTarget | undefined): UploadTarget {
       shareId: target.share.shareId,
       password: target.share.password
     })
+  } else if (target.publishImmediately === true) {
+    cloned.publishImmediately = true
   }
   return markRaw(cloned)
 }
@@ -152,8 +155,6 @@ function buildUploadUrl(target: UploadTarget): string {
 
   const albumIds = target.albums?.map((album) => album.id) ?? []
   const tags = target.tags ?? []
-  if (albumIds.length === 0 && tags.length === 0) return '/upload'
-
   const query = new URLSearchParams()
   if (albumIds.length > 0) {
     query.set('presigned_album_ids_opt', JSON.stringify(albumIds))
@@ -161,7 +162,10 @@ function buildUploadUrl(target: UploadTarget): string {
   if (tags.length > 0) {
     query.set('presigned_tags_opt', JSON.stringify(tags))
   }
-  return `/upload?${query.toString()}`
+  if (target.publishImmediately === true) {
+    query.set('publish_immediately', 'true')
+  }
+  return query.size === 0 ? '/upload' : `/upload?${query.toString()}`
 }
 
 function createId(prefix: string): string {
@@ -299,6 +303,7 @@ export const useUploadStore = (isolationId: IsolationId) =>
         target?: UploadTarget,
         presentation?: UploadPresentationOptions
       ): void {
+        const capturedTarget = cloneTarget(target)
         const input = document.createElement('input')
         input.type = 'file'
         input.multiple = true
@@ -314,7 +319,7 @@ export const useUploadStore = (isolationId: IsolationId) =>
           () => {
             const files = Array.from(input.files ?? [])
             cleanup()
-            this.enqueueFiles(files, target, presentation)
+            this.enqueueFiles(files, capturedTarget, presentation)
           },
           { once: true }
         )

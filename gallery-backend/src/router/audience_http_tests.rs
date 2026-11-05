@@ -14,6 +14,8 @@ use rocket::{
 };
 use serde_json::Value;
 
+mod mutations;
+
 use crate::{
     public::{
         constant::storage::DATA_PATH,
@@ -42,6 +44,8 @@ use crate::{
             get_prefetch::{PrefetchReturn, prefetch},
             get_resource::get_resource,
         },
+        post::post_upload::upload,
+        put::edit_photo_audience::edit_photo_audience,
     },
     storage::DataStore,
 };
@@ -123,6 +127,7 @@ fn seed() -> Vec<AbstractData> {
         id("fixture-share"),
         Share {
             show_metadata: true,
+            show_upload: true,
             ..Share::default()
         },
     );
@@ -237,12 +242,20 @@ async fn hashes(client: &Client, snapshot: &PrefetchReturn, is_owner: bool) -> H
             let record = &data["abstractData"];
             if record["type"] != "album" {
                 if is_owner {
+                    assert!(matches!(
+                        data["audience"].as_str(),
+                        Some("public" | "private")
+                    ));
                     assert_eq!(record["exifVec"]["GPSLatitude"], "private-gps-marker");
                     assert!(record["alias"].is_array());
                 } else {
+                    assert!(data.get("audience").is_none());
                     assert!(!record.to_string().contains("private-gps-marker"));
                     assert!(record.get("alias").is_none());
                 }
+            }
+            if record["type"] == "album" {
+                assert!(data.get("audience").is_none());
             }
             record["id"].as_str().unwrap().to_owned()
         })
@@ -444,6 +457,7 @@ async fn public_checks(client: &Client, records: &[AbstractData]) {
         .into_iter()
         .map(|data| {
             let record = &data["abstractData"];
+            assert!(data.get("audience").is_none());
             assert!(!record.to_string().contains("private-gps-marker"));
             assert!(record.get("alias").is_none());
             record["id"].as_str().unwrap().to_owned()
@@ -467,9 +481,21 @@ async fn public_checks(client: &Client, records: &[AbstractData]) {
     );
 
     let previous = snapshot(client, false, "descending").await;
-    TREE.store
-        .set_photo_audience(PUBLIC, Audience::Private)
-        .unwrap();
+    assert_eq!(
+        owner(
+            client
+                .put("/put/edit_photo_audience")
+                .json(&serde_json::json!({
+                    "hash": PUBLIC,
+                    "audience": "private",
+                })),
+            true,
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Ok
+    );
     for route in ["data", "rows", "scroll"] {
         assert_eq!(
             client
@@ -633,6 +659,8 @@ async fn http_child() {
                 small_thumbnail_file,
                 imported_file,
                 renew_timestamp_token,
+                edit_photo_audience,
+                upload,
             ],
         ),
     )
@@ -643,6 +671,7 @@ async fn http_child() {
     } else {
         private_checks(&client, &records).await;
     }
+    mutations::check(&client).await;
 }
 
 fn isolated(public: bool) {

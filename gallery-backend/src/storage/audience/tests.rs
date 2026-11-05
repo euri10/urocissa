@@ -220,3 +220,32 @@ fn updates_keep_audience_but_deletion_and_reingestion_discard_grants() -> Result
     );
     Ok(())
 }
+
+#[test]
+fn batch_audience_change_is_atomic_and_advances_one_revision() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let store = DataStore::initialize_empty(&root.path().join("index_v6.redb"))?;
+    store.migrate_photo_audience()?;
+    store.write(|writer| -> Result<()> {
+        for record in old_records() {
+            writer.insert(&record)?;
+        }
+        Ok(())
+    })?;
+    let revision = store.photo_audiences()?.revision;
+    for invalid in ["album", "missing"] {
+        assert!(
+            store
+                .set_photo_audiences(&["image", invalid], Audience::Public)
+                .is_err()
+        );
+        assert_eq!(store.photo_audiences()?.get("image")?, Audience::Private);
+        assert_eq!(store.photo_audiences()?.revision, revision);
+    }
+    store.set_photo_audiences(&["image", "video"], Audience::Public)?;
+    assert_eq!(store.photo_audiences()?.revision, revision + 1);
+    for hash in ["image", "video"] {
+        assert_eq!(store.photo_audiences()?.get(hash)?, Audience::Public);
+    }
+    Ok(())
+}

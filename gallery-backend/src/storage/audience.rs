@@ -182,24 +182,30 @@ impl DataStore {
     }
 
     /// Publishing is explicit; normal record writes never insert an audience entry.
-    #[allow(
-        dead_code,
-        reason = "owner publish controls are implemented by task .8"
-    )]
     pub fn set_photo_audience(&self, hash: &str, audience: Audience) -> Result<()> {
+        self.set_photo_audiences(&[hash], audience)
+    }
+
+    /// Validate every photo and commit a batch with one durable audience revision.
+    pub fn set_photo_audiences(&self, hashes: &[&str], audience: Audience) -> Result<()> {
+        if hashes.is_empty() {
+            return Ok(());
+        }
         let mut txn = self.db.begin_write()?;
         txn.set_durability(Durability::Immediate)?;
         {
             let records = txn.open_table(RECORDS_TABLE)?;
-            let bytes = records.get(hash)?.context("photo not found")?;
-            if matches!(
-                bitcode::decode::<super::v6::V6AbstractData>(bytes.value())?,
-                super::v6::V6AbstractData::Album(_)
-            ) {
-                bail!("album audience is managed separately");
-            }
             let mut audiences = txn.open_table(PHOTO_AUDIENCE)?;
-            audiences.insert(hash, u8::from(audience == Audience::Public))?;
+            for hash in hashes {
+                let bytes = records.get(*hash)?.context("photo not found")?;
+                if matches!(
+                    bitcode::decode::<super::v6::V6AbstractData>(bytes.value())?,
+                    super::v6::V6AbstractData::Album(_)
+                ) {
+                    bail!("album audience is managed separately");
+                }
+                audiences.insert(*hash, u8::from(audience == Audience::Public))?;
+            }
             let mut meta = txn.open_table(AUDIENCE_META)?;
             let revision = meta
                 .get(REVISION)?

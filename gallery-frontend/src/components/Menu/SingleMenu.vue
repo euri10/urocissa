@@ -14,6 +14,7 @@ import ItemRegenerateThumbnailByFrame from '@Menu/MenuItem/ItemRegenerateThumbna
 import ItemRotateImage from '@Menu/MenuItem/ItemRotateImage.vue'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { useConfigStore } from '@/store/configStore'
+import ItemPhotoAudience from '@Menu/MenuItem/ItemPhotoAudience.vue'
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -41,6 +42,11 @@ const configStore = useConfigStore('mainId')
       <ItemFindInTimeline :hash="props.hash" />
       <template v-if="configStore.isAdmin">
         <v-divider></v-divider>
+        <ItemPhotoAudience
+          :target="database.id"
+          :isolation-id="props.isolationId"
+          :audience="database.audience ?? 'private'"
+        />
         <ItemEditTags />
         <ItemEditAlbums />
         <ItemDelete v-if="!database.isTrashed" :index-list="[props.index]" />
