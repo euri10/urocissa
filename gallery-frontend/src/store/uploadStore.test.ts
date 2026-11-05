@@ -201,6 +201,47 @@ describe('upload queue store', () => {
     expect(modalStore.showUploadModal).toBe(true)
   })
 
+  it('defaults uploads to private and captures the publication choice per queued file', async () => {
+    const firstRequest = deferred<AxiosResponse>()
+    const post = vi.spyOn(axios, 'post')
+      .mockImplementationOnce(() => firstRequest.promise)
+      .mockResolvedValue(response())
+    const store = useUploadStore('mainId')
+    const target = { publishImmediately: true, tags: ['selected-tag'] }
+
+    store.enqueueFiles([mediaFile('private.jpg')])
+    store.enqueueFiles([mediaFile('public.jpg')], target)
+    target.publishImmediately = false
+    store.enqueueFiles([mediaFile('private-again.jpg')], target)
+    firstRequest.resolve(response())
+
+    await vi.waitFor(() => {
+      expect(store.successItems).toHaveLength(3)
+    })
+    const urls = post.mock.calls.map((call) => new URL(call[0], 'https://example.test'))
+    expect(urls.map((url) => url.searchParams.get('publish_immediately'))).toEqual([
+      null, 'true', null
+    ])
+    expect(urls[1]?.searchParams.get('presigned_tags_opt')).toBe('["selected-tag"]')
+    expect(store.items[1]?.target.publishImmediately).toBe(true)
+  })
+
+  it('never publishes a share upload even if its target requests publication', async () => {
+    const post = vi.spyOn(axios, 'post').mockResolvedValue(response())
+    const store = useUploadStore('mainId')
+
+    store.enqueueFiles([mediaFile('shared-private.jpg')], {
+      publishImmediately: true,
+      share: { albumId: 'shared-album', shareId: 'share-id' }
+    })
+
+    await vi.waitFor(() => {
+      expect(store.successItems).toHaveLength(1)
+    })
+    expect(post.mock.calls[0]?.[0]).toBe('/upload?presigned_album_id_opt=shared-album')
+    expect(store.items[0]?.target.publishImmediately).toBeUndefined()
+  })
+
   it('captures multiple album/tag presets, share context, and rejects unsupported files', async () => {
     const post = vi.spyOn(axios, 'post').mockResolvedValue(response())
     const store = useUploadStore('mainId')

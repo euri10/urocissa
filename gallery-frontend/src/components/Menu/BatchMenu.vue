@@ -1,4 +1,45 @@
-<!-- NavBarAppBarEditBarMenuNormal.vue -->
+<script lang="ts" setup>
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { useCollectionStore } from '@/store/collectionStore'
+import { usePrefetchStore } from '@/store/prefetchStore'
+import { useConfigStore } from '@/store/configStore'
+
+import ItemSetAsCover from '@Menu/MenuItem/ItemSetAsCover.vue'
+import ItemArchive from '@Menu/MenuItem/ItemArchive.vue'
+import ItemFavorite from '@Menu/MenuItem/ItemFavorite.vue'
+import ItemBatchEditTags from '@Menu/MenuItem/ItemBatchEditTags.vue'
+import ItemBatchEditAlbums from '@Menu/MenuItem/ItemBatchEditAlbums.vue'
+import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
+import ItemDelete from '@Menu/MenuItem/ItemDelete.vue'
+import ItemPermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
+import ItemRegenerateMetadata from '@Menu/MenuItem/ItemRegenerateMetadata.vue'
+import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
+import ItemPhotoAudience from '@Menu/MenuItem/ItemPhotoAudience.vue'
+
+import { getIsolationIdByRoute } from '@utils/getter'
+import { shouldShowBatchEditAlbums } from './batchMenuVisibility'
+
+const route = useRoute()
+const isolationId = getIsolationIdByRoute(route)
+const collectionStore = useCollectionStore(isolationId)
+const configStore = useConfigStore('mainId')
+
+const selection = computed(() => collectionStore.descriptor())
+
+const shouldShowSetAsCover = computed(
+  () => route.meta.level === 3 && collectionStore.selectedCount(prefetchStore.dataLength) === 1
+)
+
+const prefetchStore = usePrefetchStore(isolationId)
+
+const isInTrashedPath = computed(() => route.meta.baseName === 'trashed')
+
+const isInAlbumsPage = computed(() => route.meta.baseName === 'albums')
+
+const canBatchEditAlbums = computed(() => shouldShowBatchEditAlbums(route.meta))
+</script>
+
 <template>
   <v-menu>
     <template #activator="{ props: MenuBtn }">
@@ -9,6 +50,12 @@
       <ItemSetAsCover v-if="shouldShowSetAsCover" />
 
       <v-divider v-if="shouldShowSetAsCover"></v-divider>
+
+      <ItemPhotoAudience
+        v-if="configStore.isAdmin && canBatchEditAlbums"
+        :target="selection"
+        :isolation-id="isolationId"
+      />
 
       <!-- Archive and Favorite Actions -->
       <ItemArchive :index-list="selection" />
@@ -35,42 +82,3 @@
     </v-list>
   </v-menu>
 </template>
-
-<script lang="ts" setup>
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { useCollectionStore } from '@/store/collectionStore'
-import { usePrefetchStore } from '@/store/prefetchStore'
-
-import ItemSetAsCover from '@Menu/MenuItem/ItemSetAsCover.vue'
-import ItemArchive from '@Menu/MenuItem/ItemArchive.vue'
-import ItemFavorite from '@Menu/MenuItem/ItemFavorite.vue'
-import ItemBatchEditTags from '@Menu/MenuItem/ItemBatchEditTags.vue'
-import ItemBatchEditAlbums from '@Menu/MenuItem/ItemBatchEditAlbums.vue'
-import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
-import ItemDelete from '@Menu/MenuItem/ItemDelete.vue'
-import ItemPermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
-import ItemRegenerateMetadata from '@Menu/MenuItem/ItemRegenerateMetadata.vue'
-import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
-
-import { getIsolationIdByRoute } from '@utils/getter'
-import { shouldShowBatchEditAlbums } from './batchMenuVisibility'
-
-const route = useRoute()
-const isolationId = getIsolationIdByRoute(route)
-const collectionStore = useCollectionStore(isolationId)
-
-const selection = computed(() => collectionStore.descriptor())
-
-const shouldShowSetAsCover = computed(
-  () => route.meta.level === 3 && collectionStore.selectedCount(prefetchStore.dataLength) === 1
-)
-
-const prefetchStore = usePrefetchStore(isolationId)
-
-const isInTrashedPath = computed(() => route.meta.baseName === 'trashed')
-
-const isInAlbumsPage = computed(() => route.meta.baseName === 'albums')
-
-const canBatchEditAlbums = computed(() => shouldShowBatchEditAlbums(route.meta))
-</script>

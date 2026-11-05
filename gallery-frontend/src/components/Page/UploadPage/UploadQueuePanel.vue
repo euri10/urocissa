@@ -7,6 +7,7 @@ import {
   type UploadTarget
 } from '@/store/uploadStore'
 import { useConfigStore } from '@/store/configStore'
+import UploadFilesModal from '@/components/Modal/UploadFilesModal.vue'
 import UploadControls from './UploadControls.vue'
 import UploadQueueTable from './UploadQueueTable.vue'
 
@@ -24,6 +25,7 @@ const props = defineProps<{
 const uploadStore = useUploadStore('mainId')
 const configStore = useConfigStore('mainId')
 const currentTab = shallowRef<'uploading' | 'success' | 'issues'>('uploading')
+const showUploadFiles = shallowRef(false)
 const silentSummary: UploadPresentationOptions = { showSummaryPanel: false }
 
 const emptyStateTitle = computed(() =>
@@ -69,7 +71,7 @@ const selectedTarget = computed<UploadTarget | undefined>(() => {
 })
 
 function addFiles(): void {
-  uploadStore.openFilePicker(selectedTarget.value, silentSummary)
+  showUploadFiles.value = true
 }
 
 function retryItem(itemId: string): void {
@@ -201,6 +203,11 @@ function retryAll(): void {
         </div>
       </v-tabs-window-item>
     </v-tabs-window>
+    <UploadFilesModal
+      v-model="showUploadFiles"
+      :target="selectedTarget"
+      :presentation="silentSummary"
+    />
   </div>
 </template>
 

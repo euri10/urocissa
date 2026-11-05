@@ -5,7 +5,9 @@ import { fetchRowInWorker } from '@/api/fetchRow'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useTokenStore } from '@/store/tokenStore'
 import { useShareStore } from '@/store/shareStore'
-import { toDataWorker } from './workerApi'
+import { fromDataWorker, toDataWorker } from './workerApi'
+import type { ReturnDataPayload } from './workerApi'
+import { createHandler } from 'typesafe-agent-events'
 
 const transport = vi.hoisted(() => ({
   get: vi.fn(),
@@ -77,5 +79,45 @@ describe('share authorization across the data-worker boundary', () => {
         )
       })
     }
+  })
+
+  it.each(['private', 'public', undefined] as const)('preserves audience=%s through the real worker response parser', async (audience) => {
+    let receive!: (event: MessageEvent<Action>) => void
+    vi.stubGlobal('self', {
+      postMessage: transport.post,
+      addEventListener: (_name: string, handler: typeof receive) => { receive = handler }
+    })
+    await import('./toDataWorker')
+    const returned = vi.fn<(payload: ReturnDataPayload) => void>()
+    const receiveReturn = createHandler<typeof fromDataWorker>({
+      returnData: returned,
+      fetchRowReturn: vi.fn(),
+      editTagsReturn: vi.fn(),
+      notification: vi.fn(),
+      unauthorized: vi.fn(),
+      refreshTimestampToken: vi.fn(),
+      refreshHashToken: vi.fn()
+    })
+    transport.post.mockImplementation((action: ReturnType<typeof fromDataWorker.returnData>) => {
+      receiveReturn(action)
+    })
+    transport.get.mockResolvedValueOnce({ data: [{
+      abstractData: {
+        type: 'image', id: 'fixture-photo', pending: false,
+        width: 100, height: 80, ext: 'jpg', size: 42
+      },
+      timestamp: 100,
+      token: 'fixture-hash-token',
+      ...(audience === undefined ? {} : { audience })
+    }] })
+    receive({ data: toDataWorker.fetchData({
+      fetchMethod: 'single', batch: 0, timestamp: 100,
+      timestampToken: 'fixture-timestamp-token', shareHeaders: {}
+    }) } as MessageEvent<Action>)
+    await vi.waitFor(() => { expect(returned).toHaveBeenCalledOnce() })
+    const media = returned.mock.calls[0]?.[0].slicedDataArray[0]?.data
+    expect(media).toMatchObject({ type: 'image', id: 'fixture-photo', timestamp: 100 })
+    if (audience === undefined) expect(media).not.toHaveProperty('audience')
+    else expect(media).toHaveProperty('audience', audience)
   })
 })

@@ -66,7 +66,7 @@ fn probe_body(path: &str) -> Value {
     json!({
         "timestamp": 1, "index": 0, "indexArray": [0], "deleteList": [0],
         "albumId": "dummy-album", "coverHash": "dummy-photo", "hash": "dummy-photo",
-        "title": "dummy-title", "description": "dummy-description",
+        "title": "dummy-title", "description": "dummy-description", "audience": "private",
         "addAlbumsArray": [], "removeAlbumsArray": [],
         "addTagsArray": [], "removeTagsArray": [],
         "shareId": "dummy-share", "share": {

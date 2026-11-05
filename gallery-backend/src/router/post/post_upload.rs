@@ -73,7 +73,7 @@ fn build_presigned_metadata(
 }
 
 #[post(
-    "/upload?<presigned_album_id_opt>&<presigned_album_ids_opt>&<presigned_tags_opt>",
+    "/upload?<presigned_album_id_opt>&<presigned_album_ids_opt>&<presigned_tags_opt>&<publish_immediately>",
     data = "<form>"
 )]
 #[allow(clippy::similar_names)]
@@ -83,10 +83,18 @@ pub async fn upload(
     presigned_album_id_opt: Option<String>,
     presigned_album_ids_opt: Option<String>,
     presigned_tags_opt: Option<String>,
+    publish_immediately: Option<bool>,
     form: Result<Form<UploadForm<'_>>, Errors<'_>>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let auth = auth?;
     let _ = read_only_mode?;
+    let publish_immediately = publish_immediately.unwrap_or(false);
+    if publish_immediately && !auth.is_owner {
+        return Err(AppError::new(
+            ErrorKind::Auth,
+            "Only the owner can publish uploaded photos",
+        ));
+    }
 
     let mut inner_form = match form {
         Ok(f) => f.into_inner(),
@@ -101,11 +109,12 @@ pub async fn upload(
         }
     };
 
-    let presigned = build_presigned_metadata(
+    let mut presigned = build_presigned_metadata(
         presigned_album_id_opt,
         presigned_album_ids_opt,
         presigned_tags_opt,
     )?;
+    presigned.publish_immediately = publish_immediately;
 
     // Ensure strict 1:1 mapping between files and metadata
     if inner_form.files.len() != inner_form.last_modified.len() {

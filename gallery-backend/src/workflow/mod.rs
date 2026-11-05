@@ -16,6 +16,7 @@ use path_clean::PathClean;
 use std::path::PathBuf;
 
 use crate::process::media_lock::lock_media;
+use crate::public::{db::tree::TREE, structure::audience::Audience};
 
 pub async fn index_for_watch(
     path: PathBuf,
@@ -42,6 +43,7 @@ pub async fn index_with_presigned_metadata(
         .await??;
 
     let _media_guard = lock_media(hash).await;
+    let publish_immediately = presigned.publish_immediately;
 
     let abstract_data_opt = INDEX_COORDINATOR
         .execute_waiting(DeduplicateTask::new(path.clone(), hash, presigned))
@@ -49,6 +51,10 @@ pub async fn index_with_presigned_metadata(
 
     // If the file is already in the database, we can skip further processing.
     let Some(mut abstract_data) = abstract_data_opt else {
+        if publish_immediately {
+            TREE.store
+                .set_photo_audience(hash.as_str(), Audience::Public)?;
+        }
         INDEX_COORDINATOR.execute_detached(DeleteTask::new(path));
         return Ok(());
     };
@@ -65,6 +71,11 @@ pub async fn index_with_presigned_metadata(
         INDEX_COORDINATOR
             .execute_waiting(VideoTask::new(abstract_data))
             .await??;
+    }
+
+    if publish_immediately {
+        TREE.store
+            .set_photo_audience(hash.as_str(), Audience::Public)?;
     }
 
     Ok(())

@@ -109,6 +109,25 @@ describe('public metadata records', () => {
   })
 })
 
+describe('photo audience metadata', () => {
+  it.each(['image', 'video'])('preserves explicit owner audiences on %s', (type) => {
+    const media = { type, id: 'photo', pending: false, width: 100, height: 80, ext: 'jpg', size: 42 }
+    for (const audience of ['private', 'public']) {
+      expect(BackendDataParser.parse({ ...media, audience })).toHaveProperty('audience', audience)
+    }
+    expect(BackendDataParser.parse(media)).not.toHaveProperty('audience')
+    expect(BackendDataParser.safeParse({ ...media, audience: 'unknown' }).success).toBe(false)
+  })
+
+  it('does not introduce photo audience metadata on albums', () => {
+    expect(BackendDataParser.parse({
+      type: 'album', id: 'album', pending: false, title: null, startTime: null,
+      endTime: null, lastModifiedTime: 1, cover: null, itemCount: 0, itemSize: 0,
+      audience: 'private'
+    })).not.toHaveProperty('audience')
+  })
+})
+
 describe('search facets schema', () => {
   it('accepts independent tag, make, and model arrays', () => {
     expect(

@@ -44,9 +44,12 @@ const BaseObjectRaw = z.object({
   updateAt: z.number().default(0)
 })
 
+export const photoAudienceSchema = z.enum(['private', 'public'])
+
 // 1. Image Schema
 const ImageSchemaRaw = BaseObjectRaw.extend({
   type: z.literal('image'),
+  audience: photoAudienceSchema.optional(),
   width: z.number(),
   height: z.number(),
   ext: z.string(),
@@ -56,6 +59,7 @@ const ImageSchemaRaw = BaseObjectRaw.extend({
   alias: z.array(AliasSchema).default([])
 }).transform((data) => ({
   type: 'image' as const,
+  ...(data.audience === undefined ? {} : { audience: data.audience }),
   id: data.id,
   width: data.width,
   height: data.height,
@@ -79,6 +83,7 @@ const ImageSchemaRaw = BaseObjectRaw.extend({
 // 2. Video Schema
 const VideoSchemaRaw = BaseObjectRaw.extend({
   type: z.literal('video'),
+  audience: photoAudienceSchema.optional(),
   width: z.number(),
   height: z.number(),
   ext: z.string(),
@@ -88,6 +93,7 @@ const VideoSchemaRaw = BaseObjectRaw.extend({
   alias: z.array(AliasSchema).default([])
 }).transform((data) => ({
   type: 'video' as const,
+  ...(data.audience === undefined ? {} : { audience: data.audience }),
   id: data.id,
   width: data.width,
   height: data.height,
@@ -248,8 +254,14 @@ export const albumInfoSchema = z
 export const databaseTimestampSchema = z.object({
   abstractData: BackendDataParser,
   timestamp: z.number(),
-  token: z.string()
-})
+  token: z.string(),
+  audience: photoAudienceSchema.optional()
+}).transform(({ audience, ...record }) => ({
+  ...record,
+  abstractData: record.abstractData.type !== 'album' && audience !== undefined
+    ? { ...record.abstractData, audience }
+    : record.abstractData
+}))
 
 export const routeResourceSnapshotSchema = z.object({
   prefetch: prefetchSchema,

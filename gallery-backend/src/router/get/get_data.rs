@@ -73,14 +73,16 @@ pub async fn get_data(
                     })?;
 
                 visibility.require_data(&abstract_data)?;
+                let audience = visibility.owner_audience(&abstract_data)?;
 
-                let database_timestamp_return = abstract_data_to_database_timestamp_return(
+                let mut database_timestamp_return = abstract_data_to_database_timestamp_return(
                     abstract_data,
                     timestamp,
                     show_download,
                     show_metadata,
                     viewer,
                 );
+                database_timestamp_return.audience = audience;
                 Ok(database_timestamp_return)
             })
             .collect();

@@ -168,13 +168,15 @@ fn create_resource_snapshot(
         visibility.revision(),
     );
     let token = claims.encode();
-    let data = abstract_data_to_database_timestamp_return(
+    let audience = visibility.owner_audience(&abstract_data)?;
+    let mut data = abstract_data_to_database_timestamp_return(
         abstract_data,
         prefetch.timestamp,
         true,
         true,
         ViewerKind::for_response(visibility.viewer == Viewer::Owner, false),
     );
+    data.audience = audience;
 
     Ok(RouteResourceSnapshot {
         prefetch,

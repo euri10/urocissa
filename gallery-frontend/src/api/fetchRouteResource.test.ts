@@ -7,12 +7,13 @@ const ID = 'f97b32636eedc084c47594fac0e74a24a15904cbab0f4ee458a6e44136cac2a0'
 describe('route resource API', () => {
   afterEach(() => vi.restoreAllMocks())
 
-  it('requests an authenticated direct snapshot with a bounded timeout', async () => {
+  it.each(['private', 'public', undefined] as const)('parses direct snapshots with audience=%s and a bounded timeout', async (audience) => {
     const get = vi.spyOn(axios, 'get').mockResolvedValue({
       data: {
         prefetch: { timestamp: 41, dataLength: 1, locateTo: 0 },
         token: 'snapshot-token',
         data: {
+          ...(audience === undefined ? {} : { audience }),
           abstractData: {
             type: 'image',
             id: ID,
@@ -47,5 +48,10 @@ describe('route resource API', () => {
       type: 'image',
       isArchived: true
     })
+    if (audience === undefined) {
+      expect(snapshot.data.abstractData).not.toHaveProperty('audience')
+    } else {
+      expect(snapshot.data.abstractData).toHaveProperty('audience', audience)
+    }
   })
 })

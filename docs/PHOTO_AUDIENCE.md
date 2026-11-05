@@ -88,8 +88,45 @@ cargo fmt --all -- --check
 cargo clippy --offline --locked --all-targets
 ```
 
-Counts/facets/tags belong to `.7`, publish controls to `.8`, album audience and
+Counts/facets/tags belong to `.7`, album audience and
 private-cover handling to `.9`, and further share-link changes to `.10`.
+
+## Photo publishing controls (`.8`)
+
+The upload page's Add Files / Choose Files actions open a theme-inheriting
+chooser with **Publish immediately** off. The switch resets on every open and
+is never persisted. The choice is captured when the native picker opens and
+copied into each queued item, including retries. Drops and clipboard uploads
+remain private. `POST /upload?publish_immediately=true` explicitly publishes
+after ingestion; omitted/false leaves new records private. Shared uploads
+cannot publish, even with a forged query parameter. Reuploading an existing
+hash without publication preserves that record's existing audience.
+
+Owner photo menus expose Publish or Make private; photo selection menus expose
+both, including inside an album. These actions change photo/video audience only;
+album cards are rejected atomically if included in a batch. Private and missing
+audiences have an owner-only lock badge in the grid, hidden in shared views.
+
+`PUT /put/edit_photo_audience` requires owner authentication and writable mode.
+The JSON body is either `{ "hash": "<photo hash>", "audience": "public" }`
+or `{ "timestamp": 123, "selection": { "mode": "explicit", "indices": [0] },
+"audience": "private" }`. Existing `allExcept` selections are supported.
+Hash and snapshot selection forms cannot be mixed. The storage setter validates
+all media targets and commits the batch plus one audience revision atomically.
+Anonymous and share-only credentials cannot change audience.
+
+Owner data envelopes add optional `audience` alongside `abstractData`, `timestamp`
+and `token`; direct resource responses use the same envelope under `data`.
+Anonymous/share responses and album records omit it. Frontend worker and direct
+resource parsers carry the envelope value into the client media model without
+changing the frozen V6 record. After accepted mutations, the frontend updates
+cached media, clears selection/tokens, and refreshes both collection hosts and
+loaded direct resources. Existing server revision checks immediately invalidate
+old snapshots and enforce visibility on future metadata and media requests.
+
+Fixture regressions cover upload default/true/false and switch reset, owner-only
+controls/badges, both response parsing paths, single/batch/allExcept mutations,
+anonymous/share/read-only refusal, atomic invalid batches and stale snapshots.
 
 ## Integrated first batch
 
@@ -122,14 +159,14 @@ exception. New video compression strips source container and stream metadata;
 existing files still require `.5`.
 
 This batch is source integration, not a complete private-gallery rollout.
-Do not repin or deploy it as completion of the epic while `.5`, `.7`, `.8`, `.9`,
+Do not repin or deploy it as completion of the epic while `.5`, `.7`, `.9`,
 `.10` and the production gates in `.11` remain outstanding.
 
 ## Interfaces for remaining tasks
 
 `.7` can use `PhotoVisibility::allows_cached` for tree-backed aggregates and
-`allows_data` for logical records. `.8` can use
-`DataStore::photo_audiences().get(hash)` and `set_photo_audience`; the setter
+`allows_data` for logical records. Photo controls use
+`DataStore::photo_audiences().get(hash)` and `set_photo_audiences`; the setter
 invalidates previous snapshots through its durable revision. `.9` must replace
 the adapter's documented album compatibility behavior and add album migration
 without rerunning the photo migration. Cache expectations in thumbnail mutation
