@@ -61,6 +61,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_reindex_jobs::get_reindex_jobs,
         get_resource::get_resource,
         get_write_behind::get_write_behind_status,
+        crate::router::strip_video_metadata::get_video_metadata_strip,
         crate::router::saved_searches::get_saved_searches
     ]
 }

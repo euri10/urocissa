@@ -1,4 +1,5 @@
 use super::video_ffprobe::video_duration;
+use super::video_metadata_policy::STRIP_SOURCE_METADATA_ARGS;
 use crate::{
     operations::indexation::generate_ffmpeg::create_silent_ffmpeg_command,
     public::{structure::abstract_data::AbstractData, tui::DASHBOARD},
@@ -86,14 +87,9 @@ pub fn generate_compressed_video_to(
     };
     // --- REFACTORED: Use the helper for a clean, consistent command ---
     let mut cmd = create_silent_ffmpeg_command();
+    cmd.args(["-y", "-i", &abstract_data.imported_path_string()]);
+    cmd.args(STRIP_SOURCE_METADATA_ARGS);
     cmd.args([
-        "-y", // Overwrite output file if it exists
-        "-i",
-        &abstract_data.imported_path_string(),
-        "-map_metadata",
-        "-1", // Drop source container metadata.
-        "-map_metadata:s",
-        "-1", // Drop source metadata from every output stream.
         "-vf",
         // Scale video to a max height of 720p, ensuring dimensions are even.
         &format!(

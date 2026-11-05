@@ -198,11 +198,92 @@ stale snapshot rejection. Frontend tests cross the real producer/worker message
 boundary and render the combined read-only metadata panel with the date hidden.
 The route-enumeration gate retains the exact existing public POST prefetch read
 exception. New video compression strips source container and stream metadata;
-existing files still require `.5`.
+existing files require the owner maintenance operation below. Its production
+execution remains part of `.11`.
 
 This batch is source integration, not a complete private-gallery rollout.
-Do not repin or deploy it as completion of the epic while `.5`,
-`.10` and the production gates in `.11` remain outstanding.
+Do not repin or deploy it as completion of the epic while share-link grants
+in `.10` and the production gates in `.11` remain outstanding.
+
+## Integrated second batch
+
+Tasks `.5`, `.7`, `.8` and `.9` share the tested `34a587ea` base. Their original
+commits are preserved by the integration merges tracked in
+`infra-urocissa-private-audience-itz1.15`.
+
+Data and direct-resource responses use the same album projection: anonymous
+member totals and cover selection share one visibility-filtered pass; share
+totals use the existing share membership policy. Owner photo audience is added
+to the response envelope without replacing an album's independent nested
+audience. The frontend worker and direct parsers preserve those distinct fields.
+Both album and photo publication invalidate snapshots through the same durable
+revision; their migrations retain independent completion markers.
+
+Combined fixtures verify valid shares into private albums, anonymous exclusion,
+album-wide photo publication, owner photo audience in both response paths, and
+individual photo unpublication updating public album counts and cover while
+preserving the owner's chosen cover. The real worker parser also checks photo
+and album audience fields together. All validation uses disposable fixtures;
+no live data is migrated or cleaned by these checks.
+
+The next implementation task is `.10`. Production source pinning, verified
+backup, rollout, migration and the existing-video job require the separately
+approved `.11` workflow. Merging this source authorizes none of those operations.
+
+## Existing compressed-video metadata maintenance (`.5`)
+
+An authenticated owner can start the background operation with
+`POST /post/video/strip-metadata` (no body). It returns HTTP 202 with `jobId`;
+another start while it runs returns 409. Read-only mode refuses a start with
+405. `GET /get/video/strip-metadata` returns the latest job, or `null` before
+the first run. Both endpoints require owner authentication; public gallery,
+share and expired tokens cannot authorize them. No automatic startup job runs.
+
+The status contains `jobId`, `state`, `report` and `error`. States are `running`,
+`completed`, `completedWithErrors` and `failed`. After a complete scan, `report`
+contains `total`, `changed`, `unchanged`, `failed`, up to 20 error summaries and
+`verification`. Each initial target contributes to exactly one outcome count.
+Verification is a fresh scan with `total`, `checked`, `locationTagged`, `failed`
+and `passed`; unreadable files or traversal errors prevent `passed`. Completion
+requires both zero operation failures and passing verification. Status is
+process-local and retains only the latest run; save the returned report as
+delivery evidence before restarting the service or starting another run.
+
+The scan covers compressed MP4 filenames accepted by the media route, including
+orphaned, nested and versioned derivatives under `object/compressed`. It does
+not follow directory symlinks, and file symlinks fail verification. Imported
+originals, thumbnails, database records and audiences remain untouched. Each
+file is protected by the existing per-object media mutation lock. Source tags
+are stripped using the same container/stream policy as new compression, with
+chapters also removed. FFmpeg uses `-c copy`, preserving compressed streams;
+there is no re-encoding. Already-clean files are not rewritten.
+
+Each replacement is a unique hidden sibling file. Before publication the job
+checks the metadata allow-list, packet counts, stream properties/timing,
+rotation, codec extradata and compressed stream hashes. It syncs the file and
+uses one rename over the destination, with no missing-file interval. A command,
+verification or rename failure preserves the previous file and counts as failed.
+Commands time out after five minutes and are killed on cancellation. A canceled
+task removes its temporary file; a killed process may leave an unserved hidden
+temporary file, which subsequent runs ignore. Rerunning is safe. These are
+process-interruption guarantees, not a substitute for storage-level durability
+or a verified backup.
+
+Verification is an observation of the fresh scan, not a global storage freeze.
+Quiesce external writers for the final delivery audit. New application-generated
+videos already use the shared sanitization policy. Production execution still
+requires the fresh verified `urocissa_data` backup and explicit delivery steps
+in `infra-urocissa-private-audience-itz1.11`; this implementation was exercised
+only against generated fixtures.
+
+Targeted fixture checks (using the isolated target directory for the worktree):
+
+```sh
+cargo test --offline --locked operations::video_metadata
+cargo test --offline --locked strip_video_metadata
+cargo test --offline --locked compressed_videos_strip_source_metadata
+cargo test --offline --locked router::anonymous_route_tests
+```
 
 ## Interfaces for remaining tasks
 

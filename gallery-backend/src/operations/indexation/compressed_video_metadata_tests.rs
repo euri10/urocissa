@@ -170,6 +170,7 @@ fn compressed_videos_strip_source_metadata_and_remain_streamable() {
             "original changed"
         );
         let output = probe(&compressed);
+        assert!(super::super::video_metadata_policy::tags_are_clean(&output));
         eprintln!(
             "ffprobe {width}x{height}: compressed tags {}",
             output["format"]["tags"]

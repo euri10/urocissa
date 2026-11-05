@@ -8,6 +8,7 @@ pub mod post;
 pub mod put;
 pub mod saved_searches;
 pub mod selection;
+pub mod strip_video_metadata;
 pub use crate::public::error::{AppError, ErrorKind};
 pub type AppResult<T> = Result<T, AppError>;
 pub type GuardResult<T> = Result<T, AppError>;
@@ -25,3 +26,5 @@ mod share_edit_http_tests;
 mod album_audience_http_tests;
 #[cfg(test)]
 mod audience_http_tests;
+#[cfg(test)]
+mod strip_video_metadata_http_tests;

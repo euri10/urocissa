@@ -8,6 +8,7 @@ pub mod open_db;
 pub mod public_metadata;
 pub mod transitor;
 pub mod utils;
+pub mod video_metadata;
 pub mod visibility;
 
 pub fn resolve_show_download_and_metadata(
