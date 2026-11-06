@@ -10,6 +10,7 @@ use arrayvec::ArrayString;
 
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::AlbumCombined;
+use crate::public::structure::audience::Audience;
 use crate::public::structure::expression::{AlbumFilterValue, Expression, FilterValue};
 use crate::public::structure::object::{ObjectSchema, ObjectType};
 
@@ -2568,7 +2569,7 @@ impl TreeState {
             return false;
         };
         self.compile_expression(expression, hidden_metadata_album, false)
-            .matches(record, slot_ref.index())
+            .matches(record, slot_ref.index(), None)
     }
 
     pub fn compile_expression<'a>(
@@ -2990,6 +2991,7 @@ pub struct CompiledExpression<'a>(CompiledExpressionNode<'a>);
 #[derive(Debug)]
 enum CompiledExpressionNode<'a> {
     Constant(bool),
+    Audience(Audience),
     Or(Vec<Self>),
     And(Vec<Self>),
     Not(Box<Self>),
@@ -3029,8 +3031,8 @@ impl<'a> CompiledExpression<'a> {
         ))
     }
 
-    pub fn matches(&self, record: &CacheRecord, ordinal: u32) -> bool {
-        self.0.matches(record, ordinal)
+    pub fn matches(&self, record: &CacheRecord, ordinal: u32, audience: Option<Audience>) -> bool {
+        self.0.matches(record, ordinal, audience)
     }
 }
 
@@ -3042,6 +3044,7 @@ impl<'a> CompiledExpressionNode<'a> {
         hide_paths: bool,
     ) -> Self {
         match expression {
+            Expression::Audience(audience) => Self::Audience(*audience),
             Expression::Or(expressions) => Self::Or(
                 expressions
                     .iter()
@@ -3122,16 +3125,17 @@ impl<'a> CompiledExpressionNode<'a> {
         }
     }
 
-    fn matches(&self, record: &CacheRecord, ordinal: u32) -> bool {
+    fn matches(&self, record: &CacheRecord, ordinal: u32, audience: Option<Audience>) -> bool {
         match self {
             Self::Constant(value) => *value,
+            Self::Audience(expected) => audience == Some(*expected),
             Self::Or(expressions) => expressions
                 .iter()
-                .any(|expression| expression.matches(record, ordinal)),
+                .any(|expression| expression.matches(record, ordinal, audience)),
             Self::And(expressions) => expressions
                 .iter()
-                .all(|expression| expression.matches(record, ordinal)),
-            Self::Not(expression) => !expression.matches(record, ordinal),
+                .all(|expression| expression.matches(record, ordinal, audience)),
+            Self::Not(expression) => !expression.matches(record, ordinal, audience),
             Self::Membership(members) => members.is_some_and(|members| members.contains(ordinal)),
             Self::OwnedMembership(members) => members.contains(ordinal),
             Self::Bitmap(bitmap, value) => bitmap.contains(ordinal) == *value,
@@ -3444,9 +3448,11 @@ mod tests {
                 "owner: {expression:?}"
             );
             assert!(
-                !state
-                    .compile_expression(&expression, None, true)
-                    .matches(record, slot.index()),
+                !state.compile_expression(&expression, None, true).matches(
+                    record,
+                    slot.index(),
+                    None
+                ),
                 "anonymous: {expression:?}"
             );
             assert!(
@@ -3457,18 +3463,18 @@ mod tests {
 
         let not_path = Expression::Not(Box::new(Expression::Any("private-segment".to_owned())));
         assert!(!state.matches(slot, &not_path, None));
-        assert!(
-            state
-                .compile_expression(&not_path, None, true)
-                .matches(record, slot.index())
-        );
+        assert!(state.compile_expression(&not_path, None, true).matches(
+            record,
+            slot.index(),
+            None
+        ));
 
         // A public tag remains searchable even when the same text is also a hidden path.
         let tagged_slot = state.find("camera-31").unwrap();
         assert!(
             state
                 .compile_expression(&Expression::Any("private-segment".to_owned()), None, true)
-                .matches(state.get(tagged_slot).unwrap(), tagged_slot.index())
+                .matches(state.get(tagged_slot).unwrap(), tagged_slot.index(), None)
         );
     }
 
@@ -3498,9 +3504,11 @@ mod tests {
                 "owner: {expression:?}"
             );
             assert!(
-                state
-                    .compile_expression(&expression, None, true)
-                    .matches(record, slot.index()),
+                state.compile_expression(&expression, None, true).matches(
+                    record,
+                    slot.index(),
+                    None
+                ),
                 "anonymous: {expression:?}"
             );
         }
@@ -3525,7 +3533,7 @@ mod tests {
         assert!(
             state
                 .compile_expression(&Expression::ExtType("album".to_owned()), None, true)
-                .matches(state.get(album_slot).unwrap(), album_slot.index())
+                .matches(state.get(album_slot).unwrap(), album_slot.index(), None)
         );
     }
 
@@ -5101,7 +5109,7 @@ mod tests {
             .iter()
             .filter(|slot_ref| {
                 let record = state.get(**slot_ref).unwrap();
-                compiled.matches(record, slot_ref.index())
+                compiled.matches(record, slot_ref.index(), None)
             })
             .map(|slot_ref| slot_ref.raw())
             .collect::<Vec<_>>();
@@ -5110,7 +5118,7 @@ mod tests {
             .par_iter()
             .filter(|slot_ref| {
                 let record = state.get(**slot_ref).unwrap();
-                compiled.matches(record, slot_ref.index())
+                compiled.matches(record, slot_ref.index(), None)
             })
             .map(|slot_ref| slot_ref.raw())
             .collect::<Vec<_>>();

@@ -79,3 +79,22 @@ and(type: "image", trashed: false, or(any: "sony", any: "samsung"))
 ```
 
 Search for **image type** data that is **not in the trash**, and includes items that have **sony** or **samsung** in any field.
+
+### 9. Search by Visibility (Owner Only)
+
+As an owner, open **Advanced search → Visibility → Private**, or enter:
+
+```
+audience:"private"
+```
+
+Use `audience:"public"` for published items. Unquoted `audience:private` and
+`audience:public` also work. Combine visibility with other criteria, for example:
+
+```
+and(audience:"private", type:"image", tag:"family")
+```
+
+The filter applies to photos, videos, and each album's independent visibility.
+It stays within the current gallery or album. Visitors and share-link viewers
+cannot use audience filters. **Clear All** resets Visibility to **All**.

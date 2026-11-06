@@ -11,6 +11,7 @@ export interface AdvancedSearchCriteria {
   cameraMake: string | null
   cameraModel: string | null
   mediaType: AdvancedSearchMediaType
+  audience: 'all' | 'private' | 'public'
   sortOrder: GallerySortOrder
 }
 
@@ -25,6 +26,7 @@ export function createEmptyAdvancedSearchCriteria(
     cameraMake: null,
     cameraModel: null,
     mediaType: 'all',
+    audience: 'all',
     sortOrder
   }
 }
@@ -52,6 +54,10 @@ export function buildAdvancedSearchFilter(criteria: AdvancedSearchCriteria): str
 
   if (criteria.mediaType !== 'all') {
     parts.push(`type:${escapeAndWrap(criteria.mediaType)}`)
+  }
+
+  if (criteria.audience !== 'all') {
+    parts.push(`audience:${escapeAndWrap(criteria.audience)}`)
   }
 
   if (parts.length === 0) return ''

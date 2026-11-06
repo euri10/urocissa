@@ -8,6 +8,7 @@ use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::public::error::{AppError, ErrorKind, ResultExt};
+use crate::public::structure::audience::Viewer;
 use crate::public::structure::config::APP_CONFIG;
 use crate::router::claims::claims_timestamp::ClaimsTimestamp;
 use crate::router::fairing::VALIDATION;
@@ -83,7 +84,12 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
             Ok(visibility) => visibility,
             Err(error) => return Outcome::Error((error.http_status(), error)),
         };
-        if claims.viewer != visibility.viewer || claims.audience_revision != visibility.revision() {
+        // Owner snapshots without an audience filter retain their membership/order.
+        // Filtered and non-owner snapshots must refresh when visibility changes.
+        if claims.viewer != visibility.viewer
+            || ((visibility.viewer != Viewer::Owner || claims.audience_filtered)
+                && claims.audience_revision != visibility.revision())
+        {
             return Outcome::Error((
                 Status::Unauthorized,
                 AppError::new(
@@ -146,7 +152,10 @@ pub async fn renew_timestamp_token(
 
         let claims = token_data.claims;
         let visibility = PhotoVisibility::new(viewer(&auth.claims.role))?;
-        if claims.viewer != visibility.viewer || claims.audience_revision != visibility.revision() {
+        if claims.viewer != visibility.viewer
+            || ((visibility.viewer != Viewer::Owner || claims.audience_filtered)
+                && claims.audience_revision != visibility.revision())
+        {
             return Err(AppError::new(
                 ErrorKind::Auth,
                 "Gallery visibility changed; refresh the snapshot",
@@ -157,6 +166,7 @@ pub async fn renew_timestamp_token(
             claims.timestamp,
             visibility.viewer,
             visibility.revision(),
+            claims.audience_filtered,
         );
         let new_token = new_claims.encode();
 

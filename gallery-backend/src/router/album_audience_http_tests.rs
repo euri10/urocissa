@@ -591,7 +591,27 @@ async fn publication_checks(client: &Client) {
     add_member(client, &created, PRIVATE_COVER).await;
     let previous = snapshot(client, &Expression::Trashed(false), true, "descending").await;
     publish(client, &created, "public", Some(true)).await;
-    stale_snapshot(client, &previous, true).await;
+    for route in ["data", "rows", "scroll"] {
+        assert_eq!(
+            owner(client.get(snapshot_path(route, &previous)), true)
+                .dispatch()
+                .await
+                .status(),
+            Status::Ok
+        );
+    }
+    assert_eq!(
+        owner(
+            client
+                .post("/post/renew-timestamp-token")
+                .json(&json!({"token": previous.token})),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Ok
+    );
     for photo in members(client, &created, true).await {
         assert_eq!(photo["audience"], "public");
         let hash = photo["abstractData"]["id"].as_str().unwrap();

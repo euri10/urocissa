@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { generateJsonString } from '@/script/lexer/generateJson'
 import {
   buildAdvancedSearchFilter,
   createEmptyAdvancedSearchCriteria,
@@ -52,5 +53,14 @@ describe('advanced search filter builder', () => {
         criteria({ cameraMake: '  Canon  ', cameraModel: null, mediaType: 'image' })
       )
     ).toBe('and(make:"Canon", type:"image")')
+  })
+
+  it.each(['private', 'public'] as const)('combines %s audience with tags and media type', (audience) => {
+    const query = buildAdvancedSearchFilter(criteria({ audience, tag: 'family', mediaType: 'image' }))
+    expect(query).toBe(`and(tag:"family", type:"image", audience:"${audience}")`)
+    expect(JSON.parse(generateJsonString(query))).toEqual({
+      And: [{ Tag: 'family' }, { ExtType: 'image' }, { Audience: audience }]
+    })
+    expect(createEmptyAdvancedSearchCriteria().audience).toBe('all')
   })
 })

@@ -169,6 +169,7 @@ fn create_resource_snapshot(
         prefetch.timestamp,
         visibility.viewer,
         visibility.revision(),
+        false,
     );
     let token = claims.encode();
     let response_viewer =

@@ -5,6 +5,7 @@ import {
   AnyExpressionCstChildren,
   ArchivedExpressionCstChildren,
   AtomicExpressionCstChildren,
+  AudienceExpressionCstChildren,
   ExpressionCstChildren,
   ExtExpressionCstChildren,
   FavoriteExpressionCstChildren,
@@ -41,11 +42,17 @@ const Any: TokenType = createToken({ name: 'Any', pattern: /any:/ })
 const Favorite: TokenType = createToken({ name: 'Favorite', pattern: /favorite:/ })
 const Archived: TokenType = createToken({ name: 'Archived', pattern: /archived:/ })
 const Trashed: TokenType = createToken({ name: 'Trashed', pattern: /trashed:/ })
+const Audience: TokenType = createToken({ name: 'Audience', pattern: /audience:/ })
 const Comma: TokenType = createToken({ name: 'Comma', pattern: /,/ })
 
 const BooleanValue: TokenType = createToken({
   name: 'BooleanValue',
   pattern: /true|false/
+})
+
+const AudienceValue: TokenType = createToken({
+  name: 'AudienceValue',
+  pattern: /(?:private|public)\b/
 })
 
 const Identifier: TokenType = createToken({
@@ -77,8 +84,10 @@ const allTokens: TokenType[] = [
   Favorite,
   Archived,
   Trashed,
+  Audience,
   Comma,
   BooleanValue,
+  AudienceValue,
   Identifier
 ]
 
@@ -133,7 +142,8 @@ export class MyParser extends CstParser {
       { ALT: () => this.SUBRULE(this.anyExpression) },
       { ALT: () => this.SUBRULE(this.favoriteExpression) },
       { ALT: () => this.SUBRULE(this.archivedExpression) },
-      { ALT: () => this.SUBRULE(this.trashedExpression) }
+      { ALT: () => this.SUBRULE(this.trashedExpression) },
+      { ALT: () => this.SUBRULE(this.audienceExpression) }
     ])
   })
 
@@ -200,6 +210,13 @@ export class MyParser extends CstParser {
   public trashedExpression = this.RULE('trashedExpression', () => {
     this.CONSUME1(Trashed)
     this.CONSUME2(BooleanValue)
+  })
+  public audienceExpression = this.RULE('audienceExpression', () => {
+    this.CONSUME1(Audience)
+    this.OR([
+      { ALT: () => this.CONSUME(Identifier) },
+      { ALT: () => this.CONSUME(AudienceValue) }
+    ])
   })
 }
 
@@ -279,6 +296,9 @@ export class MyVisitor extends BaseVisitor {
     if (children.trashedExpression) {
       return this.visit(children.trashedExpression)
     }
+    if (children.audienceExpression) {
+      return this.visit(children.audienceExpression)
+    }
   }
 
   // Visit a tagExpression node
@@ -336,5 +356,14 @@ export class MyVisitor extends BaseVisitor {
   }
   trashedExpression(children: TrashedExpressionCstChildren) {
     return { Trashed: getArrayValue(children.BooleanValue, 0).image === 'true' }
+  }
+  audienceExpression(children: AudienceExpressionCstChildren) {
+    const value = children.Identifier
+      ? unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image)
+      : getArrayValue(children.AudienceValue ?? [], 0).image
+    if (value !== 'private' && value !== 'public') {
+      throw new Error('Audience must be "private" or "public"')
+    }
+    return { Audience: value }
   }
 }

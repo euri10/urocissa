@@ -38,8 +38,11 @@ handler-specific audience rules.
 Prefetch filters before building snapshots in every sort order. Data, rows,
 direct resources and all three media routes recheck visibility. Timestamp
 tokens and query caches carry the viewer and audience revision: an owner
-snapshot cannot be replayed anonymously, and an audience change requires a new
-snapshot. Old timestamp tokens without these fields are rejected; clients must
+snapshot cannot be replayed anonymously. An audience change requires a new
+snapshot for visitors and for owner queries containing an audience predicate;
+unfiltered owner snapshots retain their membership and remain usable. The signed
+`audienceFiltered` claim preserves that distinction through token renewal. Old
+timestamp tokens without viewer/revision fields are rejected; clients must
 refresh. Share permissions are resolved again on each timestamp request.
 Media responses use `Cache-Control: no-store` (originals also specify `private`),
 so future requests cannot bypass visibility checks through a shared or browser
@@ -162,9 +165,17 @@ and `token`; direct resource responses use the same envelope under `data`.
 Anonymous/share responses and album records omit it. Frontend worker and direct
 resource parsers carry the envelope value into the client media model without
 changing the frozen V6 record. After accepted mutations, the frontend updates
-cached media, clears selection/tokens, and refreshes both collection hosts and
-loaded direct resources. Existing server revision checks immediately invalidate
-old snapshots and enforce visibility on future metadata and media requests.
+cached media in place, preserving scroll, selection, and direct views. Collections
+with an audience filter refresh because membership may have changed. Bulk
+selections containing unloaded photos retain the full refresh fallback because
+the client cannot identify every affected cached copy. Server revision checks
+still invalidate visitor and audience-filtered snapshots and enforce visibility
+on future metadata and media requests.
+
+Owners can use `audience:"private"` or `audience:"public"` in searches, including
+nested Boolean expressions and album searches. Advanced Search exposes the same
+filter under Visibility. The backend rejects audience predicates for all non-owner
+viewers before query-cache lookup, including predicates under `not` or `or`.
 
 Fixture regressions cover upload default/true/false and switch reset, owner-only
 controls/badges, both response parsing paths, single/batch/allExcept mutations,
@@ -216,8 +227,9 @@ member totals and cover selection share one visibility-filtered pass; share
 totals use the existing share membership policy. Owner photo audience is added
 to the response envelope without replacing an album's independent nested
 audience. The frontend worker and direct parsers preserve those distinct fields.
-Both album and photo publication invalidate snapshots through the same durable
-revision; their migrations retain independent completion markers.
+Both album and photo publication advance the same durable revision, invalidating
+visitor and audience-filtered snapshots; their migrations retain independent
+completion markers.
 
 Combined fixtures verify valid shares into private albums, anonymous exclusion,
 album-wide photo publication, owner photo audience in both response paths, and
@@ -309,7 +321,7 @@ other response fields.
 
 Photo controls use
 `DataStore::photo_audiences().get(hash)` and `set_photo_audiences`; the setter
-invalidates previous snapshots through its durable revision. The existing
+invalidates visitor and audience-filtered snapshots through its durable revision. The existing
 `photo_audiences()` accessor also reads album IDs, and `Audience` serializes as
 lowercase `private`/`public`. Albums use `set_album_audience(hash, audience,
 publish_photos)` without changing the photo setter or frozen V6 schema. Preserve
@@ -335,7 +347,7 @@ revision. Scrollbar reads additionally recheck every snapshot
 member, so removing a member from a share or trashing it cannot expose old month
 boundaries even when the photo-audience revision has not changed. Such reads
 fail with 404 and require a fresh prefetch; an audience revision change rejects
-the old timestamp with 401.
+visitor and audience-filtered timestamps with 401.
 
 Both `get_data` and `get_resource` authorize records before invoking the shared
 album response wrapper. It projects share `itemCount` and `itemSize` through

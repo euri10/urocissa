@@ -29,7 +29,7 @@ use chrono::{TimeZone, Utc};
 use rand::seq::SliceRandom;
 use rayon::iter::ParallelIterator;
 use rayon::slice::ParallelSlice;
-use rocket::serde::json::Json;
+use rocket::serde::json::{Error as JsonError, Json};
 use serde::{Deserialize, Serialize};
 use std::hash::Hasher;
 use std::hash::{DefaultHasher, Hash};
@@ -323,6 +323,7 @@ fn check_query_cache(
     query_hash: u64,
     resolved_share_option: &mut Option<ResolvedShare>,
     visibility: &PhotoVisibility,
+    audience_filtered: bool,
 ) -> Option<Json<PrefetchReturn>> {
     let find_cache_start_time = Instant::now();
 
@@ -338,6 +339,7 @@ fn check_query_cache(
             prefetch.timestamp,
             visibility.viewer,
             visibility.revision(),
+            audience_filtered,
         );
         return Some(Json(PrefetchReturn::new(
             prefetch,
@@ -384,6 +386,7 @@ fn filter_items(
     let compiled_expression = visible_expression.as_ref().map(|expression| {
         tree_guard.compile_expression(expression, hidden_metadata_album, hide_paths)
     });
+    let audience_filtered = expression_option.is_some_and(Expression::contains_audience);
     crate::perf_timing!(
         "prefetch.compile_expression",
         compile_start,
@@ -401,10 +404,12 @@ fn filter_items(
                 if !visibility.allows_cached(&tree_guard, *slot_ref)? {
                     continue;
                 }
-                if compiled_expression
-                    .as_ref()
-                    .is_some_and(|expression| !expression.matches(record, slot_ref.index()))
-                {
+                let audience = audience_filtered
+                    .then(|| visibility.audience(record.id.as_str()))
+                    .transpose()?;
+                if compiled_expression.as_ref().is_some_and(|expression| {
+                    !expression.matches(record, slot_ref.index(), audience)
+                }) {
                     continue;
                 }
                 matches.push(*slot_ref);
@@ -460,9 +465,12 @@ fn filter_items(
             if !visibility.allows_cached(&tree_guard, *slot_ref)? {
                 return Ok(());
             }
+            let audience = audience_filtered
+                .then(|| visibility.audience(record.id.as_str()))
+                .transpose()?;
             if compiled_expression
                 .as_ref()
-                .is_some_and(|expression| !expression.matches(record, slot_ref.index()))
+                .is_some_and(|expression| !expression.matches(record, slot_ref.index(), audience))
             {
                 return Ok(());
             }
@@ -621,6 +629,7 @@ fn create_json_response(
     query_hash: Option<u64>,
     resolved_share_option: Option<ResolvedShare>,
     visibility: &PhotoVisibility,
+    audience_filtered: bool,
 ) -> Json<PrefetchReturn> {
     let json_start_time = Instant::now();
 
@@ -641,6 +650,7 @@ fn create_json_response(
         timestamp_millis,
         visibility.viewer,
         visibility.revision(),
+        audience_filtered,
     );
     let json = Json(PrefetchReturn::new(
         prefetch,
@@ -670,6 +680,7 @@ fn execute_prefetch_logic(
 ) -> Result<Json<PrefetchReturn>, AppError> {
     // Start timer
     let start_time = Instant::now();
+    let audience_filtered = expression_option.is_some_and(Expression::contains_audience);
 
     // Step 1: Build cache key for response creation
     let hidden_metadata_album = resolved_share_option
@@ -692,8 +703,12 @@ fn execute_prefetch_logic(
 
     // Step 2: Check if query cache is available
     if let Some(query_hash) = query_hash
-        && let Some(cached_response) =
-            check_query_cache(query_hash, &mut resolved_share_option, visibility)
+        && let Some(cached_response) = check_query_cache(
+            query_hash,
+            &mut resolved_share_option,
+            visibility,
+            audience_filtered,
+        )
     {
         return Ok(cached_response);
     }
@@ -719,6 +734,7 @@ fn execute_prefetch_logic(
         query_hash,
         resolved_share_option,
         visibility,
+        audience_filtered,
     );
 
     // Total elapsed time
@@ -753,17 +769,35 @@ fn constrain_query_to_share(
 )]
 pub async fn prefetch(
     auth_guard: GuardResult<GuardShare>,
-    query_data: Option<Json<Expression>>,
+    query_data: Result<Json<Option<Expression>>, JsonError<'_>>,
     locate: Option<String>,
     sort: Option<String>,
 ) -> AppResult<Json<PrefetchReturn>> {
     let auth_guard = auth_guard?;
+    let query_data = match query_data {
+        Ok(query) => query.into_inner(),
+        Err(JsonError::Parse(body, _)) if body.trim().is_empty() => None,
+        Err(error) => {
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                format!("Invalid search filter: {error}"),
+            ));
+        }
+    };
     let request_viewer = viewer(&auth_guard.claims.role);
+    if request_viewer != Viewer::Owner
+        && query_data
+            .as_ref()
+            .is_some_and(|query| query.contains_audience())
+    {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "Audience expressions require owner access",
+        ));
+    }
     // Combine album filter (if any) with the client‑supplied query.
-    let client_expression = constrain_public_query(
-        query_data.map(rocket::serde::json::Json::into_inner),
-        request_viewer == Viewer::Anonymous,
-    )?;
+    let client_expression =
+        constrain_public_query(query_data, request_viewer == Viewer::Anonymous)?;
     let resolved_share_option = auth_guard.claims.get_share();
     let sort_order = sort
         .as_deref()

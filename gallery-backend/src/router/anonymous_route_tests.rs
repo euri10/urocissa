@@ -55,6 +55,9 @@ fn private_gallery_rejects_anonymous_non_get_routes() {
 }
 
 fn probe_body(path: &str) -> Value {
+    if path == "/get/prefetch" {
+        return json!({"Trashed": false});
+    }
     if path == "/post/authenticate" {
         // Login accepts an owner password by design. An anonymous bad password
         // must fail, and must not be exempted from the route enumeration.

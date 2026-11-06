@@ -16,6 +16,7 @@ use serde_json::Value;
 
 mod media;
 mod mutations;
+mod search;
 
 use crate::{
     public::{
@@ -507,6 +508,16 @@ async fn public_checks(client: &Client, records: &[AbstractData]) {
                 .status(),
             Status::Unauthorized
         );
+        assert_eq!(
+            client
+                .get(snapshot_path(route, &shared))
+                .header(Header::new("x-album-id", ALBUM))
+                .header(Header::new("x-share-id", "fixture-share"))
+                .dispatch()
+                .await
+                .status(),
+            Status::Unauthorized
+        );
     }
     let response = client
         .post("/post/renew-timestamp-token")
@@ -515,6 +526,17 @@ async fn public_checks(client: &Client, records: &[AbstractData]) {
         .dispatch()
         .await;
     assert_eq!(response.status(), Status::Unauthorized);
+    assert_eq!(
+        client
+            .post("/post/renew-timestamp-token")
+            .json(&serde_json::json!({"token": shared.token}))
+            .header(Header::new("x-album-id", ALBUM))
+            .header(Header::new("x-share-id", "fixture-share"))
+            .dispatch()
+            .await
+            .status(),
+        Status::Unauthorized
+    );
     let current = snapshot(client, false, "descending").await;
     aggregates::checks(client, true).await;
     assert_eq!(
@@ -674,6 +696,7 @@ async fn http_child() {
         media::download_revocation(&client, &records).await;
         return;
     }
+    search::checks(&client).await;
     if crate::router::fairing::guard_gallery::public_gallery_enabled() {
         public_checks(&client, &records).await;
     } else {

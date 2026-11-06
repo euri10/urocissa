@@ -14,6 +14,9 @@ pub struct ClaimsTimestamp {
     // Required fields invalidate snapshots issued before audience enforcement.
     pub viewer: Viewer,
     pub audience_revision: u64,
+    // Older snapshots predate audience predicates, so their membership is unaffected.
+    #[serde(default)]
+    pub audience_filtered: bool,
     pub timestamp: i64,
     pub exp: u64,
 }
@@ -24,6 +27,7 @@ impl ClaimsTimestamp {
         timestamp: i64,
         viewer: Viewer,
         audience_revision: u64,
+        audience_filtered: bool,
     ) -> Self {
         #[allow(clippy::cast_sign_loss)]
         let exp = (Utc::now().timestamp_millis() / 1000) as u64 + 300;
@@ -32,6 +36,7 @@ impl ClaimsTimestamp {
             resolved_share_opt,
             viewer,
             audience_revision,
+            audience_filtered,
             timestamp,
             exp,
         }

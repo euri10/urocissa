@@ -55,27 +55,76 @@ async fn check_mutation_guards(client: &Client) {
     assert_eq!(TREE.store.photo_audiences().unwrap().revision, revision);
 }
 
+async fn check_owner_snapshots(
+    client: &Client,
+    before: &PrefetchReturn,
+    direct_before: &PrefetchReturn,
+    audience: &str,
+) {
+    for route in ["data", "rows", "scroll"] {
+        assert_eq!(
+            owner(client.get(snapshot_path(route, before)), true)
+                .dispatch()
+                .await
+                .status(),
+            Status::Ok
+        );
+    }
+    for snapshot in [before, direct_before] {
+        let response = owner(client.get(snapshot_path("data", snapshot)), true)
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        let data = response.into_json::<Vec<Value>>().await.unwrap();
+        assert_eq!(
+            data.iter()
+                .find(|item| item["abstractData"]["id"] == PRIVATE)
+                .unwrap()["audience"],
+            audience
+        );
+    }
+    let response = owner(
+        client
+            .post("/post/renew-timestamp-token")
+            .json(&json!({"token": before.token})),
+        true,
+    )
+    .dispatch()
+    .await;
+    assert_eq!(response.status(), Status::Ok);
+    let mut renewed = before.clone();
+    renewed.token = response.into_json::<Value>().await.unwrap()["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        hashes(client, &renewed, true).await,
+        hashes(client, before, true).await
+    );
+    // Owner capabilities still require an authenticated owner after renewal.
+    assert_eq!(
+        client
+            .post("/post/renew-timestamp-token")
+            .json(&json!({"token": before.token}))
+            .dispatch()
+            .await
+            .status(),
+        Status::Unauthorized
+    );
+}
+
 async fn check_single(client: &Client, public: bool) {
     let body = json!({"hash": PRIVATE, "audience": "public"});
     let before = snapshot(client, true, "descending").await;
-    assert_eq!(
-        resource(client, PRIVATE, true).await["data"]["audience"],
-        "private"
-    );
+    let direct_before = resource(client, PRIVATE, true).await;
+    assert_eq!(direct_before["data"]["audience"], "private");
+    let direct_before = serde_json::from_value(direct_before).unwrap();
     assert_eq!(change(client, body, true).await, Status::Ok);
     assert_eq!(
         resource(client, PRIVATE, true).await["data"]["audience"],
         "public"
     );
-    for route in ["data", "rows", "scroll"] {
-        assert_eq!(
-            owner(client.get(snapshot_path(route, &before)), true)
-                .dispatch()
-                .await
-                .status(),
-            Status::Unauthorized
-        );
-    }
+    check_owner_snapshots(client, &before, &direct_before, "public").await;
     if public {
         assert!(
             resource(client, PRIVATE, false).await["data"]
@@ -108,6 +157,7 @@ async fn check_single(client: &Client, public: bool) {
         resource(client, PRIVATE, true).await["data"]["audience"],
         "private"
     );
+    check_owner_snapshots(client, &before, &direct_before, "private").await;
     if public {
         assert_eq!(
             client.get(&media).dispatch().await.status(),
@@ -147,6 +197,7 @@ async fn check_batch(client: &Client) {
     let response = owner(client.get(snapshot_path("data", &current)), true)
         .dispatch()
         .await;
+    assert_eq!(response.status(), Status::Ok);
     let data = response.into_json::<Vec<Value>>().await.unwrap();
     let index = |hash: &str| {
         data.iter()
@@ -169,10 +220,11 @@ async fn check_batch(client: &Client) {
             "public"
         );
     }
-    let current = snapshot(client, true, "descending").await;
+    // The second batch reuses the original indices and snapshot after publication.
     let response = owner(client.get(snapshot_path("data", &current)), true)
         .dispatch()
         .await;
+    assert_eq!(response.status(), Status::Ok);
     let data = response.into_json::<Vec<Value>>().await.unwrap();
     let excluded = data
         .iter()

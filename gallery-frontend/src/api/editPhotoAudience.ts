@@ -1,14 +1,12 @@
 import axios from 'axios'
 import { useConfigStore } from '@/store/configStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
-import { useTokenStore } from '@/store/tokenStore'
-import { useCollectionStore } from '@/store/collectionStore'
 import { useCollectionReloadStore } from '@/store/collectionReloadStore'
 import { useRouteResourceStore } from '@/store/routeResourceStore'
+import { useFilterStore } from '@/store/filterStore'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import {
-  allResourceIsolationIds,
   selectedCachedResourceIds,
   updateCachedResource
 } from '@/script/utils/routeResourceCache'
@@ -30,33 +28,43 @@ export async function editPhotoAudience(
     useMessageStore('mainId').error('Cannot update audience because the collection is not ready.')
     return
   }
-  const ids = typeof target === 'string'
+  const timestamp = prefetch.timestamp
+  const count = selection === undefined ? 1 : selectionCount(selection, prefetch.dataLength)
+  const ids = new Set(typeof target === 'string'
     ? [target]
-    : selectedCachedResourceIds(isolationId, normalizeSelection(target))
+    : selectedCachedResourceIds(isolationId, normalizeSelection(target)))
 
   await tryWithMessageStore('mainId', async () => {
     await axios.put('/put/edit_photo_audience', typeof target === 'string'
       ? { hash: target, audience }
-      : { selection, timestamp: prefetch.timestamp, audience })
+      : { selection, timestamp, audience })
 
+    // Include batches loaded during the request, but never reuse indices after navigation.
+    if (selection !== undefined && prefetch.timestamp === timestamp) {
+      for (const id of selectedCachedResourceIds(isolationId, selection)) ids.add(id)
+    }
     for (const id of ids) {
       updateCachedResource(id, (data) => {
         if (data.type !== 'album') data.audience = audience
       })
     }
-    // Every snapshot carries the audience revision, including unselected rows.
-    // Refresh both collection hosts and direct views before reusing their tokens.
-    for (const id of allResourceIsolationIds) {
-      useTokenStore(id).clearAll()
-      useCollectionStore(id).clearSelection()
-    }
+    // Unloaded batch members may also be cached in another collection. Without
+    // their IDs, refresh those snapshots so they cannot keep stale audience badges.
     const reload = useCollectionReloadStore('mainId')
-    reload.requestMainCollectionReload()
-    reload.requestSubCollectionReload()
-    await Promise.all((['detailId', 'subDetailId'] as const).map(async (id) => {
-      const resource = useRouteResourceStore(id)
-      if (resource.requestedId !== null) await resource.load(resource.requestedId, true)
-    }))
+    const hasUnloadedSelection = ids.size < count
+    if (hasUnloadedSelection || useFilterStore('mainId').hasAudienceFilter) {
+      reload.requestMainCollectionReload()
+    }
+    if (hasUnloadedSelection || useFilterStore('subId').hasAudienceFilter) {
+      reload.requestSubCollectionReload()
+    }
+    if (hasUnloadedSelection) {
+      await Promise.all((['detailId', 'subDetailId'] as const).map(async (id) => {
+        const resource = useRouteResourceStore(id)
+        if (resource.requestedId !== null) await resource.load(resource.requestedId, true)
+      }))
+    }
+    // Otherwise keep the owner grid, selection and detail view in place, as for tag edits.
     useMessageStore('mainId').success(audience === 'public' ? 'Photos published.' : 'Photos made private.')
   })
 }

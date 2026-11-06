@@ -1,3 +1,4 @@
+use super::audience::Audience;
 use arrayvec::ArrayString;
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +28,7 @@ pub enum Expression {
     Make(FilterValue),
     Path(String),
     Album(AlbumFilterValue),
+    Audience(Audience),
     Any(String),
     // Boolean field filters
     Favorite(bool),
@@ -35,6 +37,17 @@ pub enum Expression {
 }
 
 impl Expression {
+    pub fn contains_audience(&self) -> bool {
+        match self {
+            Self::Audience(_) => true,
+            Self::Or(expressions) | Self::And(expressions) => {
+                expressions.iter().any(Self::contains_audience)
+            }
+            Self::Not(expression) => expression.contains_audience(),
+            _ => false,
+        }
+    }
+
     pub fn contains_path(&self) -> bool {
         match self {
             Self::Path(_) => true,

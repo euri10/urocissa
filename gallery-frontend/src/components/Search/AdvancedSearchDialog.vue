@@ -2,6 +2,8 @@
 import { computed, reactive } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useSearchFacetStore } from '@/store/searchFacetStore'
+import { useConfigStore } from '@/store/configStore'
+import { useShareStore } from '@/store/shareStore'
 import {
   buildAdvancedSearchFilter,
   createEmptyAdvancedSearchCriteria,
@@ -28,6 +30,9 @@ const emit = defineEmits<{
 
 const { smAndDown } = useDisplay()
 const searchFacetStore = useSearchFacetStore()
+const configStore = useConfigStore('mainId')
+const shareStore = useShareStore('mainId')
+const canFilterAudience = computed(() => configStore.isAdmin && shareStore.shareId === null)
 const criteria = reactive<AdvancedSearchCriteria>(
   createEmptyAdvancedSearchCriteria(props.sortOrder)
 )
@@ -41,7 +46,10 @@ function clearAll(): void {
 
 function submitSearch(): void {
   emit('search', {
-    query: buildAdvancedSearchFilter(criteria),
+    query: buildAdvancedSearchFilter({
+      ...criteria,
+      audience: canFilterAudience.value ? criteria.audience : 'all'
+    }),
     sortOrder: criteria.sortOrder
   })
   isOpen.value = false
@@ -164,6 +172,28 @@ function submitSearch(): void {
             Album
           </v-btn>
         </v-btn-toggle>
+
+        <template v-if="canFilterAudience">
+          <v-label
+            for="advanced-audience-toggle"
+            text="Visibility"
+            class="text-subtitle-2 mt-4 mb-2"
+          />
+          <v-btn-toggle
+            id="advanced-audience-toggle"
+            v-model="criteria.audience"
+            mandatory
+            color="primary"
+            border
+            divided
+            class="d-flex"
+            aria-label="Visibility"
+          >
+            <v-btn value="all" class="flex-1-1-0">All</v-btn>
+            <v-btn value="private" class="flex-1-1-0">Private</v-btn>
+            <v-btn value="public" class="flex-1-1-0">Public</v-btn>
+          </v-btn-toggle>
+        </template>
 
         <v-label
           for="advanced-sort-order-toggle"
