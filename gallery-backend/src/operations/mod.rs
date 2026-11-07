@@ -1,6 +1,7 @@
 use crate::public::structure::album::ResolvedShare;
 
 pub mod album_visibility;
+pub mod autotag;
 pub mod hash;
 pub mod indexation;
 pub mod initialization;
