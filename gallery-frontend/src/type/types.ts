@@ -56,7 +56,7 @@ export interface SlicedData {
   hashTokenExpiresAt: number | undefined
 }
 
-export type GallerySortOrder = 'descending' | 'ascending' | 'random'
+export type GallerySortOrder = 'descending' | 'ascending' | 'random' | 'relevance'
 export type CollectionIsolationId = 'mainId' | 'subId' | 'tempId' | 'shareId'
 export type RouteResourceIsolationId = 'detailId' | 'subDetailId'
 export type IsolationId = CollectionIsolationId | RouteResourceIsolationId
@@ -84,4 +84,3 @@ export interface ShareFormData {
   showDownload: boolean
   showMetadata: boolean
 }
-

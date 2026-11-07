@@ -4,6 +4,7 @@ import SearchHistoryList from './SearchHistoryList.vue'
 import type { GallerySortOrder } from '@/type/types'
 import {
   getQuickSortPresentation,
+  hasSemanticSearch,
   nextQuickSortOrder
 } from '@/script/utils/gallerySort'
 
@@ -47,7 +48,7 @@ function clearAndSearch(): void {
 }
 
 function toggleSort(): void {
-  emit('sort', nextQuickSortOrder(props.sortOrder))
+  emit('sort', nextQuickSortOrder(props.sortOrder, hasSemanticSearch(searchQuery.value)))
 }
 </script>
 

@@ -25,6 +25,7 @@ import BtnCreateAlbum from '@Menu/MenuButton/BtnCreateAlbum.vue'
 import type { GallerySortOrder, SavedSearchContext } from '@/type/types'
 import {
   parseGallerySortOrder,
+  hasSemanticSearch,
   type GallerySearchSubmission
 } from '@/script/utils/gallerySort'
 
@@ -109,7 +110,7 @@ async function applySearchState({
     query: routeQuery
   }
   if (
-    sortOrder === 'random' &&
+    (sortOrder === 'random' || hasSemanticSearch(rawQuery)) &&
     router.resolve(location).fullPath === route.fullPath
   ) {
     collectionReloadStore.requestMainCollectionReload()

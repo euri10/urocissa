@@ -86,6 +86,11 @@ pub fn normalize_and_validate_saved_searches(searches: &mut Vec<SavedSearch>) ->
     let mut ids = HashSet::with_capacity(searches.len());
 
     for search in searches {
+        // Previous binaries must still be able to deserialize the private configuration.
+        ensure!(
+            search.sort_order != GallerySortOrder::Relevance,
+            "Relevance searches use local search history and cannot be saved to configuration"
+        );
         search.name = normalize_saved_search_name(&search.name)?;
         search.query = normalize_saved_search_query(&search.query)?;
         ensure!(
@@ -147,6 +152,19 @@ mod tests {
             serde_json::to_value(SavedSearchContext::Favorite).unwrap(),
             serde_json::json!("favorite")
         );
+    }
+
+    #[test]
+    fn relevance_order_is_never_persisted_for_previous_binaries() {
+        let mut searches = vec![SavedSearch::new_with_sort(
+            "Birds".into(),
+            SavedSearchContext::Home,
+            "semantic:\"bird\"".into(),
+            GallerySortOrder::Relevance,
+        )];
+        assert!(normalize_and_validate_saved_searches(&mut searches).is_err());
+        searches[0].sort_order = GallerySortOrder::Descending;
+        assert!(normalize_and_validate_saved_searches(&mut searches).is_ok());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import type { RouteLocationRaw } from 'vue-router'
 import type { SavedSearch, SavedSearchContext } from '@/type/types'
-import { parseGallerySortOrder } from '@/script/utils/gallerySort'
+import { hasSemanticSearch, parseGallerySortOrder } from '@/script/utils/gallerySort'
 
 const contextSet = new Set<SavedSearchContext>([
   'home',
@@ -35,7 +35,7 @@ export function canSaveSearch(
   context: SavedSearchContext | null,
   query: string | null
 ): boolean {
-  return context !== null && query !== null && query.trim() !== ''
+  return context !== null && query !== null && query.trim() !== '' && !hasSemanticSearch(query)
 }
 
 export function createSavedSearchLocation(search: SavedSearch): RouteLocationRaw {

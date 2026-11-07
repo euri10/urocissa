@@ -48,10 +48,13 @@ impl ImageEmbedding {
     }
 }
 
-/// Blocking calls run only on the embedding worker's dedicated thread.
+/// Blocking calls run on the embedding worker or a blocking search task.
 pub trait Embedder: Send + Sync {
     fn info(&self) -> Result<ModelInfo>;
     fn embed_image(&self, jpeg: Vec<u8>) -> Result<ImageEmbedding>;
+    fn embed_text(&self, _text: &str) -> Result<ImageEmbedding> {
+        anyhow::bail!("text embeddings are unavailable")
+    }
 }
 
 pub struct HttpEmbedder {
@@ -119,6 +122,28 @@ impl Embedder for HttpEmbedder {
                 .body(jpeg)
                 .send()?,
         )
+    }
+
+    fn embed_text(&self, text: &str) -> Result<ImageEmbedding> {
+        #[derive(Deserialize)]
+        struct Response {
+            model_id: String,
+            embeddings: Vec<Vec<f32>>,
+        }
+        let mut response: Response = decode(
+            self.client
+                .post(self.base.join("v1/embed/text")?)
+                .json(&serde_json::json!({ "texts": [text] }))
+                .send()?,
+        )?;
+        ensure!(
+            response.embeddings.len() == 1,
+            "expected one text embedding"
+        );
+        Ok(ImageEmbedding {
+            model_id: response.model_id,
+            embedding: response.embeddings.pop().unwrap(),
+        })
     }
 }
 

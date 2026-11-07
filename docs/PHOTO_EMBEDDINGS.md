@@ -1,7 +1,8 @@
 # Background photo embeddings
 
-This is the indexing foundation for the auto-tagging epic. It stores photo vectors;
-it does **not yet add auto tags, semantic search, or similar-photo UI**.
+This is the indexing foundation for the auto-tagging epic. It stores photo vectors
+and supports [owner semantic search](SEARCH.md#10-semantic-search-owner-only).
+Auto tags and similar-photo UI are separate slices.
 
 ## Enable
 
@@ -37,7 +38,8 @@ disables the pause control. Changing the URL requires a restart.
 - Rotation/reindex changes the thumbnail version; stale in-flight results are
   discarded. Deleted photos are excluded from the current inventory. Cached old
   models/deleted-photo vectors are not automatically compacted in this slice;
-  future search must intersect vectors with the live authorized photo inventory.
+  semantic search intersects vectors with the live authorized photo inventory and
+  requires a matching thumbnail version. Old model/frame vectors are excluded.
 
 ## Storage and rollback
 

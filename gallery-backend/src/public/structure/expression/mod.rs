@@ -29,6 +29,7 @@ pub enum Expression {
     Path(String),
     Album(AlbumFilterValue),
     Audience(Audience),
+    Semantic(String),
     Any(String),
     // Boolean field filters
     Favorite(bool),
@@ -37,6 +38,17 @@ pub enum Expression {
 }
 
 impl Expression {
+    pub fn contains_semantic(&self) -> bool {
+        match self {
+            Self::Semantic(_) => true,
+            Self::Or(expressions) | Self::And(expressions) => {
+                expressions.iter().any(Self::contains_semantic)
+            }
+            Self::Not(expression) => expression.contains_semantic(),
+            _ => false,
+        }
+    }
+
     pub fn contains_audience(&self) -> bool {
         match self {
             Self::Audience(_) => true,

@@ -177,12 +177,18 @@ export const prefetchReturnSchema = z
   .object({
     prefetch: prefetchSchema,
     token: z.string(),
-    resolvedShareOpt: ResolvedShareSchema.nullable()
+    resolvedShareOpt: ResolvedShareSchema.nullable(),
+    semanticSearch: z.object({
+      selection: z.string(),
+      indexedPhotos: z.number().int().nonnegative(),
+      pendingPhotos: z.number().int().nonnegative()
+    }).optional()
   })
   .transform((data) => ({
     prefetch: data.prefetch,
     token: data.token,
-    resolvedShare: data.resolvedShareOpt
+    resolvedShare: data.resolvedShareOpt,
+    ...(data.semanticSearch === undefined ? {} : { semanticSearch: data.semanticSearch })
   }))
 
 export const scrollbarDataSchema = z.object({
@@ -212,7 +218,7 @@ export const savedSearchContextSchema = z.enum([
   'videos'
 ])
 
-export const gallerySortOrderSchema = z.enum(['descending', 'ascending', 'random'])
+export const gallerySortOrderSchema = z.enum(['descending', 'ascending', 'random', 'relevance'])
 
 const savedSearchNameSchema = z
   .string()

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import type { GalleryAlbum, GallerySortOrder } from '@type/types'
 import type { GallerySearchSubmission } from '@/script/utils/gallerySort'
-import { parseGallerySortOrder } from '@/script/utils/gallerySort'
+import { parseGallerySortOrder, hasSemanticSearch } from '@/script/utils/gallerySort'
 import { createGallerySearchRouteUpdate } from '@/components/Search/gallerySearchRoute'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useConfigStore } from '@/store/configStore'
@@ -52,7 +52,7 @@ async function applySearchState({
     path: route.path,
     query: routeQuery
   }
-  if (sortOrder === 'random' && router.resolve(location).fullPath === route.fullPath) {
+  if ((sortOrder === 'random' || hasSemanticSearch(rawQuery)) && router.resolve(location).fullPath === route.fullPath) {
     collectionReloadStore.requestSubCollectionReload()
     return
   }

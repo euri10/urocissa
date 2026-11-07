@@ -302,6 +302,35 @@ onBeforeUnmount(() => {
       <slot name="home-toolbar"></slot>
     </div>
 
+    <v-progress-linear
+      v-if="!initializedStore.initialized && route.query.sort === 'relevance'"
+      indeterminate
+      color="primary"
+      class="flex-0-0"
+      aria-label="Searching photos"
+    />
+
+    <v-alert
+      v-if="prefetchStore.searchError"
+      type="error"
+      variant="tonal"
+      class="flex-0-0 ma-2"
+      role="alert"
+      :text="prefetchStore.searchError"
+    />
+    <v-alert
+      v-else-if="prefetchStore.semanticSearch"
+      type="info"
+      variant="tonal"
+      density="compact"
+      class="flex-0-0 ma-2"
+      role="status"
+    >
+      Searching {{ prefetchStore.semanticSearch.indexedPhotos.toLocaleString() }} indexed photos.
+      {{ prefetchStore.semanticSearch.pendingPhotos.toLocaleString() }} photos awaiting indexing.
+      Videos are excluded. Sorting keeps the same results; run the search again to refresh them.
+    </v-alert>
+
     <div class="w-100 flex-grow-1 min-h-0 d-flex">
       <div
         id="image-container"
@@ -322,7 +351,7 @@ onBeforeUnmount(() => {
           @geometry-shift="onGeometryShift"
         />
         <HomeEmptyCard
-          v-if="initializedStore.initialized && prefetchStore.dataLength === 0"
+          v-if="initializedStore.initialized && prefetchStore.dataLength === 0 && !prefetchStore.searchError"
           :isolation-id="props.isolationId"
         />
       </div>

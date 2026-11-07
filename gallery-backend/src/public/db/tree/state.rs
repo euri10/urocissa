@@ -3045,6 +3045,8 @@ impl<'a> CompiledExpressionNode<'a> {
     ) -> Self {
         match expression {
             Expression::Audience(audience) => Self::Audience(*audience),
+            // Semantic membership is resolved before ordinary filter compilation.
+            Expression::Semantic(_) => Self::Constant(false),
             Expression::Or(expressions) => Self::Or(
                 expressions
                     .iter()

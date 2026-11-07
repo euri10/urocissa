@@ -6,6 +6,7 @@ import {
   ArchivedExpressionCstChildren,
   AtomicExpressionCstChildren,
   AudienceExpressionCstChildren,
+  SemanticExpressionCstChildren,
   ExpressionCstChildren,
   ExtExpressionCstChildren,
   FavoriteExpressionCstChildren,
@@ -43,6 +44,7 @@ const Favorite: TokenType = createToken({ name: 'Favorite', pattern: /favorite:/
 const Archived: TokenType = createToken({ name: 'Archived', pattern: /archived:/ })
 const Trashed: TokenType = createToken({ name: 'Trashed', pattern: /trashed:/ })
 const Audience: TokenType = createToken({ name: 'Audience', pattern: /audience:/ })
+const Semantic: TokenType = createToken({ name: 'Semantic', pattern: /semantic:/ })
 const Comma: TokenType = createToken({ name: 'Comma', pattern: /,/ })
 
 const BooleanValue: TokenType = createToken({
@@ -85,6 +87,7 @@ const allTokens: TokenType[] = [
   Archived,
   Trashed,
   Audience,
+  Semantic,
   Comma,
   BooleanValue,
   AudienceValue,
@@ -143,7 +146,8 @@ export class MyParser extends CstParser {
       { ALT: () => this.SUBRULE(this.favoriteExpression) },
       { ALT: () => this.SUBRULE(this.archivedExpression) },
       { ALT: () => this.SUBRULE(this.trashedExpression) },
-      { ALT: () => this.SUBRULE(this.audienceExpression) }
+      { ALT: () => this.SUBRULE(this.audienceExpression) },
+      { ALT: () => this.SUBRULE(this.semanticExpression) }
     ])
   })
 
@@ -217,6 +221,11 @@ export class MyParser extends CstParser {
       { ALT: () => this.CONSUME(Identifier) },
       { ALT: () => this.CONSUME(AudienceValue) }
     ])
+  })
+
+  public semanticExpression = this.RULE('semanticExpression', () => {
+    this.CONSUME1(Semantic)
+    this.CONSUME2(Identifier)
   })
 }
 
@@ -299,6 +308,9 @@ export class MyVisitor extends BaseVisitor {
     if (children.audienceExpression) {
       return this.visit(children.audienceExpression)
     }
+    if (children.semanticExpression) {
+      return this.visit(children.semanticExpression)
+    }
   }
 
   // Visit a tagExpression node
@@ -365,5 +377,9 @@ export class MyVisitor extends BaseVisitor {
       throw new Error('Audience must be "private" or "public"')
     }
     return { Audience: value }
+  }
+
+  semanticExpression(children: SemanticExpressionCstChildren) {
+    return { Semantic: unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image) }
   }
 }

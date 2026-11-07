@@ -226,7 +226,7 @@ fn merge_match_chunks(
     Ok((ordinals, targets.finish(universe), scrollbar))
 }
 
-fn build_random_snapshot(
+pub(super) fn build_random_snapshot(
     matches: Vec<SlotRef>,
     structural_epoch: u64,
     identity_epoch: u64,
@@ -286,6 +286,8 @@ pub struct PrefetchReturn {
     pub prefetch: Prefetch,
     pub token: String,
     pub resolved_share_opt: Option<ResolvedShare>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic_search: Option<crate::operations::semantic::SearchSummary>,
 }
 
 impl PrefetchReturn {
@@ -294,6 +296,7 @@ impl PrefetchReturn {
             prefetch,
             token,
             resolved_share_opt,
+            semantic_search: None,
         }
     }
 }
@@ -508,7 +511,9 @@ fn filter_items(
                     .map(|chunk| collect_chunk(chunk, true))
                     .collect::<AppResult<Vec<_>>>()
             })?,
-            GallerySortOrder::Random => unreachable!("random sorting returns before chunking"),
+            GallerySortOrder::Random | GallerySortOrder::Relevance => {
+                unreachable!("ranked sorting returns before chunking")
+            }
         }
     } else {
         vec![collect_chunk(
@@ -622,7 +627,7 @@ pub(crate) fn insert_data_into_tree_snapshot(snapshot: PendingTreeSnapshot) -> (
     (timestamp_millis, snapshot_length)
 }
 
-fn create_json_response(
+pub(super) fn create_json_response(
     timestamp_millis: i64,
     locate_to_index: Option<usize>,
     reduced_data_vector_length: usize,
@@ -678,6 +683,18 @@ fn execute_prefetch_logic(
     sort_order: GallerySortOrder,
     visibility: &PhotoVisibility,
 ) -> Result<Json<PrefetchReturn>, AppError> {
+    if expression_option.is_some_and(Expression::contains_semantic) {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "Semantic filters require the semantic search path",
+        ));
+    }
+    if sort_order == GallerySortOrder::Relevance {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "Relevance sorting requires a semantic expression",
+        ));
+    }
     // Start timer
     let start_time = Instant::now();
     let audience_filtered = expression_option.is_some_and(Expression::contains_audience);
@@ -763,7 +780,7 @@ fn constrain_query_to_share(
 }
 
 #[post(
-    "/get/prefetch?<locate>&<sort>",
+    "/get/prefetch?<locate>&<sort>&<semantic_selection>",
     format = "json",
     data = "<query_data>"
 )]
@@ -772,6 +789,7 @@ pub async fn prefetch(
     query_data: Result<Json<Option<Expression>>, JsonError<'_>>,
     locate: Option<String>,
     sort: Option<String>,
+    semantic_selection: Option<String>,
 ) -> AppResult<Json<PrefetchReturn>> {
     let auth_guard = auth_guard?;
     let query_data = match query_data {
@@ -785,6 +803,18 @@ pub async fn prefetch(
         }
     };
     let request_viewer = viewer(&auth_guard.claims.role);
+    if request_viewer != Viewer::Owner
+        && (query_data
+            .as_ref()
+            .is_some_and(Expression::contains_semantic)
+            || sort.as_deref() == Some("relevance")
+            || semantic_selection.is_some())
+    {
+        return Err(AppError::new(
+            ErrorKind::PermissionDenied,
+            "Semantic search requires owner access",
+        ));
+    }
     if request_viewer != Viewer::Owner
         && query_data
             .as_ref()
@@ -812,6 +842,18 @@ pub async fn prefetch(
     // Execute on blocking thread
     let job_handle = tokio::task::spawn_blocking(move || {
         let visibility = PhotoVisibility::new(request_viewer)?;
+        if let Some(expression) = combined_expression_option
+            .as_ref()
+            .filter(|expression| expression.contains_semantic())
+        {
+            return super::semantic_prefetch::execute(
+                expression,
+                sort_order,
+                locate.as_ref(),
+                semantic_selection.as_deref(),
+                &visibility,
+            );
+        }
         execute_prefetch_logic(
             combined_expression_option.as_ref(),
             locate.as_ref(),

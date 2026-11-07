@@ -8,6 +8,7 @@ pub enum GallerySortOrder {
     Descending,
     Ascending,
     Random,
+    Relevance,
 }
 
 impl FromStr for GallerySortOrder {
@@ -18,7 +19,8 @@ impl FromStr for GallerySortOrder {
             "descending" => Ok(Self::Descending),
             "ascending" => Ok(Self::Ascending),
             "random" => Ok(Self::Random),
-            _ => Err("sort must be descending, ascending, or random"),
+            "relevance" => Ok(Self::Relevance),
+            _ => Err("sort must be descending, ascending, random, or relevance"),
         }
     }
 }

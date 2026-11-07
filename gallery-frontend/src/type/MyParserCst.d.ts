@@ -56,6 +56,7 @@ export type AtomicExpressionCstChildren = {
   archivedExpression?: ArchivedExpressionCstNode[];
   trashedExpression?: TrashedExpressionCstNode[];
   audienceExpression?: AudienceExpressionCstNode[];
+  semanticExpression?: SemanticExpressionCstNode[];
 };
 
 export interface NotExpressionCstNode extends CstNode {
@@ -195,7 +196,18 @@ export type AudienceExpressionCstChildren = {
   AudienceValue?: IToken[];
 };
 
+export interface SemanticExpressionCstNode extends CstNode {
+  name: "semanticExpression";
+  children: SemanticExpressionCstChildren;
+}
+
+export type SemanticExpressionCstChildren = {
+  Semantic: IToken[];
+  Identifier: IToken[];
+};
+
 export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
+  semanticExpression(children: SemanticExpressionCstChildren, param?: IN): OUT;
   expression(children: ExpressionCstChildren, param?: IN): OUT;
   orExpression(children: OrExpressionCstChildren, param?: IN): OUT;
   andExpression(children: AndExpressionCstChildren, param?: IN): OUT;

@@ -1,5 +1,5 @@
 //! Disposable embedding cache, deliberately separate from the authored V6 database.
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use anyhow::Result;
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
@@ -16,8 +16,9 @@ pub struct StoredEmbedding {
     pub vector: Vec<f32>,
 }
 
+#[derive(Clone)]
 pub struct EmbeddingStore {
-    db: Database,
+    db: Arc<Database>,
 }
 
 impl EmbeddingStore {
@@ -29,7 +30,7 @@ impl EmbeddingStore {
         write.open_table(EMBEDDINGS)?;
         write.open_table(META)?;
         write.commit()?;
-        Ok(Self { db })
+        Ok(Self { db: Arc::new(db) })
     }
 
     pub fn model(&self) -> Result<Option<ModelInfo>> {
@@ -80,6 +81,20 @@ impl EmbeddingStore {
             .insert((item, model, frame), bytes.as_slice())?;
         write.commit()?;
         Ok(())
+    }
+
+    pub fn embeddings(&self, model: &str) -> Result<HashMap<String, StoredEmbedding>> {
+        let read = self.db.begin_read()?;
+        let table = read.open_table(EMBEDDINGS)?;
+        let mut embeddings = HashMap::new();
+        for entry in table.iter()? {
+            let (key, value) = entry?;
+            let (item, stored_model, frame) = key.value();
+            if stored_model == model && frame == 0 {
+                embeddings.insert(item.to_owned(), bitcode::decode(value.value())?);
+            }
+        }
+        Ok(embeddings)
     }
 
     #[cfg(test)]

@@ -11,6 +11,16 @@ function criteria(overrides: Partial<AdvancedSearchCriteria> = {}): AdvancedSear
 }
 
 describe('advanced search filter builder', () => {
+  it('builds multilingual semantic search with existing filters and escaped values', () => {
+    for (const text of ['enfant à vélo', 'child on a bike', 'a "sunset" near C:\\photos']) {
+      const query = buildAdvancedSearchFilter(criteria({ semantic: text, tag: 'family', audience: 'private' }))
+      expect(JSON.parse(generateJsonString(query))).toEqual({
+        And: [{ Semantic: text }, { Tag: 'family' }, { Audience: 'private' }]
+      })
+    }
+    expect(buildAdvancedSearchFilter(criteria({ semantic: null }))).toBe('')
+  })
+
   it('returns an empty filter when every criterion is empty or all', () => {
     expect(buildAdvancedSearchFilter(criteria())).toBe('')
     expect(createEmptyAdvancedSearchCriteria().sortOrder).toBe('descending')

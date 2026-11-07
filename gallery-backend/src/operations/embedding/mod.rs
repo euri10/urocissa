@@ -46,6 +46,7 @@ pub struct EmbeddingService {
     paused: AtomicBool,
     stopped: AtomicBool,
     wake: SyncSender<()>,
+    pub search: OnceLock<crate::operations::semantic::SemanticSearch>,
 }
 
 impl EmbeddingService {
@@ -57,6 +58,7 @@ impl EmbeddingService {
                 paused: AtomicBool::new(false),
                 stopped: AtomicBool::new(false),
                 wake,
+                search: OnceLock::new(),
             }),
             receiver,
         )
@@ -115,9 +117,16 @@ pub fn start() -> Option<JoinHandle<()>> {
         let catalog: Arc<dyn PhotoCatalog> = Arc::new(GalleryCatalog);
         while !service.stopped.load(Ordering::Relaxed) {
             let initialized = (|| {
-                let embedder = Arc::new(HttpEmbedder::new(&url)?);
+                let embedder: Arc<dyn client::Embedder> = Arc::new(HttpEmbedder::new(&url)?);
                 let store = EmbeddingStore::open(&get_data_path().join("db").join(FILE_NAME))?;
-                Worker::new(Arc::clone(&catalog), embedder, store, Arc::clone(&service))
+                let search = crate::operations::semantic::SemanticSearch::new(
+                    Arc::clone(&embedder),
+                    store.clone(),
+                );
+                let worker =
+                    Worker::new(Arc::clone(&catalog), embedder, store, Arc::clone(&service))?;
+                let _ = service.search.set(search);
+                Ok::<_, anyhow::Error>(worker)
             })();
             match initialized {
                 Ok(mut worker) => {

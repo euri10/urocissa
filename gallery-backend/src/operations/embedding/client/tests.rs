@@ -87,6 +87,35 @@ fn sidecar_v1_info_and_raw_image_contract() {
 }
 
 #[test]
+fn sidecar_text_contract_is_multilingual_and_requires_exactly_one_vector() {
+    for text in ["enfant à vélo", "child on a bike"] {
+        let (url, handle) = server(
+            r#"{"model_id":"test-model","embeddings":[[0.6,0.8]]}"#.into(),
+            200,
+            Duration::ZERO,
+        );
+        let output = HttpEmbedder::new(&url).unwrap().embed_text(text).unwrap();
+        output.validate(&model()).unwrap();
+        let request = handle.join().unwrap();
+        assert!(request.starts_with("POST /v1/embed/text HTTP/1.1"));
+        let (_, body) = request.split_once("\r\n\r\n").unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(body).unwrap(),
+            serde_json::json!({"texts":[text]})
+        );
+    }
+    for vectors in ["[]", "[[1.0,0.0],[1.0,0.0]]"] {
+        let (url, handle) = server(
+            format!("{{\"model_id\":\"test-model\",\"embeddings\":{vectors}}}"),
+            200,
+            Duration::ZERO,
+        );
+        assert!(HttpEmbedder::new(&url).unwrap().embed_text("bird").is_err());
+        handle.join().unwrap();
+    }
+}
+
+#[test]
 fn rejects_broken_sidecar_vectors_and_model_identity() {
     for (id, vector) in [
         ("other-model", vec![0.6, 0.8]),

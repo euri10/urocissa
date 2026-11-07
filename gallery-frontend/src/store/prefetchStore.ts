@@ -1,5 +1,5 @@
 import { fixedBigRowHeight, layoutBatchNumber } from '@/type/constants'
-import { IsolationId } from '@type/types'
+import { IsolationId, type PrefetchReturn } from '@type/types'
 import { defineStore } from 'pinia'
 
 export interface LocateResolution {
@@ -20,6 +20,8 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       locateResolution: LocateResolution | null
       updateVisibleRowTrigger: boolean
       updateFetchRowTrigger: boolean
+      semanticSearch: PrefetchReturn['semanticSearch'] | null
+      searchError: string | null
     } => ({
       windowWidth: 0,
       timestamp: null,
@@ -30,7 +32,9 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       locateTo: null,
       locateResolution: null,
       updateVisibleRowTrigger: false,
-      updateFetchRowTrigger: false
+      updateFetchRowTrigger: false,
+      semanticSearch: null,
+      searchError: null
     }),
     actions: {
       calculateLength(dataLength: number) {
@@ -40,6 +44,8 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
         this.totalHeightOriginal = this.totalHeight
       },
       clearAll() {
+        this.semanticSearch = null
+        this.searchError = null
         this.timestamp = null
         this.totalHeight = 0
         this.totalHeightOriginal = 0

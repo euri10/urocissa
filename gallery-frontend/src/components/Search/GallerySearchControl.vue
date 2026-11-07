@@ -8,6 +8,7 @@ import SearchHistoryList from './SearchHistoryList.vue'
 import type { GallerySortOrder } from '@/type/types'
 import {
   getQuickSortPresentation,
+  hasSemanticSearch,
   nextQuickSortOrder,
   type GallerySearchSubmission
 } from '@/script/utils/gallerySort'
@@ -112,7 +113,9 @@ function commitSearch(rawQuery: string | null): string {
 
 function applySearch(rawQuery: string | null): void {
   const query = commitSearch(rawQuery)
-  emit('search', query)
+  if (hasSemanticSearch(query)) emit('advancedSearch', { query, sortOrder: 'relevance' })
+  else if (props.sortOrder === 'relevance') emit('advancedSearch', { query, sortOrder: 'descending' })
+  else emit('search', query)
 }
 
 function submitCurrentSearch(): void {
@@ -158,7 +161,7 @@ function changeSort(sortOrder: GallerySortOrder): void {
 }
 
 function toggleSort(): void {
-  changeSort(nextQuickSortOrder(props.sortOrder))
+  changeSort(nextQuickSortOrder(props.sortOrder, hasSemanticSearch(searchQuery.value)))
 }
 
 function saveCurrentSearch(): void {

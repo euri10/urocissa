@@ -13,6 +13,7 @@ pub mod get_prefetch;
 pub mod get_reindex_jobs;
 pub mod get_resource;
 pub mod get_write_behind;
+mod semantic_prefetch;
 
 pub fn generate_get_routes() -> Vec<Route> {
     routes![

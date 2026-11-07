@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useSearchFacetStore } from '@/store/searchFacetStore'
 import { useConfigStore } from '@/store/configStore'
@@ -33,9 +33,18 @@ const searchFacetStore = useSearchFacetStore()
 const configStore = useConfigStore('mainId')
 const shareStore = useShareStore('mainId')
 const canFilterAudience = computed(() => configStore.isAdmin && shareStore.shareId === null)
+const canSearchSemantic = computed(
+  () => canFilterAudience.value && configStore.config?.embeddingEnabled === true
+)
 const criteria = reactive<AdvancedSearchCriteria>(
   createEmptyAdvancedSearchCriteria(props.sortOrder)
 )
+const hasSemanticText = computed(() => (criteria.semantic?.trim() ?? '') !== '')
+const sortButtonWidth = computed(() => smAndDown.value && hasSemanticText.value ? '50%' : undefined)
+watch(hasSemanticText, (hasText, previouslyHadText) => {
+  if (hasText && !previouslyHadText) criteria.sortOrder = 'relevance'
+  if (!hasText && criteria.sortOrder === 'relevance') criteria.sortOrder = 'descending'
+})
 const tagItems = computed(() => searchFacetStore.tags.map((facet) => facet.value))
 const makeItems = computed(() => searchFacetStore.makes.map((facet) => facet.value))
 const modelItems = computed(() => searchFacetStore.models.map((facet) => facet.value))
@@ -48,9 +57,12 @@ function submitSearch(): void {
   emit('search', {
     query: buildAdvancedSearchFilter({
       ...criteria,
+      semantic: canSearchSemantic.value ? (criteria.semantic ?? '') : '',
       audience: canFilterAudience.value ? criteria.audience : 'all'
     }),
-    sortOrder: criteria.sortOrder
+    sortOrder: criteria.sortOrder === 'relevance' && (!canSearchSemantic.value || !hasSemanticText.value)
+      ? 'descending'
+      : criteria.sortOrder
   })
   isOpen.value = false
 }
@@ -59,7 +71,7 @@ function submitSearch(): void {
 <template>
   <v-dialog v-model="isOpen" :fullscreen="smAndDown" max-width="600">
     <v-card class="d-flex flex-column">
-      <v-card-title class="d-flex align-center">
+      <v-card-title class="d-flex align-center flex-shrink-0">
         <v-icon class="mr-2">mdi-tune</v-icon>
         <span class="text-h6">Search Options</span>
         <v-spacer />
@@ -67,6 +79,21 @@ function submitSearch(): void {
       </v-card-title>
 
       <v-card-text class="flex-grow-1 overflow-y-auto">
+        <v-text-field
+          v-if="canSearchSemantic"
+          v-model="criteria.semantic"
+          label="Describe a photo"
+          placeholder="e.g. enfant à vélo, sunset on the beach"
+          hint="Searches indexed photos in French or English. Videos and pending photos are excluded."
+          persistent-hint
+          prepend-inner-icon="mdi-image-search-outline"
+          variant="outlined"
+          density="comfortable"
+          clearable
+          autocomplete="off"
+          class="mb-4"
+        />
+
         <v-text-field
           v-model="criteria.keyword"
           label="Keyword"
@@ -207,16 +234,17 @@ function submitSearch(): void {
           color="primary"
           border
           divided
-          class="d-flex"
+          class="d-flex flex-wrap h-auto"
           aria-label="Sort order"
         >
-          <v-btn value="descending" class="flex-1-1-0">Descending</v-btn>
-          <v-btn value="ascending" class="flex-1-1-0">Ascending</v-btn>
-          <v-btn value="random" class="flex-1-1-0">Random</v-btn>
+          <v-btn value="descending" height="48" :min-width="sortButtonWidth" class="flex-1-1-0">Descending</v-btn>
+          <v-btn value="ascending" height="48" :min-width="sortButtonWidth" class="flex-1-1-0">Ascending</v-btn>
+          <v-btn value="random" height="48" :min-width="sortButtonWidth" class="flex-1-1-0">Random</v-btn>
+          <v-btn v-if="canSearchSemantic && hasSemanticText" value="relevance" height="48" :min-width="sortButtonWidth" class="flex-1-1-0">Relevance</v-btn>
         </v-btn-toggle>
       </v-card-text>
 
-      <v-card-actions>
+      <v-card-actions class="flex-shrink-0">
         <v-btn variant="text" @click="clearAll">Clear All</v-btn>
         <v-spacer />
         <v-btn color="primary" variant="elevated" @click="submitSearch">Search</v-btn>

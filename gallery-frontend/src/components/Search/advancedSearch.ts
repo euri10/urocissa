@@ -5,6 +5,7 @@ export type AdvancedSearchMediaType = 'all' | 'image' | 'video' | 'album'
 
 export interface AdvancedSearchCriteria {
   keyword: string
+  semantic: string | null
   filename: string
   tag: string | null
   extension: string
@@ -20,6 +21,7 @@ export function createEmptyAdvancedSearchCriteria(
 ): AdvancedSearchCriteria {
   return {
     keyword: '',
+    semantic: '',
     filename: '',
     tag: null,
     extension: '',
@@ -33,6 +35,9 @@ export function createEmptyAdvancedSearchCriteria(
 
 export function buildAdvancedSearchFilter(criteria: AdvancedSearchCriteria): string {
   const parts: string[] = []
+
+  const semantic = criteria.semantic?.trim() ?? ''
+  if (semantic !== '') parts.push(`semantic:${escapeAndWrap(semantic)}`)
 
   const keyword = criteria.keyword.trim()
   if (keyword !== '') parts.push(`any:${escapeAndWrap(keyword)}`)

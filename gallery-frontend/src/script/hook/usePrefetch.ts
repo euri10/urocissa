@@ -16,6 +16,7 @@ import { RouteLocationNormalizedLoadedGeneric } from 'vue-router'
 import type { GallerySortOrder } from '@type/types'
 import { parseGallerySortOrder } from '@/script/utils/gallerySort'
 import { consumeInitialMainLocateOverride } from '@/route/initialRouteLocate'
+import { errorDisplay } from '@/script/utils/errorDisplay'
 
 interface UsePrefetchOptions {
   onRequestStart?: () => void
@@ -71,6 +72,7 @@ export function usePrefetch(
 
   let generation = 0
   let disposed = false
+  let semanticSelection: { filter: string | null; reload: unknown; id: string } | null = null
   const stopGenerationWatcher = watch(
     requestSources,
     () => {
@@ -81,7 +83,7 @@ export function usePrefetch(
 
   const stopWatcher = watchDebounced(
     requestSources,
-    async ([widthReady, currentFilter, currentPriorityId, currentSortOrder, currentQueryLocate]) => {
+    async ([widthReady, currentFilter, currentPriorityId, currentSortOrder, currentQueryLocate, currentReload]) => {
       if (widthReady) {
         const requestGeneration = generation
         let locate: string | null = null
@@ -104,24 +106,44 @@ export function usePrefetch(
           locate = currentQueryLocate
         }
 
+        const selection =
+          semanticSelection?.filter === currentFilter && semanticSelection.reload === currentReload
+            ? semanticSelection.id
+            : undefined
+        usePrefetchStore(isolationId).searchError = null
+        usePrefetchStore(isolationId).semanticSearch = null
+
         // Invalidate the visible collection before waiting on the network so
         // query changes immediately enter the existing loading state.
         usePrefetchStore(isolationId).locateResolution = null
         options.onRequestStart?.()
 
         // Parallel Execution: Run Config chain and Prefetch chain simultaneously
-        await Promise.all([
-          processConfigChain(isolationId),
-          processPrefetchChain(
-            currentFilter,
-            currentPriorityId,
-            currentSortOrder,
-            locate,
-            isolationId,
-            route,
-            () => !disposed && requestGeneration === generation
-          )
-        ])
+        try {
+          const [, result] = await Promise.all([
+            processConfigChain(isolationId),
+            processPrefetchChain(
+              currentFilter,
+              currentPriorityId,
+              currentSortOrder,
+              locate,
+              isolationId,
+              route,
+              () => !disposed && requestGeneration === generation,
+              selection
+            )
+          ])
+          if (result && requestGeneration === generation) {
+            semanticSelection = result.semanticSearch
+              ? { filter: currentFilter, reload: currentReload, id: result.semanticSearch.selection }
+              : null
+          }
+        } catch (error) {
+          if (!disposed && requestGeneration === generation) {
+            usePrefetchStore(isolationId).searchError = errorDisplay(error)
+            useInitializedStore(isolationId).initialized = true
+          }
+        }
       }
     },
     { immediate: true, debounce: 75, maxWait: 1000 }
@@ -155,10 +177,13 @@ async function processPrefetchChain(
   locate: string | null,
   isolationId: IsolationId,
   route: RouteLocationNormalizedLoadedGeneric,
-  isCurrent: () => boolean
+  isCurrent: () => boolean,
+  semanticSelection?: string
 ) {
   // 1. Fetch main data (Critical step)
-  const prefetchReturn = await prefetch(filterJsonString, priorityId, sortOrder, locate)
+  const prefetchReturn = semanticSelection === undefined
+    ? await prefetch(filterJsonString, priorityId, sortOrder, locate)
+    : await prefetch(filterJsonString, priorityId, sortOrder, locate, semanticSelection)
 
   // Query-only navigations can start a newer request without unmounting the
   // reader. Never let an older response replace that newer snapshot.
@@ -200,6 +225,7 @@ async function processPrefetchChain(
   }
 
   void Promise.allSettled(dependentPromises)
+  return prefetchReturn
 }
 
 /**
@@ -219,6 +245,7 @@ function syncStoreFromPrefetch(
 
   shareStore.resolvedShare = resolvedShare
   prefetchStore.timestamp = prefetch.timestamp
+  prefetchStore.semanticSearch = prefetchReturn.semanticSearch ?? null
 
   prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
   prefetchStore.calculateLength(prefetch.dataLength)

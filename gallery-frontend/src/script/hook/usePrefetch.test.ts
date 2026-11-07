@@ -62,6 +62,38 @@ describe('reactive collection prefetch', () => {
     vi.useRealTimers()
   })
 
+  it('keeps the semantic selection on a sort change and refreshes after filters or reload change', async () => {
+    const filter = ref<string | null>('{"Semantic":"enfant à vélo"}')
+    const reloadTrigger = ref(false)
+    const route = reactive({ query: { sort: 'relevance' }, params: {}, meta: { level: 1, baseName: 'home' } }) as unknown as RouteLocationNormalizedLoadedGeneric
+    prefetchMock.mockResolvedValue({ ...snapshot(1), semanticSearch: { selection: 'fixed-selection', indexedPhotos: 2, pendingPhotos: 3 } })
+    scope.run(() => { usePrefetch(filter, ref(1200), route, 'mainId', { reloadTrigger }) })
+    await vi.advanceTimersByTimeAsync(100)
+    route.query.sort = 'descending'
+    await vi.advanceTimersByTimeAsync(100)
+    expect(prefetchMock).toHaveBeenNthCalledWith(2, filter.value, '', 'descending', null, 'fixed-selection')
+    reloadTrigger.value = true
+    await vi.advanceTimersByTimeAsync(100)
+    expect(prefetchMock).toHaveBeenNthCalledWith(3, filter.value, '', 'descending', null)
+    filter.value = '{"Semantic":"different"}'
+    await vi.advanceTimersByTimeAsync(100)
+    expect(prefetchMock).toHaveBeenNthCalledWith(4, filter.value, '', 'descending', null)
+  })
+
+  it('shows a failed search and lets the next normal search recover', async () => {
+    const filter = ref<string | null>('{"Semantic":"bird"}')
+    const route = reactive({ query: {}, params: {}, meta: { level: 1, baseName: 'home' } }) as unknown as RouteLocationNormalizedLoadedGeneric
+    prefetchMock.mockRejectedValueOnce(new Error('Tagger offline')).mockResolvedValueOnce(snapshot(2))
+    scope.run(() => { usePrefetch(filter, ref(1200), route, 'mainId') })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(usePrefetchStore('mainId').searchError).toBe('Tagger offline')
+    expect(useInitializedStore('mainId').initialized).toBe(true)
+    filter.value = null
+    await vi.advanceTimersByTimeAsync(100)
+    expect(usePrefetchStore('mainId').searchError).toBeNull()
+    expect(usePrefetchStore('mainId').timestamp).toBe(2)
+  })
+
   it('reloads query changes without disposing the scope', async () => {
     const filter = ref<string | null>('old-filter')
     const windowWidth = ref(1200)

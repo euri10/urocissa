@@ -13,11 +13,11 @@ vi.mock('vuetify', () => ({ useDisplay: () => ({ smAndDown: ref(false) }) }))
 const Stub: FunctionalComponent = (_props, { attrs, slots }) =>
   h('div', attrs, slots.default?.())
 
-async function renderSearch(isAdmin: boolean | undefined, share: boolean, readOnlyMode = false) {
+async function renderSearch(isAdmin: boolean | undefined, share: boolean, readOnlyMode = false, embeddingEnabled = false) {
   const pinia = createPinia()
   setActivePinia(pinia)
   if (isAdmin !== undefined) {
-    useConfigStore('mainId').config = { isAdmin, readOnlyMode } as AppConfig
+    useConfigStore('mainId').config = { isAdmin, readOnlyMode, embeddingEnabled } as AppConfig
   }
   if (share) useShareStore('mainId').shareId = 'fixture-share'
   const app = createSSRApp(AdvancedSearchDialog, { modelValue: true, sortOrder: 'descending' })
@@ -30,6 +30,14 @@ async function renderSearch(isAdmin: boolean | undefined, share: boolean, readOn
 }
 
 describe('advanced search audience control', () => {
+  it('offers semantic search only to an owner with indexing enabled', async () => {
+    expect(await renderSearch(true, false, false, true)).toContain('Describe a photo')
+    expect(await renderSearch(true, false, true, true)).toContain('Describe a photo')
+    expect(await renderSearch(false, false, false, true)).not.toContain('Describe a photo')
+    expect(await renderSearch(true, true, false, true)).not.toContain('Describe a photo')
+    expect(await renderSearch(true, false)).not.toContain('Describe a photo')
+  })
+
   it.each([false, true])('offers owner visibility filtering even in read-only mode=%s', async (readOnlyMode) => {
     const html = await renderSearch(true, false, readOnlyMode)
     expect(html).toContain('aria-label="Visibility"')

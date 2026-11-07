@@ -7,7 +7,6 @@ use super::{SCROLLBAR_METADATA_TABLE, TreeSnapshot};
 use crate::public::structure::response::row::ScrollBarData;
 use crate::storage::codec;
 
-#[cfg(test)]
 pub fn build_scrollbar(timestamps: impl IntoIterator<Item = i64>) -> Vec<ScrollBarData> {
     let mut result = Vec::new();
     let mut last_year_month = None;

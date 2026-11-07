@@ -48,7 +48,9 @@ Both demos are currently in read-only mode, and uploading files or editing tags 
 ## Limitations
 
 This fork also has an opt-in [background photo embedding index](docs/PHOTO_EMBEDDINGS.md).
-Auto-tagging and semantic-search interfaces are being delivered in separate slices.
+When enabled, owners can [search photos by description](docs/SEARCH.md#10-semantic-search-owner-only)
+in French or English, with relevance and date ordering. Auto tags and similar photos
+are being delivered in separate slices.
 
 | Feature                    | Status |
 | -------------------------- | ------ |
