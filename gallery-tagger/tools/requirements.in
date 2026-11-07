@@ -1,0 +1,12 @@
+# Model export dependencies (Docker export stage). Regenerate the lock with:
+#   uv pip compile tools/requirements.in --generate-hashes --python-version 3.12 \
+#     --python-platform x86_64-manylinux_2_28 --index-strategy unsafe-best-match --emit-index-url \
+#     -o tools/requirements.txt
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+torch==2.15.0+cpu
+transformers==5.22.2
+openvino==2026.4.1
+nncf==3.4.0
+safetensors==0.8.0
+huggingface-hub==2.4.0
