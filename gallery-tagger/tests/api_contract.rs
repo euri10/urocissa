@@ -85,8 +85,9 @@ fn app(fail: bool) -> axum::Router {
 async fn call(app: axum::Router, request: Request<Body>) -> (StatusCode, Value) {
     let response = app.oneshot(request).await.unwrap();
     let status = response.status();
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
-    let body = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    let body = serde_json::from_slice(&bytes).expect("API response must be JSON");
     (status, body)
 }
 
@@ -157,12 +158,14 @@ async fn rejects_bad_images() {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(json["error"].is_string());
     }
+}
+
+#[tokio::test]
+async fn rejects_oversized_images_with_json() {
     let oversized = vec![0_u8; 5000];
-    let response = app(false)
-        .oneshot(post("/v1/embed/image", "image/jpeg", oversized))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    let (status, body) = call(app(false), post("/v1/embed/image", "image/jpeg", oversized)).await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert!(body["error"].is_string());
 }
 
 #[tokio::test]

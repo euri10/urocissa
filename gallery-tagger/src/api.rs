@@ -16,7 +16,10 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     body::Bytes,
-    extract::{DefaultBodyLimit, State, rejection::JsonRejection},
+    extract::{
+        DefaultBodyLimit, State,
+        rejection::{BytesRejection, JsonRejection},
+    },
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -58,6 +61,7 @@ pub fn router(embedder: Arc<dyn Embedder>, limits: Limits) -> Router {
 #[derive(Debug)]
 pub enum ApiError {
     BadRequest(String),
+    BodyRejected(StatusCode, String),
     Internal(String),
 }
 
@@ -65,6 +69,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
             Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message),
+            Self::BodyRejected(status, message) => (status, message),
             Self::Internal(message) => {
                 log::error!("{message}");
                 (StatusCode::INTERNAL_SERVER_ERROR, message)
@@ -97,8 +102,10 @@ struct ImageEmbedding {
 
 async fn embed_image(
     State(embedder): State<Arc<dyn Embedder>>,
-    body: Bytes,
+    body: Result<Bytes, BytesRejection>,
 ) -> Result<Json<ImageEmbedding>, ApiError> {
+    let body = body
+        .map_err(|rejection| ApiError::BodyRejected(rejection.status(), rejection.body_text()))?;
     if body.is_empty() {
         return Err(ApiError::BadRequest(
             "request body must contain an image".into(),
