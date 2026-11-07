@@ -67,7 +67,7 @@ pub fn publish_media_mutation(
     publisher: ArtifactPublisher,
     mutation: impl FnOnce(&mut AbstractData) -> Result<()>,
 ) -> Result<AbstractData> {
-    publisher.publish(|| {
+    let result = publisher.publish(|| {
         let _persistence_guard = TREE
             .persistence_lock
             .lock()
@@ -129,5 +129,9 @@ pub fn publish_media_mutation(
         state.apply_batch(&records, &HashSet::new());
         VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
         Ok(latest)
-    })
+    });
+    if result.is_ok() {
+        crate::operations::embedding::wake();
+    }
+    result
 }

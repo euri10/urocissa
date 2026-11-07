@@ -47,6 +47,9 @@ Both demos are currently in read-only mode, and uploading files or editing tags 
 
 ## Limitations
 
+This fork also has an opt-in [background photo embedding index](docs/PHOTO_EMBEDDINGS.md).
+Auto-tagging and semantic-search interfaces are being delivered in separate slices.
+
 | Feature                    | Status |
 | -------------------------- | ------ |
 | Upload Videos and Photos   | ✅     |

@@ -1,6 +1,7 @@
 pub mod audience;
 pub mod cache;
 pub mod codec;
+pub mod embeddings;
 pub mod legacy_v5;
 pub mod migration;
 pub mod store;

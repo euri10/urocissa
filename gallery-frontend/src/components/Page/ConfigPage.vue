@@ -25,6 +25,13 @@
           </v-row>
         </div>
 
+        <v-row
+          v-if="configStore.isAdmin && configStore.config?.embeddingEnabled"
+          class="ma-0 mb-6"
+        >
+          <PhotoIndexing :can-pause="configStore.canWrite" />
+        </v-row>
+
         <div class="config-block">
           <v-row class="ma-0">
             <AdvancedConfig
@@ -52,6 +59,7 @@ import PageTemplate from './PageLayout/PageTemplate.vue'
 import ChangePassword from './Config/ChangePassword.vue'
 import StorageAndSync from './Config/StorageAndSync.vue'
 import FolderImport from './Config/FolderImport.vue'
+import PhotoIndexing from './Config/PhotoIndexing.vue'
 import AdvancedConfig from './Config/AdvancedConfig.vue'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 

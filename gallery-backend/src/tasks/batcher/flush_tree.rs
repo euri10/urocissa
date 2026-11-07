@@ -37,7 +37,7 @@ impl BatchTask for FlushTreeTask {
 }
 
 fn flush_tree_task(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
-    let _persistence_guard = TREE.persistence_lock.lock().unwrap();
+    let persistence_guard = TREE.persistence_lock.lock().unwrap();
     let mut state = TREE.state.write().unwrap();
     let reconciled_insert_list = insert_list
         .iter()
@@ -82,4 +82,7 @@ fn flush_tree_task(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
     state.apply_batch(&reconciled_insert_list, &remove_ids);
     crate::public::db::tree::VERSION_COUNT_TIMESTAMP
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    drop(state);
+    drop(persistence_guard);
+    crate::operations::embedding::wake();
 }

@@ -1,6 +1,7 @@
 pub mod builder;
 pub mod claims;
 pub mod delete;
+pub mod embeddings;
 pub mod fairing;
 pub mod get;
 pub mod performance;

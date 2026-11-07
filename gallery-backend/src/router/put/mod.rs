@@ -32,6 +32,7 @@ pub fn generate_put_routes() -> Vec<Route> {
         edit_config::update_config_handler,
         edit_config::update_password_handler,
         rotate_image::rotate_image,
+        crate::router::embeddings::pause_embedding_backfill,
         crate::router::saved_searches::rename_saved_search,
         crate::router::saved_searches::reorder_saved_searches
     ]

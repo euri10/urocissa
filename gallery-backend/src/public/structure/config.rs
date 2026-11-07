@@ -88,6 +88,9 @@ pub struct PrivateConfig {
     pub password: Option<String>,
     pub auth_key: Option<String>,
     pub discord_hook_url: Option<String>,
+    /// Internal embedding sidecar; changing this requires a restart.
+    #[serde(default)]
+    pub tagger_url: Option<String>,
     #[serde(default)]
     pub saved_searches: Vec<SavedSearch>,
 }
@@ -121,6 +124,7 @@ impl Default for AppConfig {
                 password: None,
                 auth_key: None,
                 discord_hook_url: None,
+                tagger_url: None,
                 saved_searches: Vec::new(),
             },
         }

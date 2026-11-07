@@ -23,6 +23,7 @@ pub struct PublicConfigResponse {
     pub has_discord_hook: bool,
     pub has_auth_key: bool,
     pub is_admin: bool,
+    pub embedding_enabled: bool,
 }
 
 #[get("/get/config")]
@@ -44,6 +45,7 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Publi
         has_discord_hook: config.private.discord_hook_url.is_some(),
         has_auth_key: config.private.auth_key.is_some(),
         is_admin,
+        embedding_enabled: is_admin && crate::operations::embedding::service().is_some(),
     };
     Ok(Json(response))
 }
@@ -71,6 +73,7 @@ mod tests {
             has_discord_hook: false,
             has_auth_key: false,
             is_admin: false,
+            embedding_enabled: false,
         };
 
         let value = serde_json::to_value(response).unwrap();

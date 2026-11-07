@@ -280,6 +280,7 @@ export const SubRowSchema = z.object({
 })
 
 export const PublicConfigSchema = z.object({
+  embeddingEnabled: z.boolean().default(false),
   address: z.string(),
   port: z.number(),
   limits: z.record(z.string(), z.string()), // HashMap<String, String>

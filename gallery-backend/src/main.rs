@@ -116,6 +116,7 @@ fn main() {
             #[cfg(feature = "performance-test")]
             eprintln!("performance startup: logical tree ready");
             let write_behind_worker = INDEX_RUNTIME.spawn(WRITE_BEHIND.run_worker());
+            let embedding_worker = operations::embedding::start();
             if tree_ready_tx.send(()).is_err() {
                 error!("Failed to signal initial tree readiness.");
                 return;
@@ -149,6 +150,10 @@ fn main() {
                 );
             }
             write_behind_worker.abort();
+            operations::embedding::stop();
+            if let Some(worker) = embedding_worker {
+                let _ = worker.join();
+            }
             info!("Worker thread shutting down.");
         });
     });
