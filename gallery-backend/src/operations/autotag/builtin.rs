@@ -58,6 +58,18 @@ pub struct BuiltinCatalog {
 }
 
 impl BuiltinCatalog {
+    /// Name/alias/hierarchy lookup needs no calibrated model or prompt vectors.
+    pub fn alias_vocabulary(&self) -> Result<Vocabulary> {
+        Vocabulary::new(
+            1,
+            self.concepts
+                .iter()
+                .map(|c| c.with_vector(vec![1.0]))
+                .collect(),
+        )
+        .map_err(Into::into)
+    }
+
     pub fn embedded() -> Result<Self> {
         Self::from_json(include_str!("../../../assets/concepts.json"))
     }

@@ -71,8 +71,8 @@ controls and feedback explicit.
   undo a completed decision. Owner reads also suppress stale rejected/confirmed
   predictions if derived storage is temporarily unavailable.
 
-Learned Concepts, review UI, and Auto tag search are
-separate follow-up slices; predictions are not yet included in User tag search.
+Owner tag search/facets combine User and Auto tags with provenance and parent
+expansion; see `SEARCH.md`. Learned Concepts and review UI remain follow-up slices.
 Calibration fix `infra-urocissa-autotag-sjfz.16` replaces the positive-enriched
 sampling and observed-precision-only gate. Vocabulary `2026-11-08.2` uses
 balanced verified classes plus observed and equal-prior precision gates.
@@ -111,3 +111,38 @@ The previous deployed-reader candidate `3.4.2-audience-f95f452` also booted agai
 a disposable copy written by this slice: it opened the V6 typed records table,
 read all 7 then-existing media records, and launched Rocket successfully. The
 new authored preference table is additive and old readers ignore it.
+
+## Authored feedback acceptance (.6)
+
+The integrated `.6`/`.9` branch passes 319 backend tests (three intentionally
+ignored), 332 frontend tests, fmt, clippy (baseline warnings only), TypeScript,
+ESLint and the production build. No dependency or custom CSS was added.
+
+HTTP coverage verifies owner-only single/bulk decisions, read-only refusal,
+snapshot validation, ordinary French User tags visible to visitors, permanent
+removal feedback, and stale derived search/facet suppression while preparation
+is unavailable. Rejections survive restart, vocabulary/model changes and derived
+file deletion. Slow text preparation does not block decision rematerialization.
+
+A fresh offline build of pre-feature `production/reconciled` at `f95f452f` boots
+against the authored database, serves the confirmed `chat` User tag anonymously,
+omits Auto fields, and leaves the Rejection table intact. Reproduce that extra
+binary test by supplying the old executable explicitly:
+
+```sh
+UROCISSA_PREVIOUS_BINARY=/absolute/path/to/previous/urocissa \
+  cargo test --offline --locked --profile dev-release previous_binary_serves
+```
+
+With local synthetic 768-dimensional cached embeddings, each 500-photo HTTP
+confirmation/rejection plus synchronous rematerialization completed in 23–26 ms
+in `dev-release`, and under 1.34 s in the unoptimized debug build. Both public-
+gallery modes were exercised, with no image or text inference. These measurements
+are local acceptance checks, not host benchmarks.
+
+Focused component/browser checks covered both chip actions, bulk count and
+publication text, keyboard selection, light/dark and live overlay theme changes,
+390px width without horizontal overflow, and loading/read-only/error states.
+Temporary preview services were stopped. The hybrid-scroll gate was not requested
+and was not run. No production backup, deployment, backfill or host benchmark
+was performed.

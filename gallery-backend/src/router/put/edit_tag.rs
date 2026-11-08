@@ -57,7 +57,7 @@ pub async fn edit_tag(
         })
         .await
         .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
-        return Ok(Json(TREE.read_tags()));
+        return Ok(Json(TREE.read_tags()?));
     }
     let identity_epoch = resolved.identity_epoch;
     let selection_epoch = resolved.selection_epoch;
@@ -167,5 +167,5 @@ pub async fn edit_tag(
         .await
         .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))?;
 
-    Ok(Json(TREE.read_tags()))
+    Ok(Json(TREE.read_tags()?))
 }

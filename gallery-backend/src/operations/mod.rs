@@ -11,6 +11,7 @@ pub mod open_db;
 pub mod public_metadata;
 pub mod semantic;
 pub mod tag_feedback;
+pub mod tag_search;
 pub mod transitor;
 pub mod utils;
 pub mod video_metadata;

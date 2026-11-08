@@ -45,7 +45,7 @@ pub(super) async fn checks(client: &Client) {
         embedding::service()
             .unwrap()
             .auto_tags
-            .set(AutoTags::new(store).unwrap())
+            .set(AutoTags::new(store.clone()).unwrap())
             .is_ok()
     );
 
@@ -205,4 +205,5 @@ pub(super) async fn checks(client: &Client) {
     let response = owner(client.put("/put/edit_auto_tags").json(&json!({"timestamp": owner_snapshot.prefetch.timestamp, "selection": {"mode": "explicit", "indices": [index]}, "enabled": true})), true).dispatch().await;
     assert_eq!(response.status(), Status::Ok);
     TREE.store.set_auto_tags_enabled(&[PUBLIC], true).unwrap();
+    Box::pin(super::tag_search::checks(client, &store)).await;
 }

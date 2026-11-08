@@ -16,26 +16,17 @@ use crate::{
     },
 };
 
-use super::autotag::{BuiltinCatalog, normalize_name};
+use super::autotag::{BuiltinCatalog, Vocabulary};
 
-static CATALOG: std::sync::LazyLock<BuiltinCatalog> = std::sync::LazyLock::new(|| {
-    BuiltinCatalog::embedded().expect("embedded Concept catalog is validated")
+static VOCABULARY: std::sync::LazyLock<Vocabulary> = std::sync::LazyLock::new(|| {
+    BuiltinCatalog::embedded()
+        .and_then(|catalog| catalog.alias_vocabulary())
+        .expect("embedded Concept catalog is validated")
 });
 
 pub fn concepts_for_tags(tags: &BTreeSet<String>) -> Vec<String> {
-    let catalog = &*CATALOG;
-    catalog
-        .concepts
-        .iter()
-        .filter(|concept| {
-            tags.iter().any(|tag| {
-                let name = normalize_name(tag);
-                std::iter::once(&concept.label_fr)
-                    .chain(std::iter::once(&concept.label_en))
-                    .chain(concept.synonyms.iter())
-                    .any(|alias| normalize_name(alias) == name)
-            })
-        })
+    tags.iter()
+        .filter_map(|tag| VOCABULARY.concept_named(tag))
         .map(|c| c.id.clone())
         .collect()
 }

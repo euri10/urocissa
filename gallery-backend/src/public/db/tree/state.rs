@@ -3017,6 +3017,19 @@ enum CompiledExpressionNode<'a> {
 }
 
 impl<'a> CompiledExpression<'a> {
+    pub fn owner(
+        expression: &Expression,
+        state: &'a TreeState,
+        tags: &crate::operations::tag_search::OwnerTagIndex,
+    ) -> Self {
+        Self(CompiledExpressionNode::owner(
+            expression,
+            &state.query,
+            tags,
+            None,
+        ))
+    }
+
     fn new(
         expression: &Expression,
         indexes: &'a QueryIndexes,
@@ -3037,6 +3050,55 @@ impl<'a> CompiledExpression<'a> {
 }
 
 impl<'a> CompiledExpressionNode<'a> {
+    fn owner(
+        expression: &Expression,
+        indexes: &'a QueryIndexes,
+        tags: &crate::operations::tag_search::OwnerTagIndex,
+        source: Option<crate::public::structure::expression::TagSource>,
+    ) -> Self {
+        match expression {
+            Expression::And(items) => {
+                let mut scope = source;
+                for item in items {
+                    if let Expression::Source(value) = item {
+                        if scope.is_some_and(|scope| scope != *value) {
+                            return Self::Constant(false);
+                        }
+                        scope = Some(*value);
+                    }
+                }
+                Self::And(
+                    items
+                        .iter()
+                        .filter(|item| {
+                            !(matches!(item, Expression::Source(_)) && expression.contains_tag())
+                        })
+                        .map(|item| Self::owner(item, indexes, tags, scope))
+                        .collect(),
+                )
+            }
+            Expression::Or(items) => Self::Or(
+                items
+                    .iter()
+                    .map(|item| Self::owner(item, indexes, tags, source))
+                    .collect(),
+            ),
+            Expression::Not(item) => Self::Not(Box::new(Self::owner(item, indexes, tags, source))),
+            Expression::Tag(value) => {
+                let members = Self::OwnedMembership(tags.matching(value, source));
+                if *value == FilterValue::Exists(false) {
+                    Self::Not(Box::new(members))
+                } else {
+                    members
+                }
+            }
+            Expression::Source(value) => {
+                Self::OwnedMembership(tags.matching(&FilterValue::Exists(true), Some(*value)))
+            }
+            _ => Self::new(expression, indexes, None, false),
+        }
+    }
+
     fn new(
         expression: &Expression,
         indexes: &'a QueryIndexes,
@@ -3045,8 +3107,10 @@ impl<'a> CompiledExpressionNode<'a> {
     ) -> Self {
         match expression {
             Expression::Audience(audience) => Self::Audience(*audience),
-            // Semantic membership is resolved before ordinary filter compilation.
-            Expression::Semantic(_) | Expression::Similar(_) => Self::Constant(false),
+            // Owner source/semantic membership is resolved before ordinary compilation.
+            Expression::Source(_) | Expression::Semantic(_) | Expression::Similar(_) => {
+                Self::Constant(false)
+            }
             Expression::Or(expressions) => Self::Or(
                 expressions
                     .iter()

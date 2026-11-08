@@ -1,4 +1,5 @@
 use super::*;
+use crate::public::structure::expression::{FilterValue, TagSource};
 use serde_json::json;
 
 async fn decision(client: &Client, hash: &str, concept: &str, action: &str) -> Value {
@@ -12,6 +13,56 @@ async fn decision(client: &Client, hash: &str, concept: &str, action: &str) -> V
     .await;
     assert_eq!(response.status(), Status::Ok);
     response.into_json().await.unwrap()
+}
+
+fn stale_prediction(hash: &str, concept: &str) {
+    use crate::{
+        operations::autotag::BuiltinCatalog,
+        storage::auto_tags::{MaterializedTags, StoredAutoTag},
+    };
+    let store = crate::operations::embedding::service()
+        .unwrap()
+        .auto_tags
+        .get()
+        .unwrap()
+        .test_store();
+    let catalog = BuiltinCatalog::embedded().unwrap();
+    store
+        .put_auto_tags(&[(
+            hash.into(),
+            MaterializedTags {
+                enabled: true,
+                model_id: catalog.model_id,
+                vocabulary_version: catalog.version,
+                thumbnail_version: 7,
+                tags: vec![StoredAutoTag {
+                    concept: concept.into(),
+                    label: concept.into(),
+                    confidence: 0.99,
+                    displayed: true,
+                }],
+            },
+        )])
+        .unwrap();
+}
+
+async fn source_count(client: &Client, concept: &str, source: TagSource) -> usize {
+    let response = owner(
+        client.post("/get/prefetch").json(&Expression::And(vec![
+            Expression::Tag(FilterValue::Value(concept.into())),
+            Expression::Source(source),
+        ])),
+        true,
+    )
+    .dispatch()
+    .await;
+    assert_eq!(response.status(), Status::Ok);
+    response
+        .into_json::<PrefetchReturn>()
+        .await
+        .unwrap()
+        .prefetch
+        .data_length
 }
 
 #[allow(
@@ -82,6 +133,7 @@ pub(super) async fn checks(client: &Client) {
         );
     }
     // Confirmation is durable ordinary metadata, independent of the feature and worker.
+    stale_prediction(PUBLIC, "cat");
     assert_eq!(
         decision(client, PUBLIC, "cat", "confirm").await,
         json!({"photos": 1, "label": "chat"})
@@ -101,6 +153,8 @@ pub(super) async fn checks(client: &Client) {
             .tag()
             .contains("chat")
     );
+    assert_eq!(source_count(client, "cat", TagSource::User).await, 1);
+    assert_eq!(source_count(client, "cat", TagSource::Auto).await, 0);
     for request in [
         owner(client.get(format!("/get/resource/{PUBLIC}")), true),
         client
@@ -176,11 +230,27 @@ pub(super) async fn checks(client: &Client) {
             .contains(&"cat".to_owned())
     );
     TREE.store.set_auto_tags_enabled(&[PUBLIC], true).unwrap();
+    assert_eq!(source_count(client, "cat", TagSource::Auto).await, 0);
+    stale_prediction(PRIVATE, "bird");
     decision(client, PRIVATE, "bird", "reject").await;
     decision(client, PRIVATE, "bird", "reject").await;
     assert_eq!(
         TREE.store.auto_tag_rejections_for(PRIVATE).unwrap(),
         vec!["bird"]
+    );
+    assert_eq!(source_count(client, "bird", TagSource::Auto).await, 0);
+    let facets = owner(client.get("/get/get-search-facets"), true)
+        .dispatch()
+        .await
+        .into_json::<Value>()
+        .await
+        .unwrap();
+    assert!(
+        !facets["tags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tag| tag["value"] == "chat" || tag["value"] == "oiseau")
     );
     let response = owner(client.get(format!("/get/auto-tags/{PUBLIC}")), true)
         .dispatch()
@@ -227,6 +297,8 @@ async fn bulk(client: &Client) {
             panic!("no text inference")
         }
     }
+    const DIM: usize = 768;
+    let vector = vec![1.0 / 768.0_f32.sqrt(); DIM];
     let records: Vec<_> = (0..500)
         .map(|i| {
             let hash = format!("{i:064x}");
@@ -255,7 +327,7 @@ async fn bulk(client: &Client) {
     let store = tags.test_store();
     let model = ModelInfo {
         model_id: catalog.model_id.clone(),
-        embedding_dim: 2,
+        embedding_dim: DIM,
         device: "CPU".into(),
         logit_scale: Some(10.0),
         logit_bias: Some(0.0),
@@ -271,7 +343,7 @@ async fn bulk(client: &Client) {
                 vectors: catalog
                     .concepts
                     .iter()
-                    .map(|c| (c.id.clone(), vec![1.0, 0.0]))
+                    .map(|c| (c.id.clone(), vector.clone()))
                     .collect(),
             },
         )
@@ -284,7 +356,7 @@ async fn bulk(client: &Client) {
                 0,
                 &StoredEmbedding {
                     thumbnail_version: 0,
-                    vector: vec![1.0, 0.0],
+                    vector: vector.clone(),
                 },
             )
             .unwrap();

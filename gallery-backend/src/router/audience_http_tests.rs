@@ -19,6 +19,7 @@ mod media;
 mod mutations;
 mod search;
 mod tag_feedback;
+mod tag_search;
 
 use crate::{
     public::{

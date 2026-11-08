@@ -57,6 +57,30 @@ impl AutoTags {
         self.store.clone()
     }
 
+    /// Search consumes every placement, never just the displayed chips.
+    pub fn search_rows(&self) -> Result<Vec<(String, MaterializedTags)>> {
+        let model = self.store.model()?;
+        let rejected = TREE.store.auto_tag_rejections()?;
+        Ok(self
+            .store
+            .all_auto_tags()?
+            .into_iter()
+            .filter(|(_, row)| {
+                row.enabled
+                    && row.vocabulary_version == self.catalog.version
+                    && model
+                        .as_ref()
+                        .is_some_and(|model| model.model_id == row.model_id)
+            })
+            .map(|(id, mut row)| {
+                if let Some(concepts) = rejected.get(&id) {
+                    row.tags.retain(|tag| !concepts.contains(&tag.concept));
+                }
+                (id, row)
+            })
+            .collect())
+    }
+
     pub fn new(store: EmbeddingStore) -> Result<Self> {
         Ok(Self {
             store,
@@ -68,8 +92,13 @@ impl AutoTags {
     /// Cache key includes the immutable vocabulary release (thresholds and labels too).
     /// A failed text tower never prevents photo embeddings from being recorded.
     pub fn prepare(&self, model: &ModelInfo, embedder: &dyn Embedder) -> Result<()> {
-        let mut prepared = self.prepared.lock().unwrap();
-        if prepared.as_ref().is_some_and(|p| p.model == model.model_id) {
+        if self
+            .prepared
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|p| p.model == model.model_id)
+        {
             return Ok(());
         }
         ensure!(
@@ -122,7 +151,8 @@ impl AutoTags {
             vectors.vectors,
             ScoreModel::new(vectors.scale, vectors.bias)?,
         )?;
-        *prepared = Some(Prepared {
+        // Text inference must not hold the lock used by owner decision rematerialization.
+        *self.prepared.lock().unwrap() = Some(Prepared {
             model: model.model_id.clone(),
             engine,
             aliases: AliasIndex::default(),

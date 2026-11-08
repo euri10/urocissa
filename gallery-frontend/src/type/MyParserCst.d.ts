@@ -58,6 +58,18 @@ export type AtomicExpressionCstChildren = {
   audienceExpression?: AudienceExpressionCstNode[];
   semanticExpression?: SemanticExpressionCstNode[];
   similarExpression?: SimilarExpressionCstNode[];
+  sourceExpression?: SourceExpressionCstNode[];
+};
+
+export interface SourceExpressionCstNode extends CstNode {
+  name: "sourceExpression";
+  children: SourceExpressionCstChildren;
+}
+
+export type SourceExpressionCstChildren = {
+  Source: IToken[];
+  Identifier?: IToken[];
+  SourceValue?: IToken[];
 };
 
 export interface NotExpressionCstNode extends CstNode {
@@ -218,6 +230,7 @@ export type SimilarExpressionCstChildren = {
 };
 
 export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
+  sourceExpression(children: SourceExpressionCstChildren, param?: IN): OUT;
   similarExpression(children: SimilarExpressionCstChildren, param?: IN): OUT;
   semanticExpression(children: SemanticExpressionCstChildren, param?: IN): OUT;
   expression(children: ExpressionCstChildren, param?: IN): OUT;

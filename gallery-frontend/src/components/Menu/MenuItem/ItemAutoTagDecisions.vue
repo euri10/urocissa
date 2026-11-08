@@ -24,7 +24,10 @@ const disabled = computed(() => !config.canWrite || busy.value ||
 
 async function open(): Promise<void> {
   if (disabled.value) return
-  selectedTarget = structuredClone(normalizeSelection(props.target))
+  const selection = normalizeSelection(props.target)
+  selectedTarget = selection.mode === 'explicit'
+    ? { mode: 'explicit', indices: [...selection.indices] }
+    : { mode: 'allExcept', excludedIndices: [...selection.excludedIndices] }
   timestamp = usePrefetchStore(props.isolationId).timestamp
   preview.value = null
   concept.value = null

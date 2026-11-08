@@ -7,10 +7,15 @@ use std::time::Instant;
 
 use super::Tree;
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
 pub struct FacetValueInfo {
     pub value: String,
     pub count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_count: Option<usize>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -21,17 +26,26 @@ pub struct SearchFacets {
 }
 
 impl Tree {
-    pub fn read_tags(&self) -> Vec<FacetValueInfo> {
+    /// The tag-edit response is owner-only and must retain the unified facet list.
+    pub fn read_tags(&self) -> AppResult<Vec<FacetValueInfo>> {
         let start_time = Instant::now();
         let state = self.state.read().unwrap();
-        let tags = exact_facet_values(state.query.tags.iter());
+        let mut visible = super::state::DenseBitmap::default();
+        for slot in state.order.iter() {
+            visible.set(slot.index(), true);
+        }
+        let tags = crate::operations::tag_search::OwnerTagIndex::read(&state)?.facets(
+            &visible,
+            &state.query.trashed,
+            None,
+        );
         crate::perf_timing!(
             "get_list.read_tags",
             start_time,
             "Read {} tags from cache",
             tags.len()
         );
-        tags
+        Ok(tags)
     }
 
     pub fn read_search_facets(
@@ -56,12 +70,20 @@ impl Tree {
             }
         }
         let facets = SearchFacets {
-            tags: exact_facet_values_for_scope(
-                state.query.tags.iter(),
-                &state.query.trashed,
-                trashed,
-                Some(&visible),
-            ),
+            tags: if visibility.viewer == Viewer::Owner {
+                crate::operations::tag_search::OwnerTagIndex::read(&state)?.facets(
+                    &visible,
+                    &state.query.trashed,
+                    trashed,
+                )
+            } else {
+                exact_facet_values_for_scope(
+                    state.query.tags.iter(),
+                    &state.query.trashed,
+                    trashed,
+                    Some(&visible),
+                )
+            },
             makes: camera_facet_values_for_scope(
                 state.query.makes.iter(),
                 &state.query.trashed,
@@ -116,6 +138,7 @@ impl Tree {
     }
 }
 
+#[cfg(test)]
 fn exact_facet_values<'a>(
     values: impl Iterator<Item = (&'a String, &'a super::state::OrdinalSet)>,
 ) -> Vec<FacetValueInfo> {
@@ -134,6 +157,7 @@ fn exact_facet_values_for_scope<'a>(
             (count > 0).then(|| FacetValueInfo {
                 value: value.clone(),
                 count,
+                ..Default::default()
             })
         })
         .collect::<Vec<_>>();
@@ -192,6 +216,7 @@ fn camera_facet_values_for_scope<'a>(
             Some(FacetValueInfo {
                 value,
                 count: aggregate.count,
+                ..Default::default()
             })
         })
         .collect::<Vec<_>>();
@@ -286,10 +311,12 @@ mod search_facet_tests {
                 FacetValueInfo {
                     value: "Canon".to_owned(),
                     count: 6,
+                    ..Default::default()
                 },
                 FacetValueInfo {
                     value: "NIKON".to_owned(),
                     count: 2,
+                    ..Default::default()
                 },
             ]
         );
@@ -308,10 +335,12 @@ mod search_facet_tests {
                 FacetValueInfo {
                     value: "Family".to_owned(),
                     count: 1,
+                    ..Default::default()
                 },
                 FacetValueInfo {
                     value: "family".to_owned(),
                     count: 2,
+                    ..Default::default()
                 },
             ]
         );
@@ -337,10 +366,12 @@ mod search_facet_tests {
                 FacetValueInfo {
                     value: "active-only".to_owned(),
                     count: 1,
+                    ..Default::default()
                 },
                 FacetValueInfo {
                     value: "shared".to_owned(),
                     count: 1,
+                    ..Default::default()
                 },
             ]
         );
@@ -350,10 +381,12 @@ mod search_facet_tests {
                 FacetValueInfo {
                     value: "shared".to_owned(),
                     count: 1,
+                    ..Default::default()
                 },
                 FacetValueInfo {
                     value: "trashed-only".to_owned(),
                     count: 1,
+                    ..Default::default()
                 },
             ]
         );
@@ -376,6 +409,7 @@ mod search_facet_tests {
             vec![FacetValueInfo {
                 value: "Canon".to_owned(),
                 count: 1,
+                ..Default::default()
             }]
         );
         assert_eq!(
@@ -384,10 +418,12 @@ mod search_facet_tests {
                 FacetValueInfo {
                     value: "CANON".to_owned(),
                     count: 2,
+                    ..Default::default()
                 },
                 FacetValueInfo {
                     value: "Nikon".to_owned(),
                     count: 1,
+                    ..Default::default()
                 },
             ]
         );
@@ -399,10 +435,12 @@ mod search_facet_tests {
             tags: vec![FacetValueInfo {
                 value: "family".to_owned(),
                 count: 2,
+                ..Default::default()
             }],
             makes: vec![FacetValueInfo {
                 value: "Canon".to_owned(),
                 count: 4,
+                ..Default::default()
             }],
             models: vec![],
         };

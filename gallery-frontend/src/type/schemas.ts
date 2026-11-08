@@ -218,7 +218,9 @@ export const scrollbarDataSchema = z.object({
 
 export const facetValueInfoSchema = z.object({
   value: z.string(),
-  count: z.number().int().nonnegative()
+  count: z.number().int().nonnegative(),
+  userCount: z.number().int().nonnegative().optional(),
+  autoCount: z.number().int().nonnegative().optional()
 })
 
 export const searchFacetsSchema = z.object({

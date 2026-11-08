@@ -201,3 +201,65 @@ fn rejection_survives_recompute_vocabulary_model_changes_and_derived_rebuild() -
     }
     Ok(())
 }
+
+#[test]
+fn slow_text_preparation_never_blocks_decision_rematerialization() -> Result<()> {
+    use std::{
+        sync::{Arc, mpsc},
+        time::{Duration, Instant},
+    };
+    struct Slow {
+        started: mpsc::SyncSender<()>,
+        release: Mutex<Option<mpsc::Receiver<()>>>,
+    }
+    impl Embedder for Slow {
+        fn info(&self) -> Result<ModelInfo> {
+            unreachable!()
+        }
+        fn embed_image(&self, _: Vec<u8>) -> Result<ImageEmbedding> {
+            panic!("no image inference")
+        }
+        fn embed_text(&self, _: &str) -> Result<ImageEmbedding> {
+            if let Some(release) = self.release.lock().unwrap().take() {
+                self.started.send(())?;
+                let _ = release.recv_timeout(Duration::from_secs(2));
+            }
+            Ok(ImageEmbedding {
+                model_id: BuiltinCatalog::embedded()?.model_id,
+                embedding: vec![1.0, 0.0],
+            })
+        }
+    }
+    let dir = tempfile::tempdir()?;
+    let store = EmbeddingStore::open(&dir.path().join("derived.redb"))?;
+    let tags = Arc::new(AutoTags::new(store)?);
+    let (started_tx, started_rx) = mpsc::sync_channel(1);
+    let (release_tx, release_rx) = mpsc::sync_channel(1);
+    let worker_tags = tags.clone();
+    let worker = std::thread::spawn(move || {
+        worker_tags.prepare(
+            &ModelInfo {
+                model_id: worker_tags.catalog.model_id.clone(),
+                embedding_dim: 2,
+                device: "CPU".into(),
+                logit_scale: Some(10.0),
+                logit_bias: Some(0.0),
+            },
+            &Slow {
+                started: started_tx,
+                release: Mutex::new(Some(release_rx)),
+            },
+        )
+    });
+    started_rx.recv_timeout(Duration::from_secs(2))?;
+    let start = Instant::now();
+    tags.materialize(&HashMap::new(), &[])?;
+    let elapsed = start.elapsed();
+    let _ = release_tx.send(());
+    worker.join().unwrap()?;
+    ensure!(
+        elapsed < Duration::from_millis(250),
+        "decision waited for text inference: {elapsed:?}"
+    );
+    Ok(())
+}
