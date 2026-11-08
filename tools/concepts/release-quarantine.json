@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "model_id": "siglip2-base-patch16-224@75de2d55ec2d/fp16-text-int8",
+  "observations_sha256": "d63e52962ce4ec25229536bafc40f7280729129a9a3b4ac6d18aaefbcd7798db",
+  "concepts": {
+    "flower": {
+      "issue": "infra-urocissa-autotag-sjfz.17",
+      "reason": "Flower fires on the independently reviewed cat fixture. The selected 80 verified negatives include neither of the two verified cat negatives in the source labels. Keep zero-shot activation disabled pending broader verified negative coverage and independent acceptance; do not tune the threshold against this regression image.",
+      "images": ["cat.jpg"]
+    }
+  }
+}

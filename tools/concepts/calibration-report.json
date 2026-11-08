@@ -1,5 +1,5 @@
 {
-  "catalog_definition_sha256": "d0cf4ab5d99d961ac774f1e1a0868796f220fe2818d08cf9a92614ba1c870fd5",
+  "catalog_definition_sha256": "66054af300c60a1c466ba69352fa2590732dfc335572c67d6f20a22f96a846a8",
   "concepts": {
     "airplane": {
       "evaluation": {
@@ -1010,7 +1010,7 @@
         "true_positive": 26
       },
       "open_images_mid": "/m/0c9ph5",
-      "reason": null,
+      "reason": "release_quarantine",
       "sample_sha256": "41686acc408ef81f035b9ef7b62bbe1f746a2ee5ed9193a0cd81f9f0d0e9499e",
       "selected_threshold": 0.001171667710877955,
       "selection": {
@@ -1023,8 +1023,8 @@
         "recall": 0.75,
         "true_positive": 33
       },
-      "status": "calibrated",
-      "threshold": 0.001171667710877955
+      "status": "dropped",
+      "threshold": null
     },
     "food": {
       "evaluation": {
@@ -2045,7 +2045,21 @@
     "text_max_tokens": 64,
     "variant": "siglip2-base-patch16-224"
   },
-  "schema_version": 2,
-  "tool_sha256": "df72a42b88b87ccd9271423cbfbac26fcfae6eac795cee825b24bb32d3254592",
-  "vocabulary_version": "2026-11-08.2"
+  "release_quarantine": {
+    "concepts": {
+      "flower": {
+        "images": [
+          "cat.jpg"
+        ],
+        "issue": "infra-urocissa-autotag-sjfz.17",
+        "reason": "Flower fires on the independently reviewed cat fixture. The selected 80 verified negatives include neither of the two verified cat negatives in the source labels. Keep zero-shot activation disabled pending broader verified negative coverage and independent acceptance; do not tune the threshold against this regression image."
+      }
+    },
+    "model_id": "siglip2-base-patch16-224@75de2d55ec2d/fp16-text-int8",
+    "observations_sha256": "d63e52962ce4ec25229536bafc40f7280729129a9a3b4ac6d18aaefbcd7798db",
+    "schema_version": 1
+  },
+  "schema_version": 3,
+  "tool_sha256": "b21dedda6b378a8dabd3db293e45c986158a328cd596d382cd0bf5634cc83e54",
+  "vocabulary_version": "2026-11-08.3"
 }

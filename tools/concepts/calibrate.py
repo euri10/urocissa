@@ -34,6 +34,31 @@ def read_json(path):
     return json.loads(path.read_text())
 
 
+def release_quarantine(path, catalog, info):
+    if path is None:
+        return None
+    policy = read_json(path)
+    observed_path = path.with_name("fixture-scores.json")
+    observed = read_json(observed_path)
+    prompts = [(c["id"], catalog["prompt_template"].format(label=c["label_en"]))
+               for c in catalog["concepts"]]
+    if (policy["schema_version"] != 1 or policy["model_id"] != catalog["model_id"]
+            or policy["observations_sha256"] != digest(observed_path.read_bytes())
+            or observed["model"] != info
+            or observed["prompt_sha256"] != digest(json.dumps(prompts, sort_keys=True).encode())):
+        raise ValueError("release quarantine provenance mismatch")
+    known = {c["id"] for c in catalog["concepts"]}
+    for concept, evidence in policy["concepts"].items():
+        if concept not in known or not evidence["issue"] or not evidence["reason"] or not evidence["images"]:
+            raise ValueError("release quarantine needs a known Concept and documented evidence")
+        for name in evidence["images"]:
+            image = observed["images"][name]
+            if (Path(name).name != name or concept not in image["scores"]
+                    or image["sha256"] != digest((ROOT / "gallery-tagger/tests/fixtures/images" / name).read_bytes())):
+                raise ValueError("release quarantine fixture mismatch")
+    return policy
+
+
 def rank(image_id):
     return digest(f"{SEED}:{image_id}".encode())
 
@@ -199,6 +224,7 @@ def run(args):
             or not math.isfinite(info["logit_scale"]) or info["logit_scale"] <= 0
             or not math.isfinite(info["logit_bias"])):
         raise ValueError("sidecar does not match the catalog's pinned model")
+    quarantine = release_quarantine(args.release_quarantine, catalog, info)
     identity = {key: info[key] for key in ["model_id", "revision", "precision", "embedding_dim",
                 "image_size", "text_max_tokens", "logit_scale", "logit_bias", "runtime", "tagger_version", "device"]}
     inference = args.cache / digest(json.dumps(identity, sort_keys=True).encode())[:16]
@@ -249,9 +275,10 @@ def run(args):
     write_json(args.cache / "images.json", hashes)
     if json.loads(fetch(args.tagger + "/v1/info", timeout=remaining())) != info:
         raise ValueError("sidecar identity changed during calibration")
-    report = {"schema_version": 2, "vocabulary_version": catalog["version"], "dataset": lock,
+    report = {"schema_version": 3, "vocabulary_version": catalog["version"], "dataset": lock,
               "tool_sha256": digest(Path(__file__).read_bytes()),
               "catalog_definition_sha256": definition_hash, "model": info,
+              "release_quarantine": quarantine,
               "method": {"seed": SEED, "sample_per_concept": args.sample_per_concept,
                          "sampling": "hash-ordered explicit positives and negatives, capped at half the budget each; no refill",
                          "target_precision": args.precision, "minimum_recall": args.recall,
@@ -270,6 +297,10 @@ def run(args):
         result = calibrate(rows, args.precision, args.recall, args.minimum)
         if mid is None:
             result["reason"] = "no_open_images_class"
+        if quarantine and concept["id"] in quarantine["concepts"]:
+            # Independent counterexamples veto release, never select a threshold.
+            # Retain the untouched sampled metrics/choice for the audit trail.
+            result.update(status="dropped", reason="release_quarantine", threshold=None)
         result["open_images_mid"] = mid
         result["sample_sha256"] = digest(json.dumps(rows, sort_keys=True).encode())
         report["concepts"][concept["id"]] = result
@@ -285,6 +316,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--catalog", type=Path, default=ROOT / "gallery-backend/assets/concepts.json")
     parser.add_argument("--dataset-lock", type=Path, default=Path(__file__).with_name("dataset.lock.json"))
+    parser.add_argument("--release-quarantine", type=Path,
+                        default=Path(__file__).with_name("release-quarantine.json"))
     parser.add_argument("--cache", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--tagger", required=True, help="explicit existing stateless sidecar URL")

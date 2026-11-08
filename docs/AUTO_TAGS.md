@@ -1,5 +1,28 @@
 # Owner-only Auto tags
 
+## Integrated rollout candidate (.13)
+
+The release combines the completed feature chain through Concept review
+(`f7235cfe`) with the evidence-bound Flower quarantine (`c8247af7`). The latter
+keeps Flower named but inactive and preserves the reviewed calibration evidence;
+it does not adjust thresholds against the independent cat fixture. Storage,
+owner feedback, personal Concepts, tag search/facets, semantic search and Similar
+photos are integrated in the same source tree.
+
+Combined local validation: 324 backend tests passed (4 opt-in tests ignored),
+343 frontend tests passed, and typecheck, lint, production build, Rust formatting
+and Clippy passed (existing warnings only). All 12 calibration-tool tests passed.
+The actual previously pinned gallery executable from manifest
+`sha256:1032dfee0469b6129f31eda6bb8cc63640e55b1bacd8ba97c0e18c50c2511d22`
+also opened the new authored database, served confirmed User tags and preserved
+Rejections in the explicit rollback-reader test. That test was run with
+`UROCISSA_PREVIOUS_BINARY`, rather than relying on its no-binary early return.
+
+Exact-image pair verification and host acceptance belong to the infrastructure
+rollout. These local checks are not a production backup, N100 benchmark, live
+backfill or the owner's 100-photo quality review. The expensive hybrid-scroll
+gate was not requested and was not run.
+
 When the optional tagger is configured, photos receive Auto tags from the reviewed,
 calibrated built-in Concept vocabulary. User tags remain authored, filled chips;
 Auto tags are separate outlined sparkle chips with keyboard/hover confidence
