@@ -45,6 +45,9 @@ use std::{
 };
 
 struct Fake(AtomicBool, AtomicUsize);
+
+#[path = "similar_tests.rs"]
+mod similar;
 impl Embedder for Fake {
     fn info(&self) -> Result<ModelInfo> {
         anyhow::ensure!(self.0.load(Ordering::Relaxed), "offline");
@@ -171,6 +174,7 @@ fn http_child() {
             .unwrap();
     }
     let fake = Arc::new(Fake(AtomicBool::new(true), AtomicUsize::new(2)));
+    cache.set_model(&fake.info().unwrap()).unwrap();
     embedding::install_test_service();
     assert!(
         embedding::service()
@@ -188,6 +192,7 @@ fn http_child() {
             .body(body)
     };
     let owner = || Cookie::new("jwt", Claims::new_admin().encode());
+    similar::check(&client, &fake);
     let response = request("sort=relevance", body).cookie(owner()).dispatch();
     assert_eq!(response.status(), Status::Ok);
     let first: PrefetchReturn = response.into_json().unwrap();
@@ -306,12 +311,14 @@ fn http_child() {
         .dispatch();
     assert_eq!(normal.status(), Status::Ok);
     assert!(!normal.into_string().unwrap().contains("semanticSearch"));
+    similar::ordering_and_selection(&client, &cache);
     benchmark_full_request(&client, &cache, &fake);
 }
 
 fn benchmark_full_request(client: &Client, cache: &EmbeddingStore, fake: &Fake) {
     fake.0.store(true, Ordering::Relaxed);
     fake.1.store(768, Ordering::Relaxed);
+    cache.set_model(&fake.info().unwrap()).unwrap();
     let vector = vec![1.0 / 768.0_f32.sqrt(); 768];
     for number in 1..=10_000 {
         cache
@@ -328,20 +335,33 @@ fn benchmark_full_request(client: &Client, cache: &EmbeddingStore, fake: &Fake) 
     }
     *TREE.state.write().unwrap() =
         TreeState::from_records((1..=10_000).map(|number| photo(number, 0)));
-    for _ in 0..2 {
+    for body in [
+        r#"{"Semantic":"ten thousand photo benchmark"}"#.to_owned(),
+        format!(r#"{{"Similar":"{:064x}"}}"#, 1),
+    ] {
         let start = Instant::now();
         let response = client
             .post("/get/prefetch?sort=relevance")
             .header(ContentType::JSON)
             .cookie(Cookie::new("jwt", Claims::new_admin().encode()))
-            .body(r#"{"Semantic":"ten thousand photo benchmark"}"#)
+            .body(body.clone())
             .dispatch();
         assert_eq!(response.status(), Status::Ok);
         let result: PrefetchReturn = response.into_json().unwrap();
         let elapsed = start.elapsed();
-        eprintln!("10k × 768 complete semantic request (fixture inference): {elapsed:?}");
+        eprintln!("10k × 768 complete ranked request ({body}): {elapsed:?}");
         assert_eq!(result.prefetch.data_length, 200);
-        assert_eq!(result.semantic_search.unwrap().indexed_photos, 10_000);
+        assert_eq!(
+            result.semantic_search.as_ref().unwrap().indexed_photos,
+            if body.contains("Similar") {
+                9_999
+            } else {
+                10_000
+            }
+        );
+        if body.contains("Similar") {
+            assert!(!ids(&result).contains(&format!("{:064x}", 1)));
+        }
         assert!(
             elapsed < Duration::from_millis(if cfg!(debug_assertions) { 1000 } else { 200 }),
             "full request budget exceeded: {elapsed:?}"

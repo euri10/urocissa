@@ -16,7 +16,9 @@ export function parseGallerySortOrder(value: unknown): GallerySortOrder {
 }
 
 export function hasSemanticSearch(query: string | null | undefined): boolean {
-  return MyLexer.tokenize(query ?? '').tokens.some((token) => token.tokenType.name === 'Semantic')
+  // Text and photo queries share relevance, frozen selections and rollback-safe saving rules.
+  return MyLexer.tokenize(query ?? '').tokens.some((token) =>
+    token.tokenType.name === 'Semantic' || token.tokenType.name === 'Similar')
 }
 
 export function nextQuickSortOrder(sortOrder: GallerySortOrder, semantic = false): GallerySortOrder {

@@ -170,3 +170,46 @@ were checked in both themes, including live overlay theme changes, loading,
 empty results and offline recovery. The opt-in hybrid-scroll gate was not
 requested. These are local checks; production rollout and beesslc performance
 acceptance remain separate work.
+
+### 11. Similar Photos (Owner Only)
+
+With photo indexing enabled, open a photo's **Media actions → Similar photos**.
+The ordinary **All** gallery opens in Relevance order, excluding the source
+photo. Select results and use **Batch actions → Batch Edit Tags** to tag them together.
+The date/relevance sort cycle preserves the selected result set, just as in text
+search. Videos and share-link galleries do not offer this action.
+
+You can also enter `similar:"<64-character photo ID>"`, optionally combined with
+ordinary filters using `and(...)`. The API uses `{"Similar":"<photo ID>"}` with
+the same `/get/prefetch` endpoint, `sort` and `semantic_selection` parameters,
+snapshot selection actions, ranking cutoff, result cap and idle expiry as text
+search. Use exactly one `semantic` or `similar` expression, not both, and do not
+put it under `or(...)` or `not(...)`. Visitor/share requests are refused with 403
+before consulting the embedding index, regardless of sort order.
+
+Similarity uses the source's current thumbnail embedding and the model recorded
+in the local index; it does not contact the tagger and works during a sidecar
+outage. An unprocessed, stale or invalid source vector returns 409 with **not
+processed yet** and a retry hint. A missing/non-photo source returns 404. Indexing
+must be enabled and initialized; otherwise the search returns 503. Candidates
+without current, valid embeddings are omitted and counted as pending. The
+source is excluded before ranking and does not count toward coverage or the cap.
+Saving ranked queries to private configuration remains disabled for rollback
+compatibility; local search history still works.
+
+The semantic HTTP gate also checks source exclusion, image-neighbour ordering,
+stale/missing source vectors, non-owner refusal, ordinary filter composition,
+frozen date re-sorts during backfill, existing bulk-selection resolution, and a
+complete 10,000-photo / 768-dimensional similarity request (optimized budget:
+200 ms). Production rollout remains a separate, owner-approved task.
+
+Local acceptance on 2026-11-08: optimized similarity requests over 10,000 stored
+vectors took 50–53 ms. Real-image fixture requests took 0.7–1.5 ms and returned
+the other stork image first. Desktop and 390px desktop/touch-mobile contexts
+passed both themes, live menu theme changes and the relevance/date cycle.
+Selecting all three cat-neighbour results and bulk tagging updated exactly those
+photos, not the source. Stopping the local sidecar left fresh image similarity
+available while new text searches returned 503; a newly uploaded photo returned
+the not-processed 409 message. The full optimized backend suite passed with
+`--test-threads=1`; concurrent CPU-heavy checks can exceed the wall-clock timing
+budget, so run the isolated HTTP gate above for performance acceptance.

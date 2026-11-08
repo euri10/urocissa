@@ -56,7 +56,7 @@ fn semantic_expression_composes_and_rejects_ambiguous_or_invalid_queries() {
         Expression::Semantic("  enfant à vélo  ".into()),
     ]);
     let (text, remainder) = split_expression(&query).unwrap();
-    assert_eq!(text, "enfant à vélo");
+    assert_eq!(text, SearchQuery::Text("enfant à vélo".into()));
     assert_eq!(
         remainder,
         Expression::And(vec![filter, Expression::And(vec![])])
@@ -75,6 +75,31 @@ fn semantic_expression_composes_and_rejects_ambiguous_or_invalid_queries() {
             Expression::Semantic("vélo".into()),
         ]),
         Expression::Trashed(false),
+    ] {
+        assert!(split_expression(&invalid).is_err(), "{invalid:?}");
+    }
+}
+
+#[test]
+fn similar_expression_validates_source_and_reuses_ranked_filter_rules() {
+    let id = "a".repeat(64);
+    let expression = Expression::Similar(id.clone());
+    assert!(expression.contains_semantic());
+    assert_eq!(
+        split_expression(&expression).unwrap(),
+        (SearchQuery::Similar(id.clone()), Expression::And(vec![]))
+    );
+    for invalid in [
+        Expression::Similar(String::new()),
+        Expression::Similar("x".repeat(64)),
+        Expression::Similar("a".repeat(63)),
+        Expression::Not(Box::new(expression.clone())),
+        Expression::Or(vec![expression.clone(), Expression::Trashed(false)]),
+        Expression::And(vec![
+            expression.clone(),
+            Expression::Semantic("bird".into()),
+        ]),
+        Expression::And(vec![expression.clone(), expression]),
     ] {
         assert!(split_expression(&invalid).is_err(), "{invalid:?}");
     }

@@ -30,6 +30,7 @@ pub enum Expression {
     Album(AlbumFilterValue),
     Audience(Audience),
     Semantic(String),
+    Similar(String),
     Any(String),
     // Boolean field filters
     Favorite(bool),
@@ -38,9 +39,10 @@ pub enum Expression {
 }
 
 impl Expression {
+    /// Ranked text and image queries both use the owner-only semantic search path.
     pub fn contains_semantic(&self) -> bool {
         match self {
-            Self::Semantic(_) => true,
+            Self::Semantic(_) | Self::Similar(_) => true,
             Self::Or(expressions) | Self::And(expressions) => {
                 expressions.iter().any(Self::contains_semantic)
             }

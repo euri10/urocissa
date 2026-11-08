@@ -7,6 +7,7 @@ import {
   AtomicExpressionCstChildren,
   AudienceExpressionCstChildren,
   SemanticExpressionCstChildren,
+  SimilarExpressionCstChildren,
   ExpressionCstChildren,
   ExtExpressionCstChildren,
   FavoriteExpressionCstChildren,
@@ -45,6 +46,7 @@ const Archived: TokenType = createToken({ name: 'Archived', pattern: /archived:/
 const Trashed: TokenType = createToken({ name: 'Trashed', pattern: /trashed:/ })
 const Audience: TokenType = createToken({ name: 'Audience', pattern: /audience:/ })
 const Semantic: TokenType = createToken({ name: 'Semantic', pattern: /semantic:/ })
+const Similar: TokenType = createToken({ name: 'Similar', pattern: /similar:/ })
 const Comma: TokenType = createToken({ name: 'Comma', pattern: /,/ })
 
 const BooleanValue: TokenType = createToken({
@@ -88,6 +90,7 @@ const allTokens: TokenType[] = [
   Trashed,
   Audience,
   Semantic,
+  Similar,
   Comma,
   BooleanValue,
   AudienceValue,
@@ -147,7 +150,8 @@ export class MyParser extends CstParser {
       { ALT: () => this.SUBRULE(this.archivedExpression) },
       { ALT: () => this.SUBRULE(this.trashedExpression) },
       { ALT: () => this.SUBRULE(this.audienceExpression) },
-      { ALT: () => this.SUBRULE(this.semanticExpression) }
+      { ALT: () => this.SUBRULE(this.semanticExpression) },
+      { ALT: () => this.SUBRULE(this.similarExpression) }
     ])
   })
 
@@ -225,6 +229,11 @@ export class MyParser extends CstParser {
 
   public semanticExpression = this.RULE('semanticExpression', () => {
     this.CONSUME1(Semantic)
+    this.CONSUME2(Identifier)
+  })
+
+  public similarExpression = this.RULE('similarExpression', () => {
+    this.CONSUME1(Similar)
     this.CONSUME2(Identifier)
   })
 }
@@ -311,6 +320,9 @@ export class MyVisitor extends BaseVisitor {
     if (children.semanticExpression) {
       return this.visit(children.semanticExpression)
     }
+    if (children.similarExpression) {
+      return this.visit(children.similarExpression)
+    }
   }
 
   // Visit a tagExpression node
@@ -381,5 +393,9 @@ export class MyVisitor extends BaseVisitor {
 
   semanticExpression(children: SemanticExpressionCstChildren) {
     return { Semantic: unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image) }
+  }
+
+  similarExpression(children: SimilarExpressionCstChildren) {
+    return { Similar: unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image) }
   }
 }

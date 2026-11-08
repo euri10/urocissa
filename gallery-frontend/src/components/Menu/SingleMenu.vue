@@ -4,6 +4,7 @@ import { getSrc } from '@utils/getter'
 import ItemViewOriginalFile from '@Menu/MenuItem/ItemViewOriginalFile.vue'
 import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
 import ItemFindInTimeline from '@Menu/MenuItem/ItemFindInTimeline.vue'
+import ItemSimilarPhotos from '@Menu/MenuItem/ItemSimilarPhotos.vue'
 import ItemEditTags from '@Menu/MenuItem/ItemEditTags.vue'
 import ItemEditAlbums from '@Menu/MenuItem/ItemEditAlbums.vue'
 import ItemDelete from '@Menu/MenuItem/ItemDelete.vue'
@@ -40,6 +41,7 @@ const configStore = useConfigStore('mainId')
       />
       <ItemDownload v-if="configStore.isAdmin" :index-list="[props.index]" />
       <ItemFindInTimeline :hash="props.hash" />
+      <ItemSimilarPhotos :photo="database" />
       <template v-if="configStore.isAdmin">
         <v-divider></v-divider>
         <ItemPhotoAudience

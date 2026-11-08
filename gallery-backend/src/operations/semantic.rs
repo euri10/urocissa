@@ -24,6 +24,12 @@ const MAX_QUERIES: usize = 32;
 const MAX_SELECTIONS: usize = 64;
 pub const MAX_RESULTS: usize = 200;
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum SearchQuery {
+    Text(String),
+    Similar(String),
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchSummary {
@@ -147,23 +153,38 @@ impl SemanticSearch {
     }
 }
 
-/// One positive semantic expression can be combined with any existing filters using AND.
+/// One positive text/image query can be combined with any existing filters using AND.
 /// Reject ambiguous rankings under OR/NOT rather than silently broadening the collection.
-pub fn split_expression(expression: &Expression) -> AppResult<(String, Expression)> {
-    fn extract(expression: &Expression, text: &mut Option<String>) -> AppResult<Expression> {
+pub fn split_expression(expression: &Expression) -> AppResult<(SearchQuery, Expression)> {
+    fn extract(expression: &Expression, query: &mut Option<SearchQuery>) -> AppResult<Expression> {
         Ok(match expression {
-            Expression::Semantic(value) => {
+            Expression::Semantic(value) | Expression::Similar(value) => {
                 let value = value.trim();
-                if value.is_empty() || value.chars().count() > 2000 {
+                let ranked = if matches!(expression, Expression::Similar(_)) {
+                    if value.len() != 64
+                        || !value
+                            .bytes()
+                            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+                    {
+                        return Err(AppError::new(
+                            ErrorKind::InvalidInput,
+                            "Similar photos requires a photo ID (64 lowercase hexadecimal characters)",
+                        ));
+                    }
+                    SearchQuery::Similar(value.to_owned())
+                } else {
+                    if value.is_empty() || value.chars().count() > 2000 {
+                        return Err(AppError::new(
+                            ErrorKind::InvalidInput,
+                            "Semantic text must contain 1–2000 characters",
+                        ));
+                    }
+                    SearchQuery::Text(value.to_owned())
+                };
+                if query.replace(ranked).is_some() {
                     return Err(AppError::new(
                         ErrorKind::InvalidInput,
-                        "Semantic text must contain 1–2000 characters",
-                    ));
-                }
-                if text.replace(value.to_owned()).is_some() {
-                    return Err(AppError::new(
-                        ErrorKind::InvalidInput,
-                        "Use one semantic expression per search",
+                        "Use one semantic or similar expression per search",
                     ));
                 }
                 Expression::And(vec![])
@@ -171,27 +192,27 @@ pub fn split_expression(expression: &Expression) -> AppResult<(String, Expressio
             Expression::And(children) => Expression::And(
                 children
                     .iter()
-                    .map(|child| extract(child, text))
+                    .map(|child| extract(child, query))
                     .collect::<AppResult<_>>()?,
             ),
             expression if expression.contains_semantic() => {
                 return Err(AppError::new(
                     ErrorKind::InvalidInput,
-                    "Combine semantic search with filters using AND, not OR or NOT",
+                    "Combine semantic or similar search with filters using AND, not OR or NOT",
                 ));
             }
             expression => expression.clone(),
         })
     }
-    let mut text = None;
-    let filter = extract(expression, &mut text)?;
-    let text = text.ok_or_else(|| {
+    let mut query = None;
+    let filter = extract(expression, &mut query)?;
+    let query = query.ok_or_else(|| {
         AppError::new(
             ErrorKind::InvalidInput,
-            "Relevance sorting requires a semantic expression",
+            "Relevance sorting requires a semantic or similar expression",
         )
     })?;
-    Ok((text, filter))
+    Ok((query, filter))
 }
 
 /// Cosine ranking of normalized vectors; ties are stable and never expand the result cap.

@@ -11,7 +11,7 @@ use crate::{
     operations::{
         autotag::check_vector,
         embedding,
-        semantic::{self, Selection, SemanticSearch},
+        semantic::{self, SearchQuery, Selection, SemanticSearch},
         visibility::PhotoVisibility,
     },
     public::{
@@ -51,17 +51,51 @@ fn eligible(
 fn select(
     search: &SemanticSearch,
     expression: &Expression,
-    text: &str,
+    query: &SearchQuery,
     filter: &Expression,
     visibility: &PhotoVisibility,
 ) -> AppResult<Selection> {
     // Network and redb reads finish before taking the live gallery lock.
-    let query = search.query_vector(text)?;
-    let embeddings = search.store.embeddings(&query.model_id)?;
+    let text_vector = match query {
+        SearchQuery::Text(text) => Some(search.query_vector(text)?),
+        SearchQuery::Similar(_) => None,
+    };
+    let (model_id, dim) = if let Some(vector) = &text_vector {
+        (vector.model_id.clone(), vector.embedding.len())
+    } else {
+        // Image-to-image search needs no sidecar request, including during an outage.
+        let model = search.store.model()?.ok_or_else(not_processed)?;
+        model.validate().map_err(|_| not_processed())?;
+        (model.model_id, model.embedding_dim)
+    };
+    let embeddings = search.store.embeddings(&model_id)?;
     let tree = TREE
         .state
         .read()
         .map_err(|_| AppError::new(ErrorKind::Internal, "Cannot read the photo library"))?;
+    let source = match query {
+        SearchQuery::Similar(id) => Some(id.as_str()),
+        SearchQuery::Text(_) => None,
+    };
+    let vector = if let Some(id) = source {
+        let slot = tree
+            .find(id)
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Source photo not found"))?;
+        let record = tree.get(slot).unwrap();
+        if record.object_type != ObjectType::Image || !visibility.allows_cached(&tree, slot)? {
+            return Err(AppError::new(ErrorKind::NotFound, "Source photo not found"));
+        }
+        &embeddings
+            .get(id)
+            .filter(|stored| {
+                stored.thumbnail_version == record.cache_version
+                    && check_vector(&stored.vector, dim).is_ok()
+            })
+            .ok_or_else(not_processed)?
+            .vector
+    } else {
+        &text_vector.as_ref().unwrap().embedding
+    };
     let compiled = tree.compile_expression(filter, None, false);
     let audience_filtered = expression.contains_audience();
     let mut scores = Vec::new();
@@ -72,9 +106,12 @@ fn select(
             continue;
         }
         let record = tree.get(slot).unwrap();
+        if source == Some(record.id.as_str()) {
+            continue;
+        }
         let Some(stored) = embeddings.get(record.id.as_str()).filter(|stored| {
             stored.thumbnail_version == record.cache_version
-                && check_vector(&stored.vector, query.embedding.len()).is_ok()
+                && check_vector(&stored.vector, dim).is_ok()
         }) else {
             pending += 1;
             continue;
@@ -83,12 +120,19 @@ fn select(
         let score = stored
             .vector
             .iter()
-            .zip(&query.embedding)
+            .zip(vector)
             .map(|(left, right)| left * right)
             .sum();
         scores.push(((record.id, record.cache_version), score));
     }
     Ok(search.remember(expression.clone(), semantic::rank(scores), indexed, pending))
+}
+
+fn not_processed() -> AppError {
+    AppError::new(
+        ErrorKind::Conflict,
+        "This photo is not processed yet. Try Similar photos again after photo indexing completes.",
+    )
 }
 
 pub(super) fn execute(
@@ -98,13 +142,13 @@ pub(super) fn execute(
     selection_id: Option<&str>,
     visibility: &PhotoVisibility,
 ) -> AppResult<Json<PrefetchReturn>> {
-    let (text, filter) = semantic::split_expression(expression)?;
+    let (query, filter) = semantic::split_expression(expression)?;
     let search = embedding::service().and_then(|service| service.search.get())
         .ok_or_else(|| AppError::new(ErrorKind::Unavailable, "Semantic search is disabled or the photo index is not ready. Other searches still work."))?;
     let selection = if let Some(id) = selection_id {
         search.resume(id, expression)?
     } else {
-        select(search, expression, &text, &filter, visibility)?
+        select(search, expression, &query, &filter, visibility)?
     };
     let tree = TREE
         .state
