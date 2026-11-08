@@ -112,7 +112,7 @@ the model cannot recognize them. The sampled positives/negatives are recorded
 for each partition; raising support requires more verified data, not a guessed
 threshold. Stork remains a named Concept and a child of bird for User tag
 aliases and parent search. No failing Concept receives a default activation
-threshold. The owner French-label sample review remains pending.
+threshold. The owner approved the French-label sample on 2026-11-08.
 
 The Python fixture in CI exercises download/hash checks, the sidecar HTTP
 contract, threshold selection, held-out rejection and cache resume with
