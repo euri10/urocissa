@@ -53,7 +53,7 @@ async function renderControls(
   const pinia = createPinia()
   setActivePinia(pinia)
   if (owner !== undefined) {
-    useConfigStore('mainId').config = { isAdmin: owner, readOnlyMode: !owner } as AppConfig
+    useConfigStore('mainId').config = { isAdmin: owner, readOnlyMode: !owner, embeddingEnabled: true } as AppConfig
   }
   useInitializedStore('mainId').initialized = true
   if (captureFrame) useCurrentFrameStore('mainId').video = {} as HTMLVideoElement
@@ -78,14 +78,22 @@ async function renderControls(
   for (const name of [
     'VList', 'VListItem', 'VListItemTitle', 'VListItemSubtitle', 'VListSubheader',
     'VAvatar', 'VIcon', 'VDivider', 'VBtn', 'VToolbar', 'VToolbarTitle', 'VSpacer',
-    'VCardItem', 'VCardText', 'VTextarea', 'VNavigationDrawer'
+    'VCardItem', 'VCardText', 'VTextarea', 'VNavigationDrawer', 'VSheet'
   ]) app.component(name, Stub)
   app.component('VMenu', MenuStub)
+  app.component('VTooltip', MenuStub)
   app.component('VChip', ChipStub)
   return renderToString(app)
 }
 
 describe('owner-only controls', () => {
+  it('shows Auto tag controls only for owner photos, never videos or shares', async () => {
+    const props = { isolationId: 'mainId', hash: 'dummy-photo', index: 0, database: media('image') }
+    expect(await renderControls(SingleMenu, props, true)).toContain('Turn Auto tags off')
+    expect(await renderControls(SingleMenu, props, false)).not.toContain('Turn Auto tags')
+    expect(await renderControls(SingleMenu, props, true, false, 'share')).not.toContain('Turn Auto tags')
+    expect(await renderControls(SingleMenu, { ...props, database: media('video') }, true)).not.toContain('Turn Auto tags')
+  })
   it.each([false, undefined])('hides every single-media action for owner=%s', async (owner) => {
     for (const type of ['image', 'video'] as const) {
       for (const isTrashed of [false, true]) {

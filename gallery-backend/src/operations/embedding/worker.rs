@@ -65,6 +65,8 @@ impl Worker {
             probe_failures: 0,
         };
         worker.reconcile(Instant::now())?;
+        // Restore prepared Concepts offline too. A cache miss is retried after probing.
+        worker.refresh_tags(true);
         Ok(worker)
     }
 
@@ -102,7 +104,22 @@ impl Worker {
         self.seen = current;
         self.initialized = true;
         self.update_counts();
+        self.refresh_tags(false);
         Ok(())
+    }
+
+    fn refresh_tags(&self, prepare: bool) {
+        if let Some(tags) = self.service.auto_tags.get() {
+            let result = (|| {
+                if prepare && let Some(model) = &self.model {
+                    tags.prepare(model, self.embedder.as_ref())?;
+                }
+                tags.reconcile()
+            })();
+            if let Err(error) = result {
+                self.service.failure(&error);
+            }
+        }
     }
 
     fn update_counts(&self) {
@@ -139,6 +156,7 @@ impl Worker {
                     .is_none_or(|old| old.model_id != model.model_id);
                 self.store.set_model(&model)?;
                 self.model = Some(model);
+                self.refresh_tags(true);
                 self.next_probe = now + PROBE_INTERVAL;
                 self.probe_failures = 0;
                 {
@@ -222,6 +240,10 @@ impl Worker {
                 self.pending.remove(&id);
                 if completed {
                     self.service.status.lock().unwrap().last_error = None;
+                    if let Some(tags) = self.service.auto_tags.get() {
+                        tags.photo_embedded(&id);
+                    }
+                    self.refresh_tags(false);
                 } else {
                     self.reconcile(now)?;
                 }

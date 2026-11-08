@@ -60,6 +60,8 @@ fn model() -> ModelInfo {
         model_id: "test-model".into(),
         embedding_dim: 2,
         device: "CPU".into(),
+        logit_scale: Some(112.6),
+        logit_bias: Some(-16.7),
     }
 }
 

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useStorage } from '@vueuse/core'
 import { useConfigStore } from '@/store/configStore'
 import {
   useUploadStore,
+  AUTO_TAG_UPLOAD_STORAGE_KEY,
   type UploadPresentationOptions,
   type UploadTarget
 } from '@/store/uploadStore'
@@ -17,6 +19,7 @@ const props = defineProps<{
 const configStore = useConfigStore('mainId')
 const uploadStore = useUploadStore('mainId')
 const publishImmediately = ref(false)
+const autotag = useStorage(AUTO_TAG_UPLOAD_STORAGE_KEY, true)
 
 watch(opened, () => {
   publishImmediately.value = false
@@ -26,6 +29,8 @@ function chooseFiles(): void {
   if (!configStore.canWrite) return
   uploadStore.openFilePicker({
     ...props.target,
+    ...(configStore.config?.embeddingEnabled === true && props.target?.share === undefined
+      ? { autotag: autotag.value } : {}),
     publishImmediately: publishImmediately.value
   }, props.presentation)
   opened.value = false
@@ -35,6 +40,18 @@ function chooseFiles(): void {
 <template>
   <BaseModal v-model="opened" title="Upload photos and videos" width="480">
     <v-list v-if="configStore.canWrite" border rounded="lg" bg-color="transparent">
+      <v-list-item
+        v-if="configStore.config?.embeddingEnabled && !target?.share"
+        subtitle="Photos only. Videos are not auto-tagged."
+      >
+        <v-switch
+          v-model="autotag"
+          label="Auto-tag"
+          color="primary"
+          hide-details
+          inset
+        />
+      </v-list-item>
       <v-list-item>
         <v-switch
           v-model="publishImmediately"

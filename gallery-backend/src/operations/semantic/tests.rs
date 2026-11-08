@@ -21,6 +21,8 @@ impl Default for FakeEmbedder {
                 model_id: "semantic-fixture".into(),
                 embedding_dim: 2,
                 device: "CPU".into(),
+                logit_scale: None,
+                logit_bias: None,
             }),
         }
     }

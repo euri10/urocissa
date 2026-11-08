@@ -3,6 +3,7 @@ use rocket::Route;
 
 pub mod album_audience;
 pub mod edit_album;
+pub mod edit_auto_tags;
 pub mod edit_config;
 pub mod edit_description;
 pub mod edit_flags;
@@ -23,6 +24,7 @@ pub fn generate_put_routes() -> Vec<Route> {
         edit_description::set_user_defined_description,
         edit_flags::edit_flags,
         edit_photo_audience::edit_photo_audience,
+        edit_auto_tags::edit_auto_tags,
         edit_share::edit_share,
         edit_share::delete_share,
         edit_tag::edit_tag,

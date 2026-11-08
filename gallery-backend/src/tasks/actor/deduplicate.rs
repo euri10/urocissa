@@ -18,6 +18,7 @@ pub struct PresignedMetadata {
     pub album_ids: HashSet<ArrayString<64>>,
     pub tags: HashSet<String>,
     pub publish_immediately: bool,
+    pub auto_tags_off: bool,
 }
 
 pub struct DeduplicateTask {

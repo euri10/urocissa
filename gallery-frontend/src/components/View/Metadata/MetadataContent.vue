@@ -13,6 +13,7 @@ import ItemSize from './ItemSize.vue'
 import ItemPath from './ItemPath.vue'
 import ItemDate from './ItemDate.vue'
 import ItemTag from './ItemTag.vue'
+import ItemAutoTags from './ItemAutoTags.vue'
 import ItemAlbum from './ItemAlbum.vue'
 import ItemTitle from './ItemTitle.vue'
 import ItemCount from './ItemCount.vue'
@@ -144,6 +145,15 @@ watch(
             :isolation-id="props.isolationId"
             :index="props.index"
             :albums="abstractData.albums"
+          />
+          <ItemAutoTags
+            v-if="configStore.isAdmin && !isShareMode && configStore.config?.embeddingEnabled && abstractData.type === 'image'"
+            :photo="abstractData"
+          />
+          <v-list-item
+            v-if="configStore.isAdmin && !isShareMode && configStore.config?.embeddingEnabled && abstractData.type === 'video'"
+            prepend-icon="mdi-auto-fix"
+            subtitle="Videos are not auto-tagged."
           />
         </v-list>
       </div>

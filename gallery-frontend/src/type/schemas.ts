@@ -46,8 +46,24 @@ const BaseObjectRaw = z.object({
 
 export const photoAudienceSchema = z.enum(['private', 'public'])
 
+export const autoTagSchema = z.object({
+  concept: z.string(),
+  label: z.string(),
+  confidence: z.number().min(0).max(1),
+  displayed: z.boolean()
+})
+
+export const autoTagStatusSchema = z.object({
+  autoTags: z.array(autoTagSchema),
+  autoTagsEnabled: z.boolean(),
+  autoTagsPending: z.boolean()
+})
+
 // 1. Image Schema
 const ImageSchemaRaw = BaseObjectRaw.extend({
+  autoTags: z.array(autoTagSchema).optional(),
+  autoTagsEnabled: z.boolean().optional(),
+  autoTagsPending: z.boolean().optional(),
   type: z.literal('image'),
   audience: photoAudienceSchema.optional(),
   width: z.number(),
@@ -59,6 +75,9 @@ const ImageSchemaRaw = BaseObjectRaw.extend({
   alias: z.array(AliasSchema).default([])
 }).transform((data) => ({
   type: 'image' as const,
+  ...(data.autoTags === undefined ? {} : { autoTags: data.autoTags }),
+  ...(data.autoTagsEnabled === undefined ? {} : { autoTagsEnabled: data.autoTagsEnabled }),
+  ...(data.autoTagsPending === undefined ? {} : { autoTagsPending: data.autoTagsPending }),
   ...(data.audience === undefined ? {} : { audience: data.audience }),
   id: data.id,
   width: data.width,

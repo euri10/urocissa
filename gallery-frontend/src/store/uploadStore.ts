@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { markRaw } from 'vue'
 import { errorDisplay } from '@/script/utils/errorDisplay'
 import { useModalStore } from './modalStore'
+import { useConfigStore } from './configStore'
 import type { IsolationId } from '@type/types'
 
 export const IMAGE_EXTENSIONS = [
@@ -31,6 +32,7 @@ export const VIDEO_EXTENSIONS = [
 
 export const SUPPORTED_MEDIA_EXTENSIONS = [...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS] as const
 export const UPLOAD_ACCEPT = SUPPORTED_MEDIA_EXTENSIONS.map((extension) => `.${extension}`).join(',')
+export const AUTO_TAG_UPLOAD_STORAGE_KEY = 'urocissa.upload.autotag'
 
 const supportedExtensionSet = new Set<string>(SUPPORTED_MEDIA_EXTENSIONS)
 
@@ -58,6 +60,7 @@ export interface UploadTarget {
   tags?: string[]
   share?: UploadShareContext
   publishImmediately?: boolean
+  autotag?: boolean
 }
 
 export interface UploadPresentationOptions {
@@ -118,10 +121,18 @@ export function isSupportedUploadFile(file: Pick<File, 'name'>): boolean {
   return supportedExtensionSet.has(getFileExtension(file.name))
 }
 
-function cloneTarget(target: UploadTarget | undefined): UploadTarget {
-  if (target === undefined) return markRaw<UploadTarget>({})
-
+function cloneTarget(target: UploadTarget = {}): UploadTarget {
   const cloned: UploadTarget = {}
+  const config = useConfigStore('mainId')
+  if (config.isAdmin && config.config?.embeddingEnabled === true && target.share === undefined) {
+    // Drop/paste intake shares the dialog default. Explicit queued choices win.
+    cloned.autotag = true
+    try {
+      cloned.autotag = globalThis.localStorage.getItem(AUTO_TAG_UPLOAD_STORAGE_KEY) !== 'false'
+    } catch {
+      // Storage can be unavailable in privacy-restricted browsers.
+    }
+  }
   if (target.albums !== undefined) {
     const albumIds = new Set<string>()
     const albums: UploadPresetAlbum[] = []
@@ -145,6 +156,7 @@ function cloneTarget(target: UploadTarget | undefined): UploadTarget {
   } else if (target.publishImmediately === true) {
     cloned.publishImmediately = true
   }
+  if (target.share === undefined && target.autotag !== undefined) cloned.autotag = target.autotag
   return markRaw(cloned)
 }
 
@@ -165,6 +177,7 @@ function buildUploadUrl(target: UploadTarget): string {
   if (target.publishImmediately === true) {
     query.set('publish_immediately', 'true')
   }
+  if (target.autotag !== undefined) query.set('autotag', String(target.autotag))
   return query.size === 0 ? '/upload' : `/upload?${query.toString()}`
 }
 

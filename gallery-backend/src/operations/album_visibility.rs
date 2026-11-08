@@ -141,6 +141,12 @@ pub fn visible_data_to_database_timestamp_return(
             *albums = visible;
         }
     }
+    let auto_tags = if viewer == ViewerKind::Owner && data.is_image() {
+        super::auto_tags::owner_status(data.hash().as_str(), data.cache_version())
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e))?
+    } else {
+        None
+    };
     let mut result = abstract_data_to_database_timestamp_return(
         data,
         timestamp,
@@ -149,6 +155,14 @@ pub fn visible_data_to_database_timestamp_return(
         viewer,
     );
     result.audience = photo_audience;
+    if let Some(tags) = auto_tags {
+        let fields = serde_json::to_value(tags).expect("Auto tags serialize");
+        result
+            .abstract_data
+            .as_object_mut()
+            .expect("record object")
+            .extend(fields.as_object().unwrap().clone());
+    }
     if let Some(audience) = album_audience {
         result.abstract_data["audience"] =
             serde_json::to_value(audience).expect("audience serializes");

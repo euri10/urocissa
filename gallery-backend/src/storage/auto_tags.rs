@@ -1,0 +1,133 @@
+//! Authored preferences stay in the main database; all predictions are disposable.
+use anyhow::Result;
+use redb::{Durability, ReadOnlyTable, ReadableDatabase, TableDefinition};
+use serde::{Deserialize, Serialize};
+
+use super::{DataStore, embeddings::EmbeddingStore};
+
+const OFF: TableDefinition<&str, u8> = TableDefinition::new("auto_tags_off_v1");
+const CONCEPTS: TableDefinition<(&str, &str), &[u8]> = TableDefinition::new("concept_vectors_v1");
+const TAGS: TableDefinition<&str, &[u8]> = TableDefinition::new("auto_tags_v1");
+
+pub struct AutoTagSettings(ReadOnlyTable<&'static str, u8>);
+
+impl AutoTagSettings {
+    pub fn enabled(&self, id: &str) -> Result<bool> {
+        Ok(self.0.get(id)?.is_none())
+    }
+}
+
+impl DataStore {
+    pub(super) fn initialize_auto_tag_settings(&self) -> Result<()> {
+        let write = self.db.begin_write()?;
+        write.open_table(OFF)?;
+        write.commit()?;
+        Ok(())
+    }
+
+    pub fn auto_tag_settings(&self) -> Result<AutoTagSettings> {
+        Ok(AutoTagSettings(self.db.begin_read()?.open_table(OFF)?))
+    }
+
+    pub fn set_auto_tags_enabled(&self, ids: &[&str], enabled: bool) -> Result<()> {
+        let mut write = self.db.begin_write()?;
+        write.set_durability(Durability::Immediate)?;
+        {
+            let mut table = write.open_table(OFF)?;
+            for id in ids {
+                if enabled {
+                    table.remove(*id)?;
+                } else {
+                    table.insert(*id, 1)?;
+                }
+            }
+        }
+        write.commit()?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StoredAutoTag {
+    pub concept: String,
+    pub label: String,
+    pub confidence: f32,
+    pub displayed: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MaterializedTags {
+    pub enabled: bool,
+    pub model_id: String,
+    pub vocabulary_version: String,
+    pub thumbnail_version: u32,
+    pub tags: Vec<StoredAutoTag>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ConceptVectors {
+    pub scale: f32,
+    pub bias: f32,
+    pub vectors: std::collections::HashMap<String, Vec<f32>>,
+}
+
+impl EmbeddingStore {
+    pub(super) fn initialize_auto_tags(&self) -> Result<()> {
+        let write = self.db.begin_write()?;
+        write.open_table(CONCEPTS)?;
+        write.open_table(TAGS)?;
+        write.commit()?;
+        Ok(())
+    }
+
+    pub fn concept_vectors(&self, model: &str, vocabulary: &str) -> Result<Option<ConceptVectors>> {
+        self.db
+            .begin_read()?
+            .open_table(CONCEPTS)?
+            .get((model, vocabulary))?
+            .map(|bytes| serde_json::from_slice(bytes.value()))
+            .transpose()
+            .map_err(Into::into)
+    }
+
+    pub fn put_concept_vectors(
+        &self,
+        model: &str,
+        vocabulary: &str,
+        vectors: &ConceptVectors,
+    ) -> Result<()> {
+        let bytes = serde_json::to_vec(vectors)?;
+        let write = self.db.begin_write()?;
+        write
+            .open_table(CONCEPTS)?
+            .insert((model, vocabulary), bytes.as_slice())?;
+        write.commit()?;
+        Ok(())
+    }
+
+    pub fn auto_tags(&self, id: &str) -> Result<Option<MaterializedTags>> {
+        self.db
+            .begin_read()?
+            .open_table(TAGS)?
+            .get(id)?
+            .map(|bytes| serde_json::from_slice(bytes.value()))
+            .transpose()
+            .map_err(Into::into)
+    }
+
+    pub fn put_auto_tags(&self, rows: &[(String, MaterializedTags)]) -> Result<()> {
+        if rows.is_empty() {
+            return Ok(());
+        }
+        let write = self.db.begin_write()?;
+        {
+            let mut table = write.open_table(TAGS)?;
+            for (id, row) in rows {
+                let bytes = serde_json::to_vec(row)?;
+                table.insert(id.as_str(), bytes.as_slice())?;
+            }
+        }
+        write.commit()?;
+        Ok(())
+    }
+}

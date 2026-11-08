@@ -269,6 +269,8 @@ async fn check_upload(client: &Client, public: bool) {
         (1, "", "private"),
         (2, "?publish_immediately=false", "private"),
         (3, "?publish_immediately=true", "public"),
+        (5, "?autotag=false", "private"),
+        (6, "?autotag=true", "private"),
     ] {
         let (hash, body) = image_upload(pixel);
         let url = format!("/upload{query}");
@@ -293,6 +295,14 @@ async fn check_upload(client: &Client, public: bool) {
             resource(client, &hash, true).await["data"]["audience"],
             expected
         );
+        assert_eq!(
+            TREE.store
+                .auto_tag_settings()
+                .unwrap()
+                .enabled(&hash)
+                .unwrap(),
+            pixel != 5
+        );
         if public {
             assert_eq!(
                 client
@@ -309,6 +319,31 @@ async fn check_upload(client: &Client, public: bool) {
         }
     }
     // A later upload with the default choice preserves an existing public duplicate.
+    let (off_hash, off_body) = image_upload(5);
+    assert_eq!(
+        owner(
+            client
+                .post("/upload")
+                .header(Header::new(
+                    "Content-Type",
+                    "multipart/form-data; boundary=fixture-upload"
+                ))
+                .body(off_body),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Ok
+    );
+    assert!(
+        !TREE
+            .store
+            .auto_tag_settings()
+            .unwrap()
+            .enabled(&off_hash)
+            .unwrap()
+    );
     let (hash, body) = image_upload(3);
     assert_eq!(
         owner(
@@ -332,6 +367,23 @@ async fn check_upload(client: &Client, public: bool) {
     );
     // A share may upload private photos only, even with a forged publication query.
     let (hash, body) = image_upload(4);
+    assert_eq!(
+        client
+            .post(format!(
+                "/upload?presigned_album_id_opt={ALBUM}&autotag=false"
+            ))
+            .header(Header::new(
+                "Content-Type",
+                "multipart/form-data; boundary=fixture-upload"
+            ))
+            .header(Header::new("x-album-id", ALBUM))
+            .header(Header::new("x-share-id", "fixture-share"))
+            .body(body.clone())
+            .dispatch()
+            .await
+            .status(),
+        Status::Unauthorized
+    );
     for publish in [true, false] {
         let response = client
             .post(format!(

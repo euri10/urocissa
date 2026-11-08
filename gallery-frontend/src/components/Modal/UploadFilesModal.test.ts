@@ -28,15 +28,16 @@ const renderer = createRenderer<Record<string, unknown>, Record<string, unknown>
 })
 
 interface DialogState {
+  autotag: boolean
   publishImmediately: boolean
   chooseFiles: () => void
 }
 
-function mount(owner = true) {
+function mount(owner = true, embeddingEnabled = false) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const configStore = useConfigStore('mainId')
-  configStore.config = { isAdmin: owner, readOnlyMode: false } as AppConfig
+  configStore.config = { isAdmin: owner, readOnlyMode: false, embeddingEnabled } as AppConfig
   const picker = vi.spyOn(useUploadStore('mainId'), 'openFilePicker').mockImplementation(() => undefined)
   const opened = ref(true)
   let state: DialogState | undefined
@@ -81,6 +82,22 @@ async function renderModal(owner: boolean): Promise<string> {
 afterEach(() => { vi.restoreAllMocks() })
 
 describe('upload publication dialog', () => {
+  it('keeps the Auto-tag choice across reopening while publication resets', async () => {
+    const modal = mount(true, true)
+    expect(modal.state.autotag).toBe(true)
+    modal.state.autotag = false
+    modal.state.publishImmediately = true
+    modal.state.chooseFiles()
+    expect(modal.picker).toHaveBeenLastCalledWith(
+      { tags: ['selected-tag'], publishImmediately: true, autotag: false }, { showSummaryPanel: false }
+    )
+    await nextTick()
+    modal.opened.value = true
+    await nextTick()
+    expect(modal.state.autotag).toBe(false)
+    expect(modal.state.publishImmediately).toBe(false)
+    modal.app.unmount()
+  })
   it('starts off and resets after cancel/reopen and after choosing public files', async () => {
     const modal = mount()
     expect(modal.state.publishImmediately).toBe(false)

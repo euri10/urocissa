@@ -47,6 +47,7 @@ pub struct EmbeddingService {
     stopped: AtomicBool,
     wake: SyncSender<()>,
     pub search: OnceLock<crate::operations::semantic::SemanticSearch>,
+    pub auto_tags: OnceLock<crate::operations::auto_tags::AutoTags>,
 }
 
 impl EmbeddingService {
@@ -59,6 +60,7 @@ impl EmbeddingService {
                 stopped: AtomicBool::new(false),
                 wake,
                 search: OnceLock::new(),
+                auto_tags: OnceLock::new(),
             }),
             receiver,
         )
@@ -123,6 +125,8 @@ pub fn start() -> Option<JoinHandle<()>> {
                     Arc::clone(&embedder),
                     store.clone(),
                 );
+                let tags = crate::operations::auto_tags::AutoTags::new(store.clone())?;
+                let _ = service.auto_tags.set(tags);
                 let worker =
                     Worker::new(Arc::clone(&catalog), embedder, store, Arc::clone(&service))?;
                 let _ = service.search.set(search);

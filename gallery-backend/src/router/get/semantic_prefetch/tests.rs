@@ -55,6 +55,8 @@ impl Embedder for Fake {
             model_id: "test-model".into(),
             embedding_dim: self.1.load(Ordering::Relaxed),
             device: "CPU".into(),
+            logit_scale: None,
+            logit_bias: None,
         })
     }
     fn embed_image(&self, _: Vec<u8>) -> Result<ImageEmbedding> {

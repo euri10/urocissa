@@ -1,6 +1,7 @@
 use crate::public::structure::album::ResolvedShare;
 
 pub mod album_visibility;
+pub mod auto_tags;
 pub mod autotag;
 pub mod embedding;
 pub mod hash;

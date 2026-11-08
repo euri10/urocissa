@@ -73,10 +73,14 @@ fn build_presigned_metadata(
 }
 
 #[post(
-    "/upload?<presigned_album_id_opt>&<presigned_album_ids_opt>&<presigned_tags_opt>&<publish_immediately>",
+    "/upload?<presigned_album_id_opt>&<presigned_album_ids_opt>&<presigned_tags_opt>&<publish_immediately>&<autotag>",
     data = "<form>"
 )]
 #[allow(clippy::similar_names)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Rocket binds the existing upload query and guards separately"
+)]
 pub async fn upload(
     auth: GuardResult<GuardUpload>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
@@ -84,10 +88,17 @@ pub async fn upload(
     presigned_album_ids_opt: Option<String>,
     presigned_tags_opt: Option<String>,
     publish_immediately: Option<bool>,
+    autotag: Option<bool>,
     form: Result<Form<UploadForm<'_>>, Errors<'_>>,
 ) -> AppResult<()> {
     let auth = auth?;
     let _ = read_only_mode?;
+    if autotag.is_some() && !auth.is_owner {
+        return Err(AppError::new(
+            ErrorKind::Auth,
+            "Only the owner can control Auto tags",
+        ));
+    }
     let publish_immediately = publish_immediately.unwrap_or(false);
     if publish_immediately && !auth.is_owner {
         return Err(AppError::new(
@@ -115,6 +126,7 @@ pub async fn upload(
         presigned_tags_opt,
     )?;
     presigned.publish_immediately = publish_immediately;
+    presigned.auto_tags_off = !autotag.unwrap_or(true);
 
     // Ensure strict 1:1 mapping between files and metadata
     if inner_form.files.len() != inner_form.last_modified.len() {

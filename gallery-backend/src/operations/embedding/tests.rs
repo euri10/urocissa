@@ -66,6 +66,8 @@ impl FakeEmbedder {
                 model_id: "model-a".into(),
                 embedding_dim: 2,
                 device: "CPU".into(),
+                logit_scale: None,
+                logit_bias: None,
             }),
             calls: Mutex::new(Vec::new()),
             failing_photo: Mutex::new(None),

@@ -1,4 +1,5 @@
 pub mod audience;
+pub mod auto_tags;
 pub mod cache;
 pub mod codec;
 pub mod embeddings;

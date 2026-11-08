@@ -14,6 +14,7 @@ use rocket::{
 };
 use serde_json::Value;
 
+mod auto_tags;
 mod media;
 mod mutations;
 mod search;
@@ -686,6 +687,8 @@ async fn http_child() {
                 renew_hash_token,
                 edit_share,
                 edit_photo_audience,
+                crate::router::put::edit_auto_tags::edit_auto_tags,
+                crate::router::embeddings::get_auto_tags,
                 upload,
             ],
         ),
@@ -697,6 +700,7 @@ async fn http_child() {
         return;
     }
     search::checks(&client).await;
+    auto_tags::checks(&client).await;
     if crate::router::fairing::guard_gallery::public_gallery_enabled() {
         public_checks(&client, &records).await;
     } else {

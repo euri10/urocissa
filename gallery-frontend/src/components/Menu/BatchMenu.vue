@@ -16,6 +16,7 @@ import ItemPermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
 import ItemRegenerateMetadata from '@Menu/MenuItem/ItemRegenerateMetadata.vue'
 import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
 import ItemPhotoAudience from '@Menu/MenuItem/ItemPhotoAudience.vue'
+import ItemAutoTags from '@Menu/MenuItem/ItemAutoTags.vue'
 
 import { getIsolationIdByRoute } from '@utils/getter'
 import { shouldShowBatchEditAlbums } from './batchMenuVisibility'
@@ -58,6 +59,11 @@ const canBatchEditAlbums = computed(() => shouldShowBatchEditAlbums(route.meta))
       />
 
       <!-- Archive and Favorite Actions -->
+      <ItemAutoTags
+        v-if="configStore.isAdmin && canBatchEditAlbums"
+        :target="selection"
+        :isolation-id="isolationId"
+      />
       <ItemArchive :index-list="selection" />
       <ItemFavorite :index-list="selection" />
       <ItemBatchEditTags />

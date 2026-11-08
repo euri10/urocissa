@@ -91,6 +91,7 @@ impl DataStore {
             cache_limit_bytes: cache_class.limit_bytes(),
         };
         store.initialize_audience_tables()?;
+        store.initialize_auto_tag_settings()?;
         Ok(store)
     }
 

@@ -166,6 +166,8 @@ mod tests {
                 "duration": 2.5, "exifVec": exif, "alias": [{"file": "/private/original.jpg"}],
                 "phash": [1, 2], "updateAt": 1_793_825_335_123_i64, "createdTime": 1_793_825_335_123_i64,
                 "futureRecordField": {"gps": "private marker"},
+                "autoTags": [{"concept": "cat", "label": "chat", "confidence": 0.9, "displayed": true}],
+                "autoTagsEnabled": true, "autoTagsPending": false,
                 "startTime": 1_793_825_335_123_i64, "endTime": 1_793_825_335_123_i64,
                 "lastModifiedTime": 1_793_825_335_123_i64, "shareList": {"test-share": {"showMetadata": true}}
             });

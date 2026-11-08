@@ -3,6 +3,10 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useModalStore } from './modalStore'
 import { useUploadStore } from './uploadStore'
+import { useConfigStore } from './configStore'
+import type { AppConfig } from '@/api/config'
+
+vi.mock('@/route/routes', () => ({ default: { push: vi.fn() } }))
 
 interface Deferred<T> {
   promise: Promise<T>
@@ -39,6 +43,37 @@ function uploadedFileName(call: unknown[]): string | undefined {
 }
 
 describe('upload queue store', () => {
+  it('uses the remembered owner default for drop/paste intake, with explicit choices winning', async () => {
+    const post = vi.spyOn(axios, 'post').mockResolvedValue(response())
+    vi.stubGlobal('localStorage', { getItem: () => 'false' })
+    try {
+      useConfigStore('mainId').config = { isAdmin: true, readOnlyMode: false, embeddingEnabled: true } as AppConfig
+      const store = useUploadStore('mainId')
+      store.enqueueFiles([mediaFile('dropped.jpg')])
+      store.enqueueFiles([mediaFile('explicit.jpg')], { autotag: true })
+      await vi.waitFor(() => { expect(post).toHaveBeenCalledTimes(2) })
+      expect(post.mock.calls[0]?.[0]).toBe('/upload?autotag=false')
+      expect(post.mock.calls[1]?.[0]).toBe('/upload?autotag=true')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+  it('snapshots explicit Auto-tag choices and strips them from share uploads', async () => {
+    const post = vi.spyOn(axios, 'post').mockResolvedValue(response())
+    const store = useUploadStore('mainId')
+    const target = { autotag: false }
+    store.enqueueFiles([mediaFile('off.jpg')], target)
+    target.autotag = true
+    store.enqueueFiles([mediaFile('on.jpg')], target)
+    store.enqueueFiles([mediaFile('shared.jpg')], {
+      autotag: false, share: { albumId: 'shared-album', shareId: 'share-id' }
+    })
+    await vi.waitFor(() => { expect(post).toHaveBeenCalledTimes(3) })
+    expect(post.mock.calls[0]?.[0]).toBe('/upload?autotag=false')
+    expect(post.mock.calls[1]?.[0]).toBe('/upload?autotag=true')
+    expect(post.mock.calls[2]?.[0]).toBe('/upload?presigned_album_id_opt=shared-album')
+    expect(store.items[2]?.target.autotag).toBeUndefined()
+  })
   beforeEach(() => {
     setActivePinia(createPinia())
   })

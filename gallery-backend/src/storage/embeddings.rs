@@ -18,7 +18,7 @@ pub struct StoredEmbedding {
 
 #[derive(Clone)]
 pub struct EmbeddingStore {
-    db: Arc<Database>,
+    pub(super) db: Arc<Database>,
 }
 
 impl EmbeddingStore {
@@ -30,7 +30,9 @@ impl EmbeddingStore {
         write.open_table(EMBEDDINGS)?;
         write.open_table(META)?;
         write.commit()?;
-        Ok(Self { db: Arc::new(db) })
+        let store = Self { db: Arc::new(db) };
+        store.initialize_auto_tags()?;
+        Ok(store)
     }
 
     pub fn model(&self) -> Result<Option<ModelInfo>> {
@@ -97,7 +99,6 @@ impl EmbeddingStore {
         Ok(embeddings)
     }
 
-    #[cfg(test)]
     pub fn get(&self, item: &str, model: &str, frame: u32) -> Result<Option<StoredEmbedding>> {
         let read = self.db.begin_read()?;
         let table = read.open_table(EMBEDDINGS)?;

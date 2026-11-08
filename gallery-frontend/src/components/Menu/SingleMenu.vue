@@ -16,6 +16,7 @@ import ItemRotateImage from '@Menu/MenuItem/ItemRotateImage.vue'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { useConfigStore } from '@/store/configStore'
 import ItemPhotoAudience from '@Menu/MenuItem/ItemPhotoAudience.vue'
+import ItemAutoTags from '@Menu/MenuItem/ItemAutoTags.vue'
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -50,6 +51,12 @@ const configStore = useConfigStore('mainId')
           :audience="database.audience ?? 'private'"
         />
         <ItemEditTags />
+        <ItemAutoTags
+          v-if="database.type === 'image'"
+          :target="database.id"
+          :isolation-id="props.isolationId"
+          :enabled="database.autoTagsEnabled ?? true"
+        />
         <ItemEditAlbums />
         <ItemDelete v-if="!database.isTrashed" :index-list="[props.index]" />
         <ItemRestore v-if="database.isTrashed" :index-list="[props.index]" />

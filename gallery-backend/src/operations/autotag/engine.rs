@@ -94,13 +94,17 @@ impl AutoTagEngine {
     /// label. Replaces any previous aliases.
     #[must_use]
     pub fn with_aliases(mut self, aliases: &AliasIndex) -> Self {
+        self.set_aliases(aliases);
+        self
+    }
+
+    pub fn set_aliases(&mut self, aliases: &AliasIndex) {
         for (label, concept) in self.labels.iter_mut().zip(self.vocabulary.concepts()) {
             aliases
                 .alias(&concept.id)
                 .unwrap_or(&concept.label_fr)
                 .clone_into(label);
         }
-        self
     }
 
     /// Replaces the classifier hook; its [`ConceptClassifier::mode`] is read once, here.

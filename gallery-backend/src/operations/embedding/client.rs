@@ -10,10 +10,22 @@ pub struct ModelInfo {
     pub model_id: String,
     pub embedding_dim: usize,
     pub device: String,
+    #[serde(default)]
+    pub logit_scale: Option<f32>,
+    #[serde(default)]
+    pub logit_bias: Option<f32>,
 }
 
 impl ModelInfo {
     pub fn validate(&self) -> Result<()> {
+        ensure!(
+            match (self.logit_scale, self.logit_bias) {
+                (None, None) => true,
+                (Some(scale), Some(bias)) => scale.is_finite() && scale > 0.0 && bias.is_finite(),
+                _ => false,
+            },
+            "invalid or incomplete tagger scoring metadata"
+        );
         ensure!(
             !self.model_id.trim().is_empty(),
             "tagger returned an empty model ID"
@@ -55,6 +67,9 @@ pub trait Embedder: Send + Sync {
     fn embed_text(&self, _text: &str) -> Result<ImageEmbedding> {
         anyhow::bail!("text embeddings are unavailable")
     }
+    fn embed_texts(&self, texts: &[String]) -> Result<Vec<ImageEmbedding>> {
+        texts.iter().map(|text| self.embed_text(text)).collect()
+    }
 }
 
 pub struct HttpEmbedder {
@@ -94,7 +109,7 @@ impl HttpEmbedder {
 fn decode<T: serde::de::DeserializeOwned>(response: reqwest::blocking::Response) -> Result<T> {
     use std::io::Read;
     // A broken sidecar must not allocate an unbounded response in the gallery.
-    const MAX_RESPONSE: u64 = 256 * 1024;
+    const MAX_RESPONSE: u64 = 4 * 1024 * 1024;
     let mut bytes = Vec::new();
     response
         .error_for_status()?
@@ -125,25 +140,37 @@ impl Embedder for HttpEmbedder {
     }
 
     fn embed_text(&self, text: &str) -> Result<ImageEmbedding> {
+        Ok(self.embed_texts(&[text.to_owned()])?.remove(0))
+    }
+
+    fn embed_texts(&self, texts: &[String]) -> Result<Vec<ImageEmbedding>> {
         #[derive(Deserialize)]
         struct Response {
             model_id: String,
             embeddings: Vec<Vec<f32>>,
         }
-        let mut response: Response = decode(
+        ensure!(
+            !texts.is_empty() && texts.len() <= 64,
+            "invalid text batch size"
+        );
+        let response: Response = decode(
             self.client
                 .post(self.base.join("v1/embed/text")?)
-                .json(&serde_json::json!({ "texts": [text] }))
+                .json(&serde_json::json!({ "texts": texts }))
                 .send()?,
         )?;
         ensure!(
-            response.embeddings.len() == 1,
-            "expected one text embedding"
+            response.embeddings.len() == texts.len(),
+            "wrong text embedding count"
         );
-        Ok(ImageEmbedding {
-            model_id: response.model_id,
-            embedding: response.embeddings.pop().unwrap(),
-        })
+        Ok(response
+            .embeddings
+            .into_iter()
+            .map(|embedding| ImageEmbedding {
+                model_id: response.model_id.clone(),
+                embedding,
+            })
+            .collect())
     }
 }
 

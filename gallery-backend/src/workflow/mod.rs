@@ -44,6 +44,7 @@ pub async fn index_with_presigned_metadata(
 
     let _media_guard = lock_media(hash).await;
     let publish_immediately = presigned.publish_immediately;
+    let auto_tags_off = presigned.auto_tags_off;
 
     let abstract_data_opt = INDEX_COORDINATOR
         .execute_waiting(DeduplicateTask::new(path.clone(), hash, presigned))
@@ -62,6 +63,12 @@ pub async fn index_with_presigned_metadata(
     abstract_data = INDEX_COORDINATOR
         .execute_waiting(CopyTask::new(abstract_data))
         .await??;
+    // Persist before IndexTask publishes the thumbnail and wakes the worker. Duplicates
+    // deliberately keep their existing owner preference, like existing publication grants.
+    if abstract_data.is_image() {
+        TREE.store
+            .set_auto_tags_enabled(&[hash.as_str()], !auto_tags_off)?;
+    }
     abstract_data = INDEX_COORDINATOR
         .execute_waiting(IndexTask::new(abstract_data))
         .await??;
