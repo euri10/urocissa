@@ -29,6 +29,7 @@ declare module 'vue-router' {
 }
 
 type BaseName =
+  | 'review'
   | 'home'
   | 'all'
   | 'favorite'
@@ -43,4 +44,3 @@ type BaseName =
   | 'links'
   | 'config'
   | 'upload'
-

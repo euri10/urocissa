@@ -21,6 +21,7 @@ import { errorDisplay } from '@/script/utils/errorDisplay'
 interface UsePrefetchOptions {
   onRequestStart?: () => void
   reloadTrigger?: Readonly<Ref<unknown>>
+  reviewConcept?: Readonly<Ref<string | undefined>>
 }
 
 export function usePrefetch(
@@ -41,7 +42,7 @@ export function usePrefetch(
       : ''
   )
   const sortOrder = computed<GallerySortOrder>(() =>
-    queryAppliesToCollection.value
+    options.reviewConcept?.value !== undefined ? 'descending' : queryAppliesToCollection.value
       ? parseGallerySortOrder(route.query.sort)
       : 'descending'
   )
@@ -60,14 +61,16 @@ export function usePrefetch(
     WatchSource<string>,
     WatchSource<GallerySortOrder>,
     WatchSource<string | null>,
-    WatchSource<unknown>
+    WatchSource<unknown>,
+    WatchSource<string | undefined>
   ] = [
     () => windowWidth.value > 0,
     () => filterJsonString.value,
     priorityId,
     sortOrder,
     queryLocate,
-    () => options.reloadTrigger?.value
+    () => options.reloadTrigger?.value,
+    () => options.reviewConcept?.value
   ]
 
   let generation = 0
@@ -83,7 +86,7 @@ export function usePrefetch(
 
   const stopWatcher = watchDebounced(
     requestSources,
-    async ([widthReady, currentFilter, currentPriorityId, currentSortOrder, currentQueryLocate, currentReload]) => {
+    async ([widthReady, currentFilter, currentPriorityId, currentSortOrder, currentQueryLocate, currentReload, currentReview]) => {
       if (widthReady) {
         const requestGeneration = generation
         let locate: string | null = null
@@ -112,6 +115,7 @@ export function usePrefetch(
             : undefined
         usePrefetchStore(isolationId).searchError = null
         usePrefetchStore(isolationId).semanticSearch = null
+        usePrefetchStore(isolationId).conceptReview = null
 
         // Invalidate the visible collection before waiting on the network so
         // query changes immediately enter the existing loading state.
@@ -130,7 +134,8 @@ export function usePrefetch(
               isolationId,
               route,
               () => !disposed && requestGeneration === generation,
-              selection
+              selection,
+              currentReview
             )
           ])
           if (result && requestGeneration === generation) {
@@ -178,10 +183,13 @@ async function processPrefetchChain(
   isolationId: IsolationId,
   route: RouteLocationNormalizedLoadedGeneric,
   isCurrent: () => boolean,
-  semanticSelection?: string
+  semanticSelection?: string,
+  reviewConcept?: string
 ) {
   // 1. Fetch main data (Critical step)
-  const prefetchReturn = semanticSelection === undefined
+  const prefetchReturn = reviewConcept !== undefined
+    ? await prefetch(null, priorityId, 'descending', locate, undefined, reviewConcept)
+    : semanticSelection === undefined
     ? await prefetch(filterJsonString, priorityId, sortOrder, locate)
     : await prefetch(filterJsonString, priorityId, sortOrder, locate, semanticSelection)
 
@@ -246,6 +254,7 @@ function syncStoreFromPrefetch(
   shareStore.resolvedShare = resolvedShare
   prefetchStore.timestamp = prefetch.timestamp
   prefetchStore.semanticSearch = prefetchReturn.semanticSearch ?? null
+  prefetchStore.conceptReview = prefetchReturn.conceptReview ?? null
 
   prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
   prefetchStore.calculateLength(prefetch.dataLength)

@@ -62,6 +62,20 @@ describe('reactive collection prefetch', () => {
     vi.useRealTimers()
   })
 
+  it('requests and refreshes the fixed review snapshot when its Concept changes', async () => {
+    const concept = ref<string | undefined>('cat')
+    const route = reactive({ query: { sort: 'random' }, params: {}, meta: { level: 1, baseName: 'review' } }) as unknown as RouteLocationNormalizedLoadedGeneric
+    const summary = { concept: 'cat', label: 'chat', positiveExamples: 4, negativeExamples: 3 }
+    prefetchMock.mockResolvedValue({ ...snapshot(7), conceptReview: summary })
+    scope.run(() => { usePrefetch(ref(null), ref(1200), route, 'mainId', { reviewConcept: concept }) })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(prefetchMock).toHaveBeenLastCalledWith(null, '', 'descending', null, undefined, 'cat')
+    expect(usePrefetchStore('mainId').conceptReview).toEqual(summary)
+    concept.value = 'dog'
+    await vi.advanceTimersByTimeAsync(100)
+    expect(prefetchMock).toHaveBeenLastCalledWith(null, '', 'descending', null, undefined, 'dog')
+  })
+
   it('keeps the semantic selection on a sort change and refreshes after filters or reload change', async () => {
     const filter = ref<string | null>('{"Semantic":"enfant à vélo"}')
     const reloadTrigger = ref(false)

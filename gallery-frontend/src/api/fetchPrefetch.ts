@@ -7,7 +7,8 @@ export async function prefetch(
   priorityId: string | undefined = 'default',
   sortOrder: GallerySortOrder = 'descending',
   locate: null | string = null,
-  semanticSelection?: string
+  semanticSelection?: string,
+  reviewConcept?: string
 ): Promise<PrefetchReturn> {
   void priorityId
 
@@ -15,7 +16,8 @@ export async function prefetch(
     params: {
       locate: locate ?? undefined,
       sort: sortOrder,
-      semantic_selection: semanticSelection
+      semantic_selection: semanticSelection,
+      review_concept: reviewConcept
     },
     headers: {
       'Content-Type': 'application/json'

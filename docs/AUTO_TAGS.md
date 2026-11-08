@@ -194,3 +194,47 @@ publication text, keyboard selection, light/dark and live overlay theme changes,
 Temporary preview services were stopped. The hybrid-scroll gate was not requested
 and was not run. No production backup, deployment, backfill or host benchmark
 was performed.
+
+## Concept review acceptance (.8)
+
+Owners can open **Review across the library** from an Auto chip or a tag facet
+with Auto matches. The existing gallery displays that Concept's current Auto-tagged
+photos, including Trash, least confident first (photo ID breaks confidence ties).
+The view excludes disabled photos, stale model/vocabulary/thumbnail predictions,
+deleted photos, videos, confirmations and permanent Rejections. It reads cached
+predictions only: no new storage, image/text inference or learning behavior.
+
+`POST /get/prefetch?review_concept=<Concept ID or label>` accepts a null body and
+returns the ordinary gallery snapshot plus `conceptReview`: canonical `concept`,
+`label`, `positiveExamples` and `negativeExamples`. Other filters, semantic
+selections and non-default sorts are refused. Anonymous/share requests are denied
+before Concept lookup. Example counts use current valid embeddings, count each
+photo once, include authored examples on opted-out photos, and let Rejections win
+over conflicting User tags. The toolbar shows progress toward the five-positive /
+five-negative classifier gate; reaching the count is not a quality/rollout approval.
+
+Bulk confirm/reject uses the existing feedback endpoints and compact selection
+descriptors. The confirmation preview pins the Concept, selection and snapshot;
+a changed snapshot requires a new selection. Successful feedback updates owner
+photo-chip caches and refreshes the review/facets without a page reload. Read-only
+mode permits inspection but not decisions. Errors retain the selection for retry.
+
+Verification: 324 backend tests pass (four opt-in tests ignored), including real
+owner/anonymous/share HTTP tests in public/private gallery modes, confidence
+ordering, current-embedding counts, personal Concepts and offline stale-row
+suppression after feedback. All 343 frontend tests, type check, lint and production
+build pass; fmt and clippy pass with existing unrelated warnings only.
+
+Focused Playwright checks used the real frontend/gallery with a synthetic local
+HTTP fixture: both bulk actions refreshed to empty without reload, failed writes
+retried safely, and loading/listing-error/empty/read-only states worked. Desktop
+light/dark, live overlay theme changes, 390px desktop and touch-mobile layouts,
+and long Concept labels were checked without horizontal overflow. This also found
+and fixed `infra-ap2l`: gallery tile buttons now support Enter/Space, including
+Shift range selection and the desktop hover selector. A tab-order regression
+failed before the fix and passes after it.
+
+Vuetify 4.1.5 components/utilities supply the new view and theme-aware dialog; no
+custom CSS or dependency was added. Temporary local services were stopped. The
+hybrid-scroll gate was not explicitly requested and was not run. No production
+backup, deployment, backfill or host benchmark was performed.

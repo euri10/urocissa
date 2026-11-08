@@ -84,6 +84,12 @@ onUnmounted(stop)
             {{ tag.label }}
             <template #append>
               <v-btn
+                icon="mdi-view-grid-outline" size="24" variant="text" class="ms-1"
+                :aria-label="`Review ${tag.label} across the library`"
+                :to="{ name: 'review', query: { concept: tag.concept } }"
+                @click.stop
+              />
+              <v-btn
                 icon="mdi-check" size="24" variant="text" class="ms-1"
                 :aria-label="`Confirm ${tag.label} as a User tag`"
                 :disabled="!config.canWrite || busy !== null"

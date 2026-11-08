@@ -210,6 +210,22 @@ function handleOpenClick(event: MouseEvent): void {
   }
 }
 
+function handleKeydown(event: KeyboardEvent): void {
+  if (event.repeat || event.altKey || event.ctrlKey || event.metaKey ||
+    (event.key !== 'Enter' && event.key !== ' ')) return
+  const target = event.target
+  if (!(target instanceof HTMLElement) ||
+    !target.matches('.gallery-tile[data-item-index], [data-testid="select-item"]')) return
+  const index = Number(target.dataset.itemIndex)
+  if (!Number.isInteger(index)) return
+  event.preventDefault()
+  if (target.dataset.testid === 'select-item' && !collectionStore.editModeOn) {
+    collectionStore.enterEdit(index)
+  } else {
+    handleClick(new MouseEvent('click', { shiftKey: event.shiftKey }), index)
+  }
+}
+
 function handlePointerdown(event: PointerEvent): void {
   if (isScrolling.value || !configStore.isAdmin) {
     return
@@ -398,6 +414,7 @@ onBeforeUnmount(() => {
   <div
     class="buffer-row-block position-relative w-100 d-flex flex-wrap no-select"
     v-on="rowInteractionListeners"
+    @keydown="handleKeydown"
   >
     <DesktopHoverIcon
       v-if="configStore.isAdmin && !mobile && hoveredTile !== null"
@@ -426,6 +443,7 @@ onBeforeUnmount(() => {
       :data-item-index="tile.index"
       role="button"
       aria-label="Open item"
+      tabindex="0"
       :class="tile.tileClass"
       :style="tile.tileStyle"
     >

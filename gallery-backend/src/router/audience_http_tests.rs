@@ -15,6 +15,7 @@ use rocket::{
 use serde_json::Value;
 
 mod auto_tags;
+mod concept_review;
 mod media;
 mod mutations;
 mod search;
@@ -706,6 +707,10 @@ async fn http_child() {
     }
     search::checks(&client).await;
     auto_tags::checks(&client).await;
+    if std::env::var("UROCISSA_OWNER_CHECKS").as_deref() == Ok("review") {
+        concept_review::checks(&client).await;
+        return;
+    }
     if std::env::var_os("UROCISSA_FEEDBACK_TEST").is_some() {
         tag_feedback::checks(&client).await;
         return;
@@ -719,18 +724,21 @@ async fn http_child() {
 }
 
 fn isolated(public: bool, download: bool) {
-    isolated_mode(public, download, false);
+    isolated_mode(public, download, None);
 }
 
-fn isolated_mode(public: bool, download: bool, feedback: bool) {
+fn isolated_mode(public: bool, download: bool, owner_checks: Option<&str>) {
     let root = tempfile::tempdir().unwrap();
     let mut command = Command::new(std::env::current_exe().unwrap());
     command.env_clear();
     if download {
         command.env("UROCISSA_DOWNLOAD_TEST", "1");
     }
-    if feedback {
+    if owner_checks == Some("feedback") {
         command.env("UROCISSA_FEEDBACK_TEST", "1");
+    }
+    if let Some(checks) = owner_checks {
+        command.env("UROCISSA_OWNER_CHECKS", checks);
     }
     let mut child = command
         .env("UROCISSA_AUDIENCE_TEST_ROOT", root.path())
@@ -754,7 +762,7 @@ fn isolated_mode(public: bool, download: bool, feedback: bool) {
         std::thread::sleep(Duration::from_millis(20));
     }
     let output = child.wait_with_output().unwrap();
-    if feedback {
+    if owner_checks == Some("feedback") {
         for line in String::from_utf8_lossy(&output.stderr)
             .lines()
             .filter(|line| line.starts_with("500-photo"))
@@ -777,8 +785,14 @@ fn public_audience_http() {
 
 #[test]
 fn authored_feedback_http() {
-    isolated_mode(true, false, true);
-    isolated_mode(false, false, true);
+    isolated_mode(true, false, Some("feedback"));
+    isolated_mode(false, false, Some("feedback"));
+}
+
+#[test]
+fn concept_review_http() {
+    isolated_mode(true, false, Some("review"));
+    isolated_mode(false, false, Some("review"));
 }
 
 #[test]

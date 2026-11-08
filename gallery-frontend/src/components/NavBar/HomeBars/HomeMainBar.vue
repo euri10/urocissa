@@ -53,6 +53,7 @@ const pendingSavedSearch = shallowRef<{
 const loading = shallowRef(false)
 const isLevelOne = computed(() => route.meta.level === 1)
 const isUploadPage = computed(() => route.name === 'upload')
+const isReviewPage = computed(() => route.meta.baseName === 'review')
 const showUploadProgress = computed(
   () => uploadStore.currentRunTotalCount > 0 && uploadStore.hasActiveWork
 )
@@ -206,8 +207,9 @@ watchEffect(() => {
           </v-card-title>
         </v-card>
 
+        <v-toolbar-title v-if="isReviewPage">Concept review</v-toolbar-title>
         <GallerySearchControl
-          v-if="!isUploadPage"
+          v-if="!isUploadPage && !isReviewPage"
           v-model="searchQuery"
           :sort-order="currentSortOrder"
           :half-width="route.meta.level === 3"

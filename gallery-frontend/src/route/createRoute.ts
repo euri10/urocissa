@@ -22,6 +22,7 @@ type BaseName =
   | 'login'
   | 'share'
   | 'links'
+  | 'review'
 
 // ======================================
 // Define a Helper Function to Create Routes

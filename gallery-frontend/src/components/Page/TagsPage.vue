@@ -7,6 +7,7 @@ import { searchByFacet, type FacetSearchScope, type FacetSearchField } from '@ut
 import type { SearchFacets } from '@type/types'
 import FacetTable from './TagsPage/FacetTable.vue'
 import PageTemplate from './PageLayout/PageTemplate.vue'
+import { useConfigStore } from '@/store/configStore'
 
 interface ScopeState {
   data: SearchFacets | null
@@ -19,6 +20,7 @@ const initializedStore = useInitializedStore('mainId')
 const searchFacetStore = useSearchFacetStore()
 const route = useRoute()
 const router = useRouter()
+const config = useConfigStore('mainId')
 
 const scopeState = reactive<Record<FacetSearchScope, ScopeState>>({
   all: { data: null, loading: false, error: false, pending: null },
@@ -156,7 +158,9 @@ onBeforeUnmount(() => {
               value-label="Tag"
               :items="currentFacets.tags"
               empty-text="No tags available"
+              :reviewable="config.isAdmin && config.config?.embeddingEnabled === true"
               @select="searchFacet('tag', $event)"
+              @review="router.push({ name: 'review', query: { concept: $event } })"
             />
           </v-col>
 

@@ -10,7 +10,7 @@ import type { AppConfig } from '@/api/config'
 
 vi.mock('@/route/routes', () => ({ default: { push: vi.fn() } }))
 vi.mock('@/api/autoTags', () => ({ decideAutoTag: vi.fn().mockResolvedValue(true), fetchAutoTags: vi.fn() }))
-const actions = new Map<string, { disabled: boolean, click: (event: { stopPropagation: () => void }) => Promise<void> }>()
+const actions = new Map<string, { disabled: boolean, to: unknown, click: (event: { stopPropagation: () => void }) => Promise<void> }>()
 function action(label: string) {
   const control = actions.get(label)
   if (control === undefined) throw new Error(`Missing control: ${label}`)
@@ -38,7 +38,7 @@ async function render(enabled = true, pending = false): Promise<string> {
   for (const name of ['VListItem', 'VSheet', 'VListItemSubtitle']) app.component(name, stub)
   app.component('VChip', (_props: unknown, { attrs, slots }) => h('div', attrs, [slots.default?.(), slots.append?.()]))
   app.component('VBtn', (_props: unknown, { attrs }) => {
-    actions.set(String(attrs['aria-label']), { disabled: Boolean(attrs.disabled), click: attrs.onClick as (event: { stopPropagation: () => void }) => Promise<void> })
+    actions.set(String(attrs['aria-label']), { disabled: Boolean(attrs.disabled), to: attrs.to, click: attrs.onClick as (event: { stopPropagation: () => void }) => Promise<void> })
     return h('button', attrs)
   })
   app.component('VTooltip', (_props: unknown, { attrs, slots }) =>
@@ -55,6 +55,7 @@ describe('Auto tag chips', () => {
     expect(html).toContain('prepend-icon="mdi-auto-fix"')
     expect(html).toContain('Confidence: 91%')
     expect(html).toContain('tabindex="0"')
+    expect(action('Review chat across the library').to).toEqual({ name: 'review', query: { concept: 'cat' } })
   })
   it('hides stale predictions immediately when turned off', async () => {
     const html = await render(false)

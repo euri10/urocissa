@@ -374,5 +374,6 @@ pub fn rematerialize() {
 }
 
 mod learning;
+pub mod review;
 #[cfg(test)]
 mod tests;

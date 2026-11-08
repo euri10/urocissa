@@ -288,6 +288,8 @@ pub struct PrefetchReturn {
     pub resolved_share_opt: Option<ResolvedShare>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub semantic_search: Option<crate::operations::semantic::SearchSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concept_review: Option<crate::operations::auto_tags::review::ReviewSummary>,
 }
 
 impl PrefetchReturn {
@@ -297,6 +299,7 @@ impl PrefetchReturn {
             token,
             resolved_share_opt,
             semantic_search: None,
+            concept_review: None,
         }
     }
 }
@@ -804,7 +807,7 @@ fn constrain_query_to_share(
 }
 
 #[post(
-    "/get/prefetch?<locate>&<sort>&<semantic_selection>",
+    "/get/prefetch?<locate>&<sort>&<semantic_selection>&<review_concept>",
     format = "json",
     data = "<query_data>"
 )]
@@ -814,6 +817,7 @@ pub async fn prefetch(
     locate: Option<String>,
     sort: Option<String>,
     semantic_selection: Option<String>,
+    review_concept: Option<String>,
 ) -> AppResult<Json<PrefetchReturn>> {
     let auth_guard = auth_guard?;
     let query_data = match query_data {
@@ -827,6 +831,23 @@ pub async fn prefetch(
         }
     };
     let request_viewer = viewer(&auth_guard.claims.role);
+    if review_concept.is_some() {
+        if request_viewer != Viewer::Owner {
+            return Err(AppError::new(
+                ErrorKind::PermissionDenied,
+                "Concept review requires owner access",
+            ));
+        }
+        if query_data.is_some()
+            || semantic_selection.is_some()
+            || sort.as_deref().is_some_and(|sort| sort != "descending")
+        {
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                "Concept review has a fixed least-confidence order and does not accept other filters",
+            ));
+        }
+    }
     if request_viewer != Viewer::Owner
         && query_data.as_ref().is_some_and(Expression::contains_source)
     {
@@ -874,6 +895,9 @@ pub async fn prefetch(
     // Execute on blocking thread
     let job_handle = tokio::task::spawn_blocking(move || {
         let visibility = PhotoVisibility::new(request_viewer)?;
+        if let Some(concept) = review_concept {
+            return super::concept_review::execute(&concept, locate.as_ref(), &visibility);
+        }
         if let Some(expression) = combined_expression_option
             .as_ref()
             .filter(|expression| expression.contains_semantic())

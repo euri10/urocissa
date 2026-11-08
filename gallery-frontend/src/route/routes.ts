@@ -16,6 +16,7 @@ import ArchivedPage from '@/components/Page/ArchivedPage.vue'
 import TrashedPage from '@/components/Page/TrashedPage.vue'
 import AlbumsPage from '@/components/Page/AlbumsPage.vue'
 import VideosPage from '@/components/Page/VideosPage.vue'
+import ConceptReviewPage from '@/components/Page/ConceptReviewPage.vue'
 import { createRoute } from './createRoute'
 import { tagsRoute } from './tagsRoute'
 import { linksRoute } from './linksRoute'
@@ -74,7 +75,8 @@ const routes: RouteRecordRaw[] = [
   ...archivedPageRoutes,
   ...trashedPageRoutes,
   ...albumsPageRoutes,
-  ...videosPageRoutes
+  ...videosPageRoutes,
+  ...createRoute('review', ConceptReviewPage)
 ]
 
 // ======================================
@@ -87,7 +89,7 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  if (['upload', 'config', 'links', 'trashed'].includes(to.path.split('/')[1] ?? '')) {
+  if (['upload', 'config', 'links', 'trashed', 'review'].includes(to.path.split('/')[1] ?? '')) {
     const configStore = useConfigStore('mainId')
     await configStore.fetchConfig()
     if (!configStore.isAdmin) return { name: 'login' }
@@ -117,7 +119,8 @@ router.afterEach((to) => {
     login: 'Login',
     share: 'Share',
     config: 'Configuration',
-    upload: 'Upload'
+    upload: 'Upload',
+    review: 'Concept review'
   }
 
   let baseTitle: string

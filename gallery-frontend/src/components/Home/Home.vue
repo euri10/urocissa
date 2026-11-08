@@ -38,6 +38,7 @@ const props = defineProps<{
   isolationId: IsolationId
   basicString: string | null
   searchString: LocationQueryValue | LocationQueryValue[] | undefined
+  reviewConcept?: string
 }>()
 
 const scrollTopStore = useScrollTopStore(props.isolationId)
@@ -161,7 +162,7 @@ watch(
 )
 
 const filterJsonString = computed(() =>
-  filterStore.generateFilterJsonString(props.basicString)
+  props.reviewConcept === undefined ? filterStore.generateFilterJsonString(props.basicString) : null
 )
 const reloadTrigger = computed(() =>
   props.isolationId === 'mainId'
@@ -208,7 +209,8 @@ function resetCollectionSnapshot(): void {
 
 usePrefetch(filterJsonString, windowWidth, route, props.isolationId, {
   onRequestStart: resetCollectionSnapshot,
-  reloadTrigger
+  reloadTrigger,
+  reviewConcept: computed(() => props.reviewConcept)
 })
 
 // Remove the locate query param after the two-step jump fully completes,

@@ -68,3 +68,4 @@ pub fn generate_get_routes() -> Vec<Route> {
         crate::router::saved_searches::get_saved_searches
     ]
 }
+mod concept_review;

@@ -66,11 +66,18 @@ describe('owner Auto tags', () => {
     await expect(fetchAutoTags('photo', new AbortController().signal)).rejects.toThrow()
   })
   it('confirms the canonical French User tag across owner caches and refreshes collections/facets', async () => {
+    for (const id of ['mainId', 'detailId'] as const) {
+      const photo = useDataStore(id).data.get(0)
+      if (photo?.type === 'image') photo.autoTags = [{ concept: 'cat', label: 'chat', confidence: 0.91, displayed: true }]
+    }
     const put = vi.spyOn(axios, 'put').mockResolvedValue({ data: { photos: 1, label: 'chat' } })
     vi.spyOn(axios, 'get').mockResolvedValue({ status: 200, data: { tags: [{ value: 'chat', count: 1 }], makes: [], models: [] } })
     expect(await decideAutoTag('photo', 'cat', 'confirm', 'detailId')).toBe(true)
     expect(put).toHaveBeenCalledWith('/put/auto_tag_decision', { hash: 'photo', concept: 'cat', action: 'confirm' })
     expect(useDataStore('detailId').data.get(0)?.tags).toContain('chat')
+    for (const id of ['mainId', 'detailId'] as const) {
+      expect(useDataStore(id).data.get(0)).toMatchObject({ tags: ['my-tag', 'chat'], autoTags: [] })
+    }
     // Share caches contain only server-projected metadata; no Auto state is written into them.
     expect(useDataStore('shareId').data.get(0)).not.toHaveProperty('autoTags')
   })
@@ -79,9 +86,14 @@ describe('owner Auto tags', () => {
     vi.spyOn(axios, 'get').mockResolvedValue({ status: 200, data: { tags: [], makes: [], models: [] } })
     usePrefetchStore('mainId').timestamp = 7
     usePrefetchStore('mainId').dataLength = 500
+    for (const id of ['mainId', 'detailId'] as const) {
+      const photo = useDataStore(id).data.get(0)
+      if (photo?.type === 'image') photo.autoTags = [{ concept: 'cat', label: 'chat', confidence: 0.91, displayed: true }]
+    }
     await decideAutoTag({ mode: 'allExcept', excludedIndices: [] }, 'cat', 'reject', 'mainId')
     expect(put).toHaveBeenCalledWith('/put/auto_tag_decision', { timestamp: 7, selection: { mode: 'allExcept', excludedIndices: [] }, concept: 'cat', action: 'reject' })
     expect(useDataStore('mainId').data.get(0)?.tags).not.toContain('chat')
+    expect(useDataStore('detailId').data.get(0)).toMatchObject({ autoTags: [], tags: ['my-tag'] })
     put.mockClear()
     expect(await decideAutoTag('photo', 'cat', 'confirm', 'shareId')).toBe(false)
     useConfigStore('mainId').config = { isAdmin: false, readOnlyMode: false } as AppConfig

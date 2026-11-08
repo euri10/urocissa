@@ -21,6 +21,7 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       updateVisibleRowTrigger: boolean
       updateFetchRowTrigger: boolean
       semanticSearch: PrefetchReturn['semanticSearch'] | null
+      conceptReview: PrefetchReturn['conceptReview'] | null
       searchError: string | null
     } => ({
       windowWidth: 0,
@@ -34,6 +35,7 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       updateVisibleRowTrigger: false,
       updateFetchRowTrigger: false,
       semanticSearch: null,
+      conceptReview: null,
       searchError: null
     }),
     actions: {
@@ -45,6 +47,7 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       },
       clearAll() {
         this.semanticSearch = null
+        this.conceptReview = null
         this.searchError = null
         this.timestamp = null
         this.totalHeight = 0

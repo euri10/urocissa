@@ -18,7 +18,7 @@
           >
             <v-icon class="mb-5" color="grey" size="100"> {{ ui.icon }} </v-icon>
             <v-card-item>
-              <v-card-subtitle>{{ ui.message }}</v-card-subtitle>
+              <v-card-subtitle class="text-wrap">{{ ui.message }}</v-card-subtitle>
             </v-card-item>
           </v-card>
         </v-hover>
@@ -72,7 +72,7 @@
           >
             <v-icon class="mb-5" color="grey" size="100"> {{ ui.icon }} </v-icon>
             <v-card-item>
-              <v-card-subtitle>{{ ui.message }}</v-card-subtitle>
+              <v-card-subtitle class="text-wrap">{{ ui.message }}</v-card-subtitle>
             </v-card-item>
           </v-card>
         </v-hover>
@@ -169,6 +169,15 @@ const ui = computed<UIState>(() => {
 
   // 3) Other pages: single switch based on baseName
   switch (route.meta.baseName) {
+    case 'review':
+      return {
+        isSearchEmpty: false,
+        showUploadCard: false,
+        hasHoverEffect: false,
+        message: 'No Auto tags left to review for this Concept.',
+        icon: 'mdi-check-all',
+        onClick: undefined
+      }
     case 'home':
     case 'all':
     case 'album':

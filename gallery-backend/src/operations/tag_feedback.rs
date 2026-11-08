@@ -30,12 +30,14 @@ static VOCABULARY: std::sync::LazyLock<Vocabulary> = std::sync::LazyLock::new(||
 pub fn concepts_for_tags(tags: &BTreeSet<String>) -> Vec<String> {
     tags.iter()
         .filter(|tag| !tag.trim().is_empty())
-        .map(|tag| {
-            VOCABULARY
-                .concept_named(tag)
-                .map_or_else(|| personal_id(tag), |c| c.id.clone())
-        })
+        .map(|tag| concept_id(tag))
         .collect()
+}
+
+pub fn concept_id(tag: &str) -> String {
+    VOCABULARY
+        .concept_named(tag)
+        .map_or_else(|| personal_id(tag), |c| c.id.clone())
 }
 
 /// Choices come from authored vocabulary, so feedback works while the tagger is offline.

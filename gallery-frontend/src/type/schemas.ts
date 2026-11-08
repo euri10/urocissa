@@ -192,6 +192,13 @@ export const ResolvedShareSchema = z.object({
   albumTitle: z.string().nullable()
 })
 
+export const conceptReviewSchema = z.object({
+  concept: z.string(),
+  label: z.string(),
+  positiveExamples: z.number().int().nonnegative(),
+  negativeExamples: z.number().int().nonnegative()
+})
+
 export const prefetchReturnSchema = z
   .object({
     prefetch: prefetchSchema,
@@ -201,13 +208,15 @@ export const prefetchReturnSchema = z
       selection: z.string(),
       indexedPhotos: z.number().int().nonnegative(),
       pendingPhotos: z.number().int().nonnegative()
-    }).optional()
+    }).optional(),
+    conceptReview: conceptReviewSchema.optional()
   })
   .transform((data) => ({
     prefetch: data.prefetch,
     token: data.token,
     resolvedShare: data.resolvedShareOpt,
-    ...(data.semanticSearch === undefined ? {} : { semanticSearch: data.semanticSearch })
+    ...(data.semanticSearch === undefined ? {} : { semanticSearch: data.semanticSearch }),
+    ...(data.conceptReview === undefined ? {} : { conceptReview: data.conceptReview })
   }))
 
 export const scrollbarDataSchema = z.object({

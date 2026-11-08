@@ -65,6 +65,9 @@ async function renderBadges(owner: boolean | undefined, mobile: boolean, share =
 }
 
 describe('private photo badges', () => {
+  it('keeps every gallery tile in the keyboard tab order', async () => {
+    expect((await renderBadges(true, false)).match(/tabindex="0"/g)).toHaveLength(7)
+  })
   it.each([false, true])('shows private and missing media audiences only for the owner, mobile=%s', async (mobile) => {
     const html = await renderBadges(true, mobile)
     expect(html.match(/data-testid="private-photo-badge"/g)).toHaveLength(4)

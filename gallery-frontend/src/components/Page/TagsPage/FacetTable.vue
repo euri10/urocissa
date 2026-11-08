@@ -6,10 +6,12 @@ const props = defineProps<{
   valueLabel: string
   items: readonly FacetValueInfo[]
   emptyText: string
+  reviewable?: boolean
 }>()
 
 const emit = defineEmits<{
   select: [value: string]
+  review: [value: string]
 }>()
 
 const hasSplitCounts = computed(() => props.items.some((item) => item.userCount !== undefined))
@@ -43,6 +45,12 @@ function selectValue(value: string): void {
           >
             {{ item.value }}
           </v-btn>
+          <v-btn
+            v-if="props.reviewable && (item.autoCount ?? 0) > 0"
+            icon="mdi-view-grid-outline" size="small" variant="text"
+            :aria-label="`Review ${item.value} across the library`"
+            @click="emit('review', item.value)"
+          />
         </td>
         <td class="text-end" :title="`${item.count} matching items`">
           <template v-if="item.userCount !== undefined && item.autoCount !== undefined">
