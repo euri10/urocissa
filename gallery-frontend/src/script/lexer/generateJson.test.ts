@@ -1,6 +1,27 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { generateJsonString } from './generateJson'
 
+describe('tag provenance expressions', () => {
+  it.each(['user', 'auto'])('parses quoted and bare %s source', (source) => {
+    for (const value of [source, JSON.stringify(source)]) {
+      expect(JSON.parse(generateJsonString(`and(tag:"cigogne",source:${value})`))).toEqual({
+        And: [{ Tag: 'cigogne' }, { Source: source }]
+      })
+    }
+  })
+
+  it('keeps provenance scoped within Boolean branches', () => {
+    expect(JSON.parse(generateJsonString('or(and(tag:"bird",source:auto),not(source:user))')))
+      .toEqual({ Or: [{ And: [{ Tag: 'bird' }, { Source: 'auto' }] }, { Not: { Source: 'user' } }] })
+  })
+
+  it.each(['"both"', '"AUTO"', '""', 'true', 'automatic'])('rejects %s', (value) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    expect(() => generateJsonString(`source:${value}`)).toThrow()
+    warn.mockRestore()
+  })
+})
+
 describe('audience search expressions', () => {
   afterEach(() => {
     vi.restoreAllMocks()

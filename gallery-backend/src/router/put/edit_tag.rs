@@ -151,5 +151,5 @@ pub async fn edit_tag(
     VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
     drop(state);
 
-    Ok(Json(TREE.read_tags()))
+    Ok(Json(TREE.read_tags()?))
 }

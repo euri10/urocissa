@@ -1,6 +1,6 @@
 //! Authored preferences stay in the main database; all predictions are disposable.
 use anyhow::Result;
-use redb::{Durability, ReadOnlyTable, ReadableDatabase, TableDefinition};
+use redb::{Durability, ReadOnlyTable, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 
 use super::{DataStore, embeddings::EmbeddingStore};
@@ -113,6 +113,22 @@ impl EmbeddingStore {
             .map(|bytes| serde_json::from_slice(bytes.value()))
             .transpose()
             .map_err(Into::into)
+    }
+
+    /// One consistent derived snapshot for owner search and facets.
+    pub fn all_auto_tags(&self) -> Result<Vec<(String, MaterializedTags)>> {
+        self.db
+            .begin_read()?
+            .open_table(TAGS)?
+            .iter()?
+            .map(|entry| {
+                let (id, bytes) = entry?;
+                Ok((
+                    id.value().to_owned(),
+                    serde_json::from_slice(bytes.value())?,
+                ))
+            })
+            .collect()
     }
 
     pub fn put_auto_tags(&self, rows: &[(String, MaterializedTags)]) -> Result<()> {

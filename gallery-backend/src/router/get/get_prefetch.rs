@@ -386,8 +386,26 @@ fn filter_items(
             )
         })
         .transpose()?;
+    let owner_tags = if visibility.viewer == Viewer::Owner
+        && expression_option.is_some_and(Expression::contains_tag_search)
+    {
+        Some(crate::operations::tag_search::OwnerTagIndex::read(
+            &tree_guard,
+        )?)
+    } else {
+        None
+    };
     let compiled_expression = visible_expression.as_ref().map(|expression| {
-        tree_guard.compile_expression(expression, hidden_metadata_album, hide_paths)
+        owner_tags.as_ref().map_or_else(
+            || tree_guard.compile_expression(expression, hidden_metadata_album, hide_paths),
+            |tags| {
+                crate::public::db::tree::state::CompiledExpression::owner(
+                    expression,
+                    &tree_guard,
+                    tags,
+                )
+            },
+        )
     });
     let audience_filtered = expression_option.is_some_and(Expression::contains_audience);
     crate::perf_timing!(
@@ -712,6 +730,12 @@ fn execute_prefetch_logic(
         hidden_metadata_album,
         hide_paths,
     )
+    // Derived materialization does not change the authored tree epoch. Rebuild owner
+    // tag membership on each new search; existing selection snapshots remain stable.
+    .filter(|_| {
+        !(visibility.viewer == Viewer::Owner
+            && expression_option.is_some_and(Expression::contains_tag_search))
+    })
     .map(|key| {
         let mut hasher = DefaultHasher::new();
         (key, visibility.viewer, visibility.revision()).hash(&mut hasher);
@@ -803,6 +827,14 @@ pub async fn prefetch(
         }
     };
     let request_viewer = viewer(&auth_guard.claims.role);
+    if request_viewer != Viewer::Owner
+        && query_data.as_ref().is_some_and(Expression::contains_source)
+    {
+        return Err(AppError::new(
+            ErrorKind::PermissionDenied,
+            "Tag source expressions require owner access",
+        ));
+    }
     if request_viewer != Viewer::Owner
         && (query_data
             .as_ref()

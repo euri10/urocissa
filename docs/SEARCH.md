@@ -213,3 +213,61 @@ available while new text searches returned 503; a newly uploaded photo returned
 the not-processed 409 message. The full optimized backend suite passed with
 `--test-threads=1`; concurrent CPU-heavy checks can exceed the wall-clock timing
 budget, so run the isolated HTTP gate above for performance acceptance.
+
+### 12. User and Auto Tags (Owner Only)
+
+Owner `tag:"cigogne"` and `tag:"stork"` searches match the union of User tags
+and current Auto tags. French/English Concept names and synonyms refer to the same
+Concept, ignoring surrounding whitespace and case. Parent queries such as
+`tag:"oiseau"`, `tag:"bird"` and `tag:"animal"` include descendants, including
+photos whose User tag names a descendant. Custom User tags keep their exact spelling.
+Hidden Auto tags (over the chip cap, suppressed ancestors and implied parents) all
+participate in search and facets. Videos have only User tags.
+
+Narrow a tag query by its provenance:
+
+```
+and(tag:"cigogne", source:user)
+and(tag:"bird", source:"auto", trashed:false)
+or(and(tag:"cigogne", source:user), and(tag:"cat", source:auto))
+```
+
+`source:user` and `source:auto` also work alone to find items with any tag from
+that source. A qualifier in `and(...)` narrows the tag operands in that scope,
+including nested Boolean expressions; it does not change sibling `or(...)`
+branches. Conflicting qualifiers in one AND scope match nothing. A tag-existence
+query such as `and(tag:false, source:auto)` finds items without Auto tags.
+Tag/source filters can also be combined with semantic and Similar photos searches.
+
+The Tags page shows one row per Concept, using the library's preferred User-tag
+alias or the French label, with counts such as `8 yours + 23 auto`. The API keeps
+`value` and `count` and adds `userCount` and `autoCount` on owner tag facets only.
+`count` is the deduplicated union, not necessarily the sum: an item may match both
+sources, particularly through parent expansion. Each split count equals a search
+for that row with the corresponding source and the same trash scope. Hover over
+the count to see the total. Ordinary tag-edit responses retain this unified list.
+
+Anonymous and share viewers keep exact User-tag matching and existing facet JSON;
+they receive no Auto-tag counts, alias expansion or parent expansion. Source
+expressions are refused with 403, including under NOT/OR and when a logged-in owner
+browses through a share link. Metadata-hidden shares still have empty facets.
+
+New owner tag queries read a derived snapshot, without contacting the sidecar.
+Disabled photos, deleted records, videos and rows from an old model, vocabulary or
+thumbnail revision cannot contribute Auto tags. Existing selection snapshots keep
+their membership. No authored tables, V6 records or deployment settings change.
+
+Local verification is part of the audience HTTP suite:
+
+```sh
+cd gallery-backend
+cargo test --offline --locked --profile dev-release --bin urocissa audience_http_tests -- --test-threads=1
+```
+
+The gate checks all sort orders, hidden tags, aliases, parents, provenance and
+facet/search count reconciliation in all/non-trashed/trashed scopes. It compares
+visitor facet, row and scrollbar bytes before and after derived changes, plus
+returned metadata after normalizing only existing timestamped capability tokens
+and unordered tag/album sets. The pure engine's existing cap/hierarchy tests cover
+how displayed and hidden placements are produced. Production operations and the
+opt-in hybrid-scroll gate are outside this change.

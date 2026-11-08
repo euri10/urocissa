@@ -51,6 +51,23 @@ pub struct AutoTagStatus {
 }
 
 impl AutoTags {
+    /// Search consumes every placement, never just the displayed chips.
+    pub fn search_rows(&self) -> Result<Vec<(String, MaterializedTags)>> {
+        let model = self.store.model()?;
+        Ok(self
+            .store
+            .all_auto_tags()?
+            .into_iter()
+            .filter(|(_, row)| {
+                row.enabled
+                    && row.vocabulary_version == self.catalog.version
+                    && model
+                        .as_ref()
+                        .is_some_and(|model| model.model_id == row.model_id)
+            })
+            .collect())
+    }
+
     pub fn new(store: EmbeddingStore) -> Result<Self> {
         Ok(Self {
             store,

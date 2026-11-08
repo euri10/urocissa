@@ -18,6 +18,7 @@ mod auto_tags;
 mod media;
 mod mutations;
 mod search;
+mod tag_search;
 
 use crate::{
     public::{
@@ -688,6 +689,7 @@ async fn http_child() {
                 edit_share,
                 edit_photo_audience,
                 crate::router::put::edit_auto_tags::edit_auto_tags,
+                crate::router::put::edit_tag::edit_tag,
                 crate::router::embeddings::get_auto_tags,
                 upload,
             ],

@@ -16,12 +16,20 @@ pub enum AlbumFilterValue {
     Exists(bool),
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum TagSource {
+    User,
+    Auto,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub enum Expression {
     Or(Vec<Expression>),
     And(Vec<Expression>),
     Not(Box<Expression>),
     Tag(FilterValue),
+    Source(TagSource),
     ExtType(String),
     Ext(String),
     Model(FilterValue),
@@ -39,6 +47,28 @@ pub enum Expression {
 }
 
 impl Expression {
+    pub fn contains_source(&self) -> bool {
+        match self {
+            Self::Source(_) => true,
+            Self::Or(items) | Self::And(items) => items.iter().any(Self::contains_source),
+            Self::Not(item) => item.contains_source(),
+            _ => false,
+        }
+    }
+
+    pub fn contains_tag_search(&self) -> bool {
+        self.contains_tag() || self.contains_source()
+    }
+
+    pub fn contains_tag(&self) -> bool {
+        match self {
+            Self::Tag(_) => true,
+            Self::Or(items) | Self::And(items) => items.iter().any(Self::contains_tag),
+            Self::Not(item) => item.contains_tag(),
+            _ => false,
+        }
+    }
+
     /// Ranked text and image queries both use the owner-only semantic search path.
     pub fn contains_semantic(&self) -> bool {
         match self {

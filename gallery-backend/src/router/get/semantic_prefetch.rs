@@ -96,7 +96,8 @@ fn select(
     } else {
         &text_vector.as_ref().unwrap().embedding
     };
-    let compiled = tree.compile_expression(filter, None, false);
+    let tags = crate::operations::tag_search::OwnerTagIndex::read(&tree)?;
+    let compiled = crate::public::db::tree::state::CompiledExpression::owner(filter, &tree, &tags);
     let audience_filtered = expression.contains_audience();
     let mut scores = Vec::new();
     let mut indexed = 0;
@@ -154,7 +155,8 @@ pub(super) fn execute(
         .state
         .read()
         .map_err(|_| AppError::new(ErrorKind::Internal, "Cannot read the photo library"))?;
-    let compiled = tree.compile_expression(&filter, None, false);
+    let tags = crate::operations::tag_search::OwnerTagIndex::read(&tree)?;
+    let compiled = crate::public::db::tree::state::CompiledExpression::owner(&filter, &tree, &tags);
     let audience_filtered = expression.contains_audience();
     let mut matches = Vec::new();
     for (id, version) in &selection.photos {

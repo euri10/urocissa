@@ -8,6 +8,7 @@ import {
   AudienceExpressionCstChildren,
   SemanticExpressionCstChildren,
   SimilarExpressionCstChildren,
+  SourceExpressionCstChildren,
   ExpressionCstChildren,
   ExtExpressionCstChildren,
   FavoriteExpressionCstChildren,
@@ -47,6 +48,7 @@ const Trashed: TokenType = createToken({ name: 'Trashed', pattern: /trashed:/ })
 const Audience: TokenType = createToken({ name: 'Audience', pattern: /audience:/ })
 const Semantic: TokenType = createToken({ name: 'Semantic', pattern: /semantic:/ })
 const Similar: TokenType = createToken({ name: 'Similar', pattern: /similar:/ })
+const Source: TokenType = createToken({ name: 'Source', pattern: /source:/ })
 const Comma: TokenType = createToken({ name: 'Comma', pattern: /,/ })
 
 const BooleanValue: TokenType = createToken({
@@ -58,6 +60,8 @@ const AudienceValue: TokenType = createToken({
   name: 'AudienceValue',
   pattern: /(?:private|public)\b/
 })
+
+const SourceValue: TokenType = createToken({ name: 'SourceValue', pattern: /(?:user|auto)\b/ })
 
 const Identifier: TokenType = createToken({
   name: 'Identifier',
@@ -91,9 +95,11 @@ const allTokens: TokenType[] = [
   Audience,
   Semantic,
   Similar,
+  Source,
   Comma,
   BooleanValue,
   AudienceValue,
+  SourceValue,
   Identifier
 ]
 
@@ -151,7 +157,8 @@ export class MyParser extends CstParser {
       { ALT: () => this.SUBRULE(this.trashedExpression) },
       { ALT: () => this.SUBRULE(this.audienceExpression) },
       { ALT: () => this.SUBRULE(this.semanticExpression) },
-      { ALT: () => this.SUBRULE(this.similarExpression) }
+      { ALT: () => this.SUBRULE(this.similarExpression) },
+      { ALT: () => this.SUBRULE(this.sourceExpression) }
     ])
   })
 
@@ -235,6 +242,14 @@ export class MyParser extends CstParser {
   public similarExpression = this.RULE('similarExpression', () => {
     this.CONSUME1(Similar)
     this.CONSUME2(Identifier)
+  })
+
+  public sourceExpression = this.RULE('sourceExpression', () => {
+    this.CONSUME(Source)
+    this.OR([
+      { ALT: () => this.CONSUME(Identifier) },
+      { ALT: () => this.CONSUME(SourceValue) }
+    ])
   })
 }
 
@@ -323,6 +338,9 @@ export class MyVisitor extends BaseVisitor {
     if (children.similarExpression) {
       return this.visit(children.similarExpression)
     }
+    if (children.sourceExpression) {
+      return this.visit(children.sourceExpression)
+    }
   }
 
   // Visit a tagExpression node
@@ -397,5 +415,13 @@ export class MyVisitor extends BaseVisitor {
 
   similarExpression(children: SimilarExpressionCstChildren) {
     return { Similar: unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image) }
+  }
+
+  sourceExpression(children: SourceExpressionCstChildren) {
+    const value = children.Identifier
+      ? unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image)
+      : getArrayValue(children.SourceValue ?? [], 0).image
+    if (value !== 'user' && value !== 'auto') throw new Error('Source must be "user" or "auto"')
+    return { Source: value }
   }
 }

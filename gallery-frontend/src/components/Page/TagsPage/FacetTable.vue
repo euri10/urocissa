@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { FacetValueInfo } from '@type/types'
 
 const props = defineProps<{
@@ -11,6 +12,8 @@ const emit = defineEmits<{
   select: [value: string]
 }>()
 
+const hasSplitCounts = computed(() => props.items.some((item) => item.userCount !== undefined))
+
 function selectValue(value: string): void {
   emit('select', value)
 }
@@ -21,7 +24,9 @@ function selectValue(value: string): void {
     <thead>
       <tr>
         <th scope="col">{{ props.valueLabel }}</th>
-        <th scope="col" class="facet-count-column text-end">Items</th>
+        <th scope="col" :class="hasSplitCounts ? 'w-50 text-end' : 'facet-count-column text-end'">
+          Items
+        </th>
       </tr>
     </thead>
     <tbody>
@@ -39,7 +44,12 @@ function selectValue(value: string): void {
             {{ item.value }}
           </v-btn>
         </td>
-        <td class="text-end">{{ item.count }}</td>
+        <td class="text-end" :title="`${item.count} matching items`">
+          <template v-if="item.userCount !== undefined && item.autoCount !== undefined">
+            {{ item.userCount }} yours + {{ item.autoCount }} auto
+          </template>
+          <template v-else>{{ item.count }}</template>
+        </td>
       </tr>
     </tbody>
   </v-table>
