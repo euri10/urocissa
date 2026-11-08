@@ -1,0 +1,24 @@
+name: Concept calibration fixture
+
+on:
+  push:
+    paths:
+      - 'tools/concepts/**'
+      - 'gallery-backend/assets/**'
+      - '.github/workflows/concept-vocabulary.yml'
+  pull_request:
+    paths:
+      - 'tools/concepts/**'
+      - 'gallery-backend/assets/**'
+      - '.github/workflows/concept-vocabulary.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  calibration-fixture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -B -m unittest discover -s tools/concepts -v

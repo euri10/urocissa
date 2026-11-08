@@ -55,6 +55,7 @@
 )]
 
 mod alias;
+mod builtin;
 mod classifier;
 mod engine;
 mod error;
@@ -62,6 +63,7 @@ mod scoring;
 mod vocabulary;
 
 pub use alias::AliasIndex;
+pub use builtin::{BuiltinCatalog, BuiltinConcept};
 pub use classifier::{Classification, ConceptClassifier, ConceptMode, ZeroShot};
 pub use engine::{AutoTag, AutoTagEngine, MAX_DISPLAYED, PhotoInput, PhotoResult, Placement};
 pub use error::{AutoTagError, VectorProblem};

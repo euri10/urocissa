@@ -52,6 +52,10 @@ When enabled, owners can [search photos by description](docs/SEARCH.md#10-semant
 in French or English, with relevance and date ordering. Auto tags and similar photos
 are being delivered in separate slices.
 
+The [built-in Concept vocabulary](docs/CONCEPT_VOCABULARY.md) defines French/English
+Auto tag names and precision-gated thresholds, with a reproducible calibration
+report. The owner-facing Auto tag workflow is a subsequent epic slice.
+
 | Feature                    | Status |
 | -------------------------- | ------ |
 | Upload Videos and Photos   | ✅     |

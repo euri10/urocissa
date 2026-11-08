@@ -1,0 +1,634 @@
+{
+  "concepts": [
+    {
+      "id": "person",
+      "label_en": "person",
+      "label_fr": "personne",
+      "open_images": "Person",
+      "parents": [],
+      "threshold": 4.540382360573858e-05
+    },
+    {
+      "id": "crowd",
+      "label_en": "crowd",
+      "label_fr": "foule",
+      "open_images": "Crowd",
+      "parents": [
+        "person"
+      ],
+      "threshold": 0.00023847492411732674
+    },
+    {
+      "id": "portrait",
+      "label_en": "portrait",
+      "label_fr": "portrait",
+      "open_images": "Portrait",
+      "parents": [
+        "person"
+      ],
+      "threshold": 0.0016597104258835316
+    },
+    {
+      "id": "selfie",
+      "label_en": "selfie",
+      "label_fr": "selfie",
+      "open_images": "Selfie",
+      "parents": [
+        "portrait"
+      ],
+      "threshold": null
+    },
+    {
+      "id": "baby",
+      "label_en": "baby",
+      "label_fr": "bébé",
+      "open_images": "Baby",
+      "parents": [
+        "child"
+      ],
+      "threshold": null
+    },
+    {
+      "id": "child",
+      "label_en": "child",
+      "label_fr": "enfant",
+      "open_images": "Child",
+      "parents": [
+        "person"
+      ],
+      "threshold": 0.00046918558655306697
+    },
+    {
+      "id": "animal",
+      "label_en": "animal",
+      "label_fr": "animal",
+      "open_images": "Animal",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "bird",
+      "label_en": "bird",
+      "label_fr": "oiseau",
+      "open_images": "Bird",
+      "parents": [
+        "animal"
+      ],
+      "threshold": 0.00023997502285055816
+    },
+    {
+      "id": "stork",
+      "label_en": "stork",
+      "label_fr": "cigogne",
+      "open_images": "Stork",
+      "parents": [
+        "bird"
+      ],
+      "threshold": null
+    },
+    {
+      "id": "duck",
+      "label_en": "duck",
+      "label_fr": "canard",
+      "open_images": "Duck",
+      "parents": [
+        "bird"
+      ],
+      "threshold": null
+    },
+    {
+      "id": "swan",
+      "label_en": "swan",
+      "label_fr": "cygne",
+      "open_images": "Swan",
+      "parents": [
+        "bird"
+      ],
+      "threshold": 0.0737106204032898
+    },
+    {
+      "id": "cat",
+      "label_en": "cat",
+      "label_fr": "chat",
+      "open_images": "Cat",
+      "parents": [
+        "animal"
+      ],
+      "threshold": 0.0009483204921707511
+    },
+    {
+      "id": "dog",
+      "label_en": "dog",
+      "label_fr": "chien",
+      "open_images": "Dog",
+      "parents": [
+        "animal"
+      ],
+      "threshold": null
+    },
+    {
+      "id": "horse",
+      "label_en": "horse",
+      "label_fr": "cheval",
+      "open_images": "Horse",
+      "parents": [
+        "animal"
+      ],
+      "threshold": null
+    },
+    {
+      "id": "cow",
+      "label_en": "cow",
+      "label_fr": "vache",
+      "open_images": "Cattle",
+      "parents": [
+        "animal"
+      ],
+      "threshold": null
+    },
+    {
+      "id": "sheep",
+      "label_en": "sheep",
+      "label_fr": "mouton",
+      "open_images": "Sheep",
+      "parents": [
+        "animal"
+      ],
+      "threshold": 0.019389726221561432
+    },
+    {
+      "id": "deer",
+      "label_en": "deer",
+      "label_fr": "cerf",
+      "open_images": "Deer",
+      "parents": [
+        "animal"
+      ],
+      "threshold": 0.016821378841996193
+    },
+    {
+      "id": "butterfly",
+      "label_en": "butterfly",
+      "label_fr": "papillon",
+      "open_images": "Butterfly",
+      "parents": [
+        "animal"
+      ],
+      "threshold": 0.004698680713772774
+    },
+    {
+      "id": "bee",
+      "label_en": "bee",
+      "label_fr": "abeille",
+      "open_images": "Bee",
+      "parents": [
+        "animal"
+      ],
+      "threshold": 0.013980619609355927
+    },
+    {
+      "id": "tree",
+      "label_en": "tree",
+      "label_fr": "arbre",
+      "open_images": "Tree",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "flower",
+      "label_en": "flower",
+      "label_fr": "fleur",
+      "open_images": "Flower",
+      "parents": [],
+      "threshold": 0.001171667710877955
+    },
+    {
+      "id": "forest",
+      "label_en": "forest",
+      "label_fr": "forêt",
+      "open_images": "Forest",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "mountain",
+      "label_en": "mountain",
+      "label_fr": "montagne",
+      "open_images": "Mountain",
+      "parents": [],
+      "threshold": 0.0005548918852582574
+    },
+    {
+      "id": "beach",
+      "label_en": "beach",
+      "label_fr": "plage",
+      "open_images": "Beach",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "sea",
+      "label_en": "sea",
+      "label_fr": "mer",
+      "open_images": "Sea",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "lake",
+      "label_en": "lake",
+      "label_fr": "lac",
+      "open_images": "Lake",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "river",
+      "label_en": "river",
+      "label_fr": "rivière",
+      "open_images": "River",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "waterfall",
+      "label_en": "waterfall",
+      "label_fr": "cascade",
+      "open_images": "Waterfall",
+      "parents": [],
+      "threshold": 0.007690302096307278
+    },
+    {
+      "id": "snow",
+      "label_en": "snow",
+      "label_fr": "neige",
+      "open_images": "Snow",
+      "parents": [],
+      "threshold": 0.0009206016547977924
+    },
+    {
+      "id": "sunset",
+      "label_en": "sunset",
+      "label_fr": "coucher de soleil",
+      "open_images": "Sunset",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "rainbow",
+      "label_en": "rainbow",
+      "label_fr": "arc-en-ciel",
+      "open_images": "Rainbow",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "cloud",
+      "label_en": "cloud",
+      "label_fr": "nuage",
+      "open_images": "Cloud",
+      "parents": [],
+      "threshold": 3.335111387059442e-08
+    },
+    {
+      "id": "garden",
+      "label_en": "garden",
+      "label_fr": "jardin",
+      "open_images": "Garden",
+      "parents": [],
+      "threshold": 0.011695151217281818
+    },
+    {
+      "id": "park",
+      "label_en": "park",
+      "label_fr": "parc",
+      "open_images": "Park",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "building",
+      "label_en": "building",
+      "label_fr": "bâtiment",
+      "open_images": "Building",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "house",
+      "label_en": "house",
+      "label_fr": "maison",
+      "open_images": "House",
+      "parents": [
+        "building"
+      ],
+      "threshold": 0.0013595676282420754
+    },
+    {
+      "id": "castle",
+      "label_en": "castle",
+      "label_fr": "château",
+      "open_images": "Castle",
+      "parents": [
+        "building"
+      ],
+      "threshold": null
+    },
+    {
+      "id": "bridge",
+      "label_en": "bridge",
+      "label_fr": "pont",
+      "open_images": "Bridge (structure)",
+      "parents": [],
+      "threshold": 0.0007567846332676709
+    },
+    {
+      "id": "street",
+      "label_en": "street",
+      "label_fr": "rue",
+      "open_images": "Street",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "bicycle",
+      "label_en": "bicycle",
+      "label_fr": "vélo",
+      "open_images": "Bicycle",
+      "parents": [],
+      "synonyms": [
+        "bicyclette",
+        "bike"
+      ],
+      "threshold": null
+    },
+    {
+      "id": "car",
+      "label_en": "car",
+      "label_fr": "voiture",
+      "open_images": "Car",
+      "parents": [],
+      "threshold": 0.00031256297370418906
+    },
+    {
+      "id": "bus",
+      "label_en": "bus",
+      "label_fr": "bus",
+      "open_images": "Bus",
+      "parents": [],
+      "threshold": 0.0039484743028879166
+    },
+    {
+      "id": "train",
+      "label_en": "train",
+      "label_fr": "train",
+      "open_images": "Train",
+      "parents": [],
+      "threshold": 0.015257525257766247
+    },
+    {
+      "id": "boat",
+      "label_en": "boat",
+      "label_fr": "bateau",
+      "open_images": "Boat",
+      "parents": [],
+      "threshold": 0.004475641064345837
+    },
+    {
+      "id": "airplane",
+      "label_en": "airplane",
+      "label_fr": "avion",
+      "open_images": "Airplane",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "food",
+      "label_en": "food",
+      "label_fr": "nourriture",
+      "open_images": "Food",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "cake",
+      "label_en": "cake",
+      "label_fr": "gâteau",
+      "open_images": "Cake",
+      "parents": [
+        "food"
+      ],
+      "threshold": null
+    },
+    {
+      "id": "bread",
+      "label_en": "bread",
+      "label_fr": "pain",
+      "open_images": "Bread",
+      "parents": [
+        "food"
+      ],
+      "threshold": null
+    },
+    {
+      "id": "pizza",
+      "label_en": "pizza",
+      "label_fr": "pizza",
+      "open_images": "Pizza",
+      "parents": [
+        "food"
+      ],
+      "threshold": null
+    },
+    {
+      "id": "fruit",
+      "label_en": "fruit",
+      "label_fr": "fruit",
+      "open_images": "Fruit",
+      "parents": [
+        "food"
+      ],
+      "threshold": null
+    },
+    {
+      "id": "coffee",
+      "label_en": "coffee",
+      "label_fr": "café",
+      "open_images": "Coffee (drink)",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "beer",
+      "label_en": "beer",
+      "label_fr": "bière",
+      "open_images": "Beer",
+      "parents": [],
+      "threshold": 0.004994675517082214
+    },
+    {
+      "id": "wine",
+      "label_en": "wine",
+      "label_fr": "vin",
+      "open_images": "Wine",
+      "parents": [],
+      "threshold": 0.01947098597884178
+    },
+    {
+      "id": "tent",
+      "label_en": "tent",
+      "label_fr": "tente",
+      "open_images": "Tent",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "campfire",
+      "label_en": "campfire",
+      "label_fr": "feu de camp",
+      "open_images": "Campfire",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "hiking",
+      "label_en": "hiking",
+      "label_fr": "randonnée",
+      "open_images": "Hiking",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "swimming",
+      "label_en": "swimming",
+      "label_fr": "natation",
+      "open_images": "Swimming",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "skiing",
+      "label_en": "skiing",
+      "label_fr": "ski",
+      "open_images": "Skiing",
+      "parents": [],
+      "threshold": 0.04444097727537155
+    },
+    {
+      "id": "cycling",
+      "label_en": "cycling",
+      "label_fr": "cyclisme",
+      "open_images": "Cycling",
+      "parents": [],
+      "threshold": 0.0007075636531226337
+    },
+    {
+      "id": "concert",
+      "label_en": "concert",
+      "label_fr": "concert",
+      "open_images": "Concert",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "festival",
+      "label_en": "festival",
+      "label_fr": "festival",
+      "open_images": "Festival",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "birthday",
+      "label_en": "birthday party",
+      "label_fr": "anniversaire",
+      "open_images": "Birthday",
+      "parents": [],
+      "threshold": 0.018233856186270714
+    },
+    {
+      "id": "wedding",
+      "label_en": "wedding",
+      "label_fr": "mariage",
+      "open_images": "Wedding",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "fireworks",
+      "label_en": "fireworks",
+      "label_fr": "feu d’artifice",
+      "open_images": "Fireworks",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "protest",
+      "label_en": "protest",
+      "label_fr": "manifestation",
+      "open_images": "Protest",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "banner",
+      "label_en": "banner",
+      "label_fr": "banderole",
+      "open_images": "Banner",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "police",
+      "label_en": "police",
+      "label_fr": "police",
+      "open_images": "Police",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "flag",
+      "label_en": "flag",
+      "label_fr": "drapeau",
+      "open_images": "Flag",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "book",
+      "label_en": "book",
+      "label_fr": "livre",
+      "open_images": "Book",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "computer",
+      "label_en": "computer",
+      "label_fr": "ordinateur",
+      "open_images": "Computer",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "guitar",
+      "label_en": "guitar",
+      "label_fr": "guitare",
+      "open_images": "Guitar",
+      "parents": [],
+      "threshold": null
+    },
+    {
+      "id": "sculpture",
+      "label_en": "sculpture",
+      "label_fr": "sculpture",
+      "open_images": "Sculpture",
+      "parents": [],
+      "threshold": null
+    }
+  ],
+  "model_id": "siglip2-base-patch16-224@75de2d55ec2d/fp16-text-int8",
+  "prompt_template": "a photo of {label}",
+  "schema_version": 1,
+  "version": "2026-11-08.1"
+}
