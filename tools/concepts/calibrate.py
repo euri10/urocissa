@@ -44,6 +44,16 @@ def partition(image_id):
     return "selection" if int(digest(f"split:{image_id}".encode())[:2], 16) < 128 else "evaluation"
 
 
+def sample_images(labels, limit):
+    # Do not refill a scarce class from the majority: that recreated the
+    # positive-enriched Cloud pool that accepted an always-on classifier.
+    if limit < 2 or limit % 2:
+        raise ValueError("sample size must be an even number of at least two")
+    return sorted((image_id for label in (0, 1)
+                   for image_id in sorted((i for i, value in labels.items() if value == label),
+                                          key=rank)[:limit // 2]), key=rank)
+
+
 def annotations(path, wanted):
     result = {label: {} for label in wanted}
     with path.open(newline="") as source:
@@ -63,12 +73,20 @@ def annotations(path, wanted):
 
 def metrics(rows, threshold):
     positives = sum(label for _, label in rows)
+    negatives = len(rows) - positives
     predicted = [(score, label) for score, label in rows if score >= threshold]
     tp = sum(label for _, label in predicted)
-    return {"positive": positives, "negative": len(rows) - positives,
+    recall = tp / positives if positives else 0.0
+    false_positive_rate = (len(predicted) - tp) / negatives if negatives else 0.0
+    # Equal class priors prevent a positive-enriched annotation pool from making
+    # an always-on classifier pass. Keep raw precision as a separate gate too.
+    balanced_precision = (recall / (recall + false_positive_rate)
+                          if positives and negatives and recall + false_positive_rate else 0.0)
+    return {"positive": positives, "negative": negatives,
             "predicted": len(predicted), "true_positive": tp,
             "precision": tp / len(predicted) if predicted else 0.0,
-            "recall": tp / positives if positives else 0.0}
+            "balanced_precision": balanced_precision,
+            "false_positive_rate": false_positive_rate, "recall": recall}
 
 
 def enough(result, minimum):
@@ -77,6 +95,7 @@ def enough(result, minimum):
 
 def passes(result, precision, recall, minimum):
     return (result["predicted"] >= minimum and result["precision"] >= precision
+            and result["balanced_precision"] >= precision
             and result["recall"] >= recall)
 
 
@@ -92,8 +111,9 @@ def select_threshold(rows, precision, recall, minimum):
             continue
         result = metrics(rows, threshold)
         if passes(result, precision, recall, minimum):
-            candidates.append((result["recall"], result["precision"], threshold))
-    return max(candidates)[2] if candidates else None
+            candidates.append((result["recall"], result["balanced_precision"],
+                               result["precision"], threshold))
+    return max(candidates)[3] if candidates else None
 
 
 def calibrate(rows, precision=0.9, recall=0.1, minimum=5):
@@ -171,8 +191,8 @@ def run(args):
     concepts = catalog["concepts"]
     labels = annotations(args.cache / "labels.csv", {
         classes[c["open_images"]] for c in concepts if c["open_images"] in classes})
-    samples = {c["id"]: sorted(labels.get(classes.get(c["open_images"]), {}), key=rank)
-               [:args.sample_per_concept] for c in concepts}
+    samples = {c["id"]: sample_images(labels.get(classes.get(c["open_images"]), {}),
+                                     args.sample_per_concept) for c in concepts}
     image_ids = sorted({image_id for ids in samples.values() for image_id in ids})
     info = json.loads(fetch(args.tagger + "/v1/info", timeout=remaining()))
     if (info["model_id"] != catalog["model_id"] or info["embedding_dim"] != 768
@@ -229,12 +249,14 @@ def run(args):
     write_json(args.cache / "images.json", hashes)
     if json.loads(fetch(args.tagger + "/v1/info", timeout=remaining())) != info:
         raise ValueError("sidecar identity changed during calibration")
-    report = {"schema_version": 1, "vocabulary_version": catalog["version"], "dataset": lock,
+    report = {"schema_version": 2, "vocabulary_version": catalog["version"], "dataset": lock,
               "tool_sha256": digest(Path(__file__).read_bytes()),
               "catalog_definition_sha256": definition_hash, "model": info,
               "method": {"seed": SEED, "sample_per_concept": args.sample_per_concept,
-                         "sampling": "hash-ordered uniformly within each Concept's human-labelled pool",
+                         "sampling": "hash-ordered explicit positives and negatives, capped at half the budget each; no refill",
                          "target_precision": args.precision, "minimum_recall": args.recall,
+                         "precision_gates": ["observed", "equal_prior"],
+                         "equal_prior_precision": "TPR / (TPR + FPR); 0 without both classes or predictions",
                          "minimum_per_class_per_partition": args.minimum,
                          "minimum_predictions_per_partition": args.minimum,
                          "unknown_labels": "ignored", "split": "sha256(split:ImageID) first byte < 128",
@@ -272,9 +294,10 @@ def main():
     parser.add_argument("--minimum", type=int, default=5)
     parser.add_argument("--deadline", type=int, default=7200)
     args = parser.parse_args()
-    if (args.sample_per_concept <= 0 or args.minimum <= 0 or args.deadline <= 0
+    if (args.sample_per_concept < 2 or args.sample_per_concept % 2
+            or args.minimum <= 0 or args.deadline <= 0
             or not 0 < args.precision <= 1 or not 0 < args.recall <= 1):
-        parser.error("sample size, support and deadline must be positive; precision/recall in (0, 1]")
+        parser.error("sample size must be even and >=2; support/deadline positive; precision/recall in (0, 1]")
     run(args)
 
 

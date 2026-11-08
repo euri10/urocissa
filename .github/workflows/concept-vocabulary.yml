@@ -5,11 +5,13 @@ on:
     paths:
       - 'tools/concepts/**'
       - 'gallery-backend/assets/**'
+      - 'gallery-tagger/tests/fixtures/images/**'
       - '.github/workflows/concept-vocabulary.yml'
   pull_request:
     paths:
       - 'tools/concepts/**'
       - 'gallery-backend/assets/**'
+      - 'gallery-tagger/tests/fixtures/images/**'
       - '.github/workflows/concept-vocabulary.yml'
 
 permissions:

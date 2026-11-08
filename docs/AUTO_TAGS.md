@@ -44,10 +44,12 @@ while the sidecar is offline.
 
 Confirm/reject feedback, learned Concepts, review UI, and Auto tag search are
 separate follow-up slices; predictions are not yet included in User tag search.
-Known quality blocker `infra-urocissa-autotag-sjfz.16`: fresh exact-model inference
-also fires Cloud and Snow on the public cat fixture. Thresholds were not adjusted
-by eye in this slice; recalibration and negative-image regressions must pass
-before live rollout (`.13` explicitly depends on this fix).
+Calibration fix `infra-urocissa-autotag-sjfz.16` replaces the positive-enriched
+sampling and observed-precision-only gate. Vocabulary `2026-11-08.2` uses
+balanced verified classes plus observed and equal-prior precision gates.
+Cloud and Snow fail calibration and remain inactive; independent cat/stork and
+neutral-image regressions pass. See `CONCEPT_VOCABULARY.md`. The separate live
+owner quality review is still required; this source fix authorizes no rollout.
 No tagging failure blocks uploads or the photo embedding queue. Derived read
 errors show a pending owner state without breaking gallery reads.
 

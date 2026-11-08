@@ -6,7 +6,7 @@
       "label_fr": "personne",
       "open_images": "Person",
       "parents": [],
-      "threshold": 4.540382360573858e-05
+      "threshold": null
     },
     {
       "id": "crowd",
@@ -16,7 +16,7 @@
       "parents": [
         "person"
       ],
-      "threshold": 0.00023847492411732674
+      "threshold": 0.018392540514469147
     },
     {
       "id": "portrait",
@@ -26,7 +26,7 @@
       "parents": [
         "person"
       ],
-      "threshold": 0.0016597104258835316
+      "threshold": 0.005895715206861496
     },
     {
       "id": "selfie",
@@ -56,7 +56,7 @@
       "parents": [
         "person"
       ],
-      "threshold": 0.00046918558655306697
+      "threshold": null
     },
     {
       "id": "animal",
@@ -64,7 +64,7 @@
       "label_fr": "animal",
       "open_images": "Animal",
       "parents": [],
-      "threshold": null
+      "threshold": 0.0008813607273623347
     },
     {
       "id": "bird",
@@ -74,7 +74,7 @@
       "parents": [
         "animal"
       ],
-      "threshold": 0.00023997502285055816
+      "threshold": 0.002918803598731756
     },
     {
       "id": "stork",
@@ -104,7 +104,7 @@
       "parents": [
         "bird"
       ],
-      "threshold": 0.0737106204032898
+      "threshold": null
     },
     {
       "id": "cat",
@@ -114,7 +114,7 @@
       "parents": [
         "animal"
       ],
-      "threshold": 0.0009483204921707511
+      "threshold": 0.004658297169953585
     },
     {
       "id": "dog",
@@ -124,7 +124,7 @@
       "parents": [
         "animal"
       ],
-      "threshold": null
+      "threshold": 0.0017175453249365091
     },
     {
       "id": "horse",
@@ -154,7 +154,7 @@
       "parents": [
         "animal"
       ],
-      "threshold": 0.019389726221561432
+      "threshold": null
     },
     {
       "id": "deer",
@@ -164,7 +164,7 @@
       "parents": [
         "animal"
       ],
-      "threshold": 0.016821378841996193
+      "threshold": null
     },
     {
       "id": "butterfly",
@@ -174,7 +174,7 @@
       "parents": [
         "animal"
       ],
-      "threshold": 0.004698680713772774
+      "threshold": 0.016356533393263817
     },
     {
       "id": "bee",
@@ -184,7 +184,7 @@
       "parents": [
         "animal"
       ],
-      "threshold": 0.013980619609355927
+      "threshold": 0.026115912944078445
     },
     {
       "id": "tree",
@@ -216,7 +216,7 @@
       "label_fr": "montagne",
       "open_images": "Mountain",
       "parents": [],
-      "threshold": 0.0005548918852582574
+      "threshold": null
     },
     {
       "id": "beach",
@@ -256,7 +256,7 @@
       "label_fr": "cascade",
       "open_images": "Waterfall",
       "parents": [],
-      "threshold": 0.007690302096307278
+      "threshold": 0.024258334189653397
     },
     {
       "id": "snow",
@@ -264,7 +264,7 @@
       "label_fr": "neige",
       "open_images": "Snow",
       "parents": [],
-      "threshold": 0.0009206016547977924
+      "threshold": null
     },
     {
       "id": "sunset",
@@ -288,7 +288,7 @@
       "label_fr": "nuage",
       "open_images": "Cloud",
       "parents": [],
-      "threshold": 3.335111387059442e-08
+      "threshold": null
     },
     {
       "id": "garden",
@@ -296,7 +296,7 @@
       "label_fr": "jardin",
       "open_images": "Garden",
       "parents": [],
-      "threshold": 0.011695151217281818
+      "threshold": null
     },
     {
       "id": "park",
@@ -340,7 +340,7 @@
       "label_fr": "pont",
       "open_images": "Bridge (structure)",
       "parents": [],
-      "threshold": 0.0007567846332676709
+      "threshold": 0.07457131147384644
     },
     {
       "id": "street",
@@ -368,7 +368,7 @@
       "label_fr": "voiture",
       "open_images": "Car",
       "parents": [],
-      "threshold": 0.00031256297370418906
+      "threshold": null
     },
     {
       "id": "bus",
@@ -376,7 +376,7 @@
       "label_fr": "bus",
       "open_images": "Bus",
       "parents": [],
-      "threshold": 0.0039484743028879166
+      "threshold": null
     },
     {
       "id": "train",
@@ -384,7 +384,7 @@
       "label_fr": "train",
       "open_images": "Train",
       "parents": [],
-      "threshold": 0.015257525257766247
+      "threshold": 0.027880165725946426
     },
     {
       "id": "boat",
@@ -392,7 +392,7 @@
       "label_fr": "bateau",
       "open_images": "Boat",
       "parents": [],
-      "threshold": 0.004475641064345837
+      "threshold": null
     },
     {
       "id": "airplane",
@@ -408,7 +408,7 @@
       "label_fr": "nourriture",
       "open_images": "Food",
       "parents": [],
-      "threshold": null
+      "threshold": 0.00010068101255455986
     },
     {
       "id": "cake",
@@ -428,7 +428,7 @@
       "parents": [
         "food"
       ],
-      "threshold": null
+      "threshold": 0.02922159805893898
     },
     {
       "id": "pizza",
@@ -438,7 +438,7 @@
       "parents": [
         "food"
       ],
-      "threshold": null
+      "threshold": 0.038531966507434845
     },
     {
       "id": "fruit",
@@ -448,7 +448,7 @@
       "parents": [
         "food"
       ],
-      "threshold": null
+      "threshold": 0.0028046872466802597
     },
     {
       "id": "coffee",
@@ -464,7 +464,7 @@
       "label_fr": "bière",
       "open_images": "Beer",
       "parents": [],
-      "threshold": 0.004994675517082214
+      "threshold": 0.007059336639940739
     },
     {
       "id": "wine",
@@ -472,7 +472,7 @@
       "label_fr": "vin",
       "open_images": "Wine",
       "parents": [],
-      "threshold": 0.01947098597884178
+      "threshold": 0.022306544706225395
     },
     {
       "id": "tent",
@@ -520,7 +520,7 @@
       "label_fr": "cyclisme",
       "open_images": "Cycling",
       "parents": [],
-      "threshold": 0.0007075636531226337
+      "threshold": null
     },
     {
       "id": "concert",
@@ -630,5 +630,5 @@
   "model_id": "siglip2-base-patch16-224@75de2d55ec2d/fp16-text-int8",
   "prompt_template": "a photo of {label}",
   "schema_version": 1,
-  "version": "2026-11-08.1"
+  "version": "2026-11-08.2"
 }

@@ -9,6 +9,7 @@ import threading
 import unittest
 
 import calibrate as tool
+import check_fixtures
 
 
 def rows(selection_good=True, evaluation_good=True):
@@ -19,6 +20,40 @@ def rows(selection_good=True, evaluation_good=True):
 
 
 class CalibrationTests(unittest.TestCase):
+    def test_sampling_caps_both_verified_classes_without_refilling_or_inventing_negatives(self):
+        labels = {**{f"positive-{i}": 1 for i in range(100)},
+                  **{f"negative-{i}": 0 for i in range(7)}}
+        sampled = tool.sample_images(labels, 40)
+        self.assertEqual(sum(labels[i] for i in sampled), 20)
+        self.assertEqual(len(sampled), 27)
+        self.assertEqual(sampled, tool.sample_images(dict(reversed(list(labels.items()))), 40))
+        self.assertEqual(len(tool.sample_images({i: 1 for i in labels}, 40)), 20)
+        for limit in (0, 1, 3):
+            with self.assertRaises(ValueError):
+                tool.sample_images(labels, limit)
+
+    def test_positive_majority_cannot_make_an_always_on_concept_pass(self):
+        # Captures the Cloud failure: >90% positives means raw precision alone
+        # accepts even a classifier that calls every verified negative positive.
+        imbalanced = [
+            {"score": 0.001, "label": label, "partition": partition}
+            for partition in ("selection", "evaluation")
+            for label, count in ((1, 75), (0, 6))
+            for _ in range(count)
+        ]
+        result = tool.calibrate(imbalanced)
+        self.assertIsNone(result["threshold"])
+        self.assertEqual(result["reason"], "selection_quality")
+
+    def test_equal_prior_precision_does_not_change_with_class_duplication(self):
+        observed = [(0.9, 1)] * 10 + [(0.9, 0)] + [(0.1, 0)] * 9
+        duplicated_positives = observed + [(0.9, 1)] * 90
+        original = tool.metrics(observed, 0.5)
+        duplicated = tool.metrics(duplicated_positives, 0.5)
+        self.assertAlmostEqual(original["balanced_precision"], 10 / 11)
+        self.assertAlmostEqual(original["balanced_precision"], duplicated["balanced_precision"])
+        self.assertNotEqual(original["precision"], duplicated["precision"])
+
     def test_precision_recall_and_held_out_failure(self):
         result = tool.calibrate(rows())
         self.assertEqual(result["status"], "calibrated")
@@ -147,6 +182,25 @@ class CalibrationTests(unittest.TestCase):
 
 
 class CommittedArtifactsTests(unittest.TestCase):
+    def test_independent_public_and_neutral_fixtures_reject_false_positives(self):
+        catalog = tool.read_json(tool.ROOT / "gallery-backend/assets/concepts.json")
+        observed = tool.read_json(Path(__file__).with_name("fixture-scores.json"))
+        self.assertEqual(check_fixtures.failures(catalog, observed), [])
+
+    def test_fixture_image_prompt_and_model_provenance_are_checked(self):
+        catalog = tool.read_json(tool.ROOT / "gallery-backend/assets/concepts.json")
+        source = tool.read_json(Path(__file__).with_name("fixture-scores.json"))
+        for mutate in (
+            lambda o: o["model"].update(model_id="wrong"),
+            lambda o: o.update(prompt_sha256="wrong"),
+            lambda o: o["images"]["cat.jpg"].update(sha256="wrong"),
+            lambda o: o["images"]["cat.jpg"]["scores"].update(cloud=float("nan")),
+        ):
+            observed = json.loads(json.dumps(source))
+            mutate(observed)
+            with self.assertRaises(ValueError):
+                check_fixtures.failures(catalog, observed)
+
     def test_catalog_report_tool_and_dataset_are_one_release(self):
         catalog = tool.read_json(tool.ROOT / "gallery-backend/assets/concepts.json")
         report = tool.read_json(Path(tool.__file__).with_name("calibration-report.json"))
@@ -157,9 +211,15 @@ class CommittedArtifactsTests(unittest.TestCase):
         self.assertEqual(report["catalog_definition_sha256"], tool.digest(json.dumps(definitions, sort_keys=True).encode()))
         self.assertEqual(catalog["model_id"], report["model"]["model_id"])
         self.assertEqual(catalog["version"], report["vocabulary_version"])
+        self.assertEqual(report["schema_version"], 2)
+        self.assertEqual(report["method"]["precision_gates"], ["observed", "equal_prior"])
         self.assertEqual(set(report["concepts"]), {c["id"] for c in catalog["concepts"]})
         for concept in catalog["concepts"]:
             result = report["concepts"][concept["id"]]
+            for label in ("positive", "negative"):
+                self.assertLessEqual(
+                    result["selection"][label] + result["evaluation"][label],
+                    report["method"]["sample_per_concept"] // 2)
             self.assertEqual(concept["threshold"], result["threshold"])
             if result["status"] == "calibrated":
                 self.assertTrue(0 < result["threshold"] < 1)
