@@ -433,4 +433,90 @@ async fn bulk(client: &Client) {
             .status(),
         Status::Conflict
     );
+    personal_learning(client).await;
+}
+
+async fn personal_learning(client: &Client) {
+    let snapshot = snapshot(client, true, "descending").await;
+    let rows = owner(client.get(snapshot_path("data", &snapshot)), true)
+        .dispatch()
+        .await
+        .into_json::<Vec<Value>>()
+        .await
+        .unwrap();
+    let target = rows[10]["abstractData"]["id"].as_str().unwrap();
+    let confirmed = rows[11]["abstractData"]["id"].as_str().unwrap();
+    let concept = crate::operations::autotag::learning::personal_id("Moka");
+    let add = |indices: Vec<usize>| {
+        json!({
+            "timestamp": snapshot.prefetch.timestamp,
+            "selection": {"mode": "explicit", "indices": indices},
+            "addTagsArray": ["Moka"], "removeTagsArray": [],
+        })
+    };
+    assert_eq!(
+        owner(
+            client.put("/put/edit_tag").json(&add(vec![0, 1, 2, 3])),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Ok
+    );
+    assert_eq!(source_count(client, "Moka", TagSource::Auto).await, 0);
+    assert_eq!(
+        owner(client.put("/put/edit_tag").json(&add(vec![4])), true)
+            .dispatch()
+            .await
+            .status(),
+        Status::Ok
+    );
+    assert_eq!(source_count(client, " MOKA ", TagSource::Auto).await, 495);
+    let preview = owner(
+        client
+            .post("/post/auto_tag_selection")
+            .json(&json!({"hash": target})),
+        true,
+    )
+    .dispatch()
+    .await
+    .into_json::<Value>()
+    .await
+    .unwrap();
+    assert!(
+        preview["concepts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["concept"] == concept && c["label"] == "Moka")
+    );
+    decision(client, target, &concept, "reject").await;
+    assert_eq!(source_count(client, "Moka", TagSource::Auto).await, 494);
+    assert_eq!(
+        decision(client, confirmed, &concept, "confirm").await["label"],
+        "Moka"
+    );
+    assert_eq!(source_count(client, "Moka", TagSource::User).await, 6);
+    assert_eq!(source_count(client, "Moka", TagSource::Auto).await, 493);
+    let remove = json!({
+        "timestamp": snapshot.prefetch.timestamp,
+        "selection": {"mode": "explicit", "indices": [11]},
+        "addTagsArray": [], "removeTagsArray": ["Moka"],
+    });
+    assert_eq!(
+        owner(client.put("/put/edit_tag").json(&remove), true)
+            .dispatch()
+            .await
+            .status(),
+        Status::Ok
+    );
+    assert!(
+        TREE.store
+            .auto_tag_rejections_for(confirmed)
+            .unwrap()
+            .contains(&concept)
+    );
+    assert_eq!(source_count(client, "Moka", TagSource::User).await, 5);
+    assert_eq!(source_count(client, "Moka", TagSource::Auto).await, 493);
 }

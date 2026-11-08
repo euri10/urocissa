@@ -29,8 +29,12 @@ type TagCounts = Vec<(String, usize)>;
 struct Prepared {
     model: String,
     engine: AutoTagEngine,
+    base: super::autotag::Vocabulary,
+    score: ScoreModel,
     aliases: AliasIndex,
     seen: HashMap<String, Input>,
+    feedback: HashMap<String, Input>,
+    learning_dirty: bool,
 }
 
 pub struct AutoTags {
@@ -154,9 +158,13 @@ impl AutoTags {
         // Text inference must not hold the lock used by owner decision rematerialization.
         *self.prepared.lock().unwrap() = Some(Prepared {
             model: model.model_id.clone(),
+            base: engine.vocabulary().clone(),
+            score: ScoreModel::new(vectors.scale, vectors.bias)?,
             engine,
             aliases: AliasIndex::default(),
             seen: HashMap::new(),
+            feedback: HashMap::new(),
+            learning_dirty: true,
         });
         Ok(())
     }
@@ -177,6 +185,7 @@ impl AutoTags {
     pub fn photo_embedded(&self, id: &str) {
         if let Some(prepared) = self.prepared.lock().unwrap().as_mut() {
             prepared.seen.remove(id);
+            prepared.learning_dirty |= prepared.feedback.contains_key(id);
         }
     }
 
@@ -185,6 +194,7 @@ impl AutoTags {
         let Some(prepared) = guard.as_mut() else {
             return Ok(());
         };
+        self.refresh_learning(prepared, inputs)?;
         let aliases = AliasIndex::build(
             prepared.engine.vocabulary(),
             counts.iter().map(|(tag, count)| (tag.as_str(), *count)),
@@ -363,5 +373,6 @@ pub fn rematerialize() {
     super::embedding::wake();
 }
 
+mod learning;
 #[cfg(test)]
 mod tests;

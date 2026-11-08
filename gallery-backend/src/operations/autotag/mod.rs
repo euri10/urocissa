@@ -59,6 +59,7 @@ mod builtin;
 mod classifier;
 mod engine;
 mod error;
+pub mod learning;
 mod scoring;
 mod vocabulary;
 

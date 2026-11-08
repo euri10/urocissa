@@ -3,7 +3,10 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 
-use super::autotag::{AliasIndex, BuiltinCatalog, Vocabulary};
+use super::autotag::{
+    AliasIndex, BuiltinCatalog, Vocabulary,
+    learning::{personal_id, personal_names},
+};
 use crate::public::{
     db::tree::{
         TREE,
@@ -54,6 +57,10 @@ impl OwnerTagIndex {
             universe: state.arena.capacity(),
         };
         let mut user_aliases = HashMap::<String, OrdinalSet>::new();
+        let personal = personal_names(
+            &index.vocabulary,
+            state.query.tags.iter().map(|(tag, _)| tag.as_str()),
+        );
         for (tag, members) in state.query.tags.iter() {
             if let Some(concept) = index.vocabulary.concept_named(tag) {
                 user_aliases
@@ -73,7 +80,18 @@ impl OwnerTagIndex {
                     index.add(format!("concept:{id}"), label, members, TagSource::User);
                 }
             } else {
-                index.add(format!("tag:{tag}"), tag.clone(), members, TagSource::User);
+                let id = personal_id(tag);
+                user_aliases.entry(id.clone()).or_default().union_with(
+                    members,
+                    index.universe,
+                    |_| {},
+                );
+                index.add(
+                    format!("concept:{id}"),
+                    personal.get(&id).unwrap_or(tag).clone(),
+                    members,
+                    TagSource::User,
+                );
             }
         }
         if let Some(tags) = super::embedding::service().and_then(|s| s.auto_tags.get()) {
@@ -100,26 +118,21 @@ impl OwnerTagIndex {
                         continue;
                     }
                     // Materialization already includes implied/suppressed ancestors and over-cap tags.
-                    if let Some(concept) = index.vocabulary.concept(&tag.concept) {
-                        let label = aliases
-                            .alias(&concept.id)
-                            .unwrap_or(&concept.label_fr)
-                            .to_owned();
-                        index.add(
-                            format!("concept:{}", tag.concept),
-                            label,
-                            &member,
-                            TagSource::Auto,
-                        );
-                    } else {
-                        // Personal Concepts use their authored tag label as their search name.
-                        index.add(
-                            format!("tag:{}", tag.label),
-                            tag.label,
-                            &member,
-                            TagSource::Auto,
-                        );
-                    }
+                    let label = index.vocabulary.concept(&tag.concept).map_or_else(
+                        || personal.get(&tag.concept).cloned().unwrap_or(tag.label),
+                        |concept| {
+                            aliases
+                                .alias(&concept.id)
+                                .unwrap_or(&concept.label_fr)
+                                .to_owned()
+                        },
+                    );
+                    index.add(
+                        format!("concept:{}", tag.concept),
+                        label,
+                        &member,
+                        TagSource::Auto,
+                    );
                 }
             }
         }
@@ -138,11 +151,10 @@ impl OwnerTagIndex {
 
     pub fn matching(&self, value: &FilterValue, source: Option<TagSource>) -> OrdinalSet {
         let key = match value {
-            FilterValue::Value(name) => Some(
-                self.vocabulary
-                    .concept_named(name)
-                    .map_or_else(|| format!("tag:{name}"), |c| format!("concept:{}", c.id)),
-            ),
+            FilterValue::Value(name) => Some(self.vocabulary.concept_named(name).map_or_else(
+                || format!("concept:{}", personal_id(name)),
+                |c| format!("concept:{}", c.id),
+            )),
             FilterValue::Exists(_) => None,
         };
         let mut result = OrdinalSet::default();

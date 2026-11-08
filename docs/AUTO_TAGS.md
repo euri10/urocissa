@@ -45,7 +45,9 @@ controls and feedback explicit.
 - Disposable `db/embeddings.redb`: `concept_vectors_v1` caches text vectors and
   scoring metadata by exact model ID + vocabulary release. `auto_tags_v1` stores
   predictions, confidence, displayed/hidden placement, thumbnail version, and
-  model/vocabulary provenance. Deleting this file does not delete preferences.
+  model/vocabulary provenance. `concept_learning_v1` stores derived prototypes and
+  classifier coefficients under that same model/vocabulary key. Deleting this file
+  does not delete preferences, User tags or Rejections.
 - The worker validates vectors and preserves the catalog's calibrated activation
   gate. A vocabulary release rematerializes from existing photo embeddings; only
   its Concept prompts need text inference. User tag aliases and per-photo tag
@@ -72,7 +74,7 @@ controls and feedback explicit.
   predictions if derived storage is temporarily unavailable.
 
 Owner tag search/facets combine User and Auto tags with provenance and parent
-expansion; see `SEARCH.md`. Learned Concepts and review UI remain follow-up slices.
+expansion; see `SEARCH.md`. The Concept review view remains a follow-up slice.
 Calibration fix `infra-urocissa-autotag-sjfz.16` replaces the positive-enriched
 sampling and observed-precision-only gate. Vocabulary `2026-11-08.2` uses
 balanced verified classes plus observed and equal-prior precision gates.
@@ -83,6 +85,52 @@ No tagging failure blocks uploads or the photo embedding queue. Derived read
 errors show a pending owner state without breaking gallery reads.
 
 ## Local acceptance (2026-11-08)
+
+### Personal Concepts and learning (.7)
+
+Every User tag that aliases no built-in Concept defines a personal Concept. Its
+stable ID is `personal:` plus the BLAKE3 hash of the trimmed, Unicode-lowercased
+name. Case/whitespace variants share a Concept; the display label is an authored
+User tag. Album/video tags do not count as photo examples. The existing owner
+confirmation/rejection controls and search/facets also accept these Concepts.
+
+At least five distinct tagged photos with current, valid embeddings are required
+before a personal Concept can auto-apply. Its fallback is the normalized mean of
+those positive embeddings, with a cosine similarity cutoff of 0.8; the confidence
+is `sigmoid(12 * (cosine - 0.8))`. A degenerate mean stays inactive until a
+classifier can be trained. These are precision-oriented starting defaults, not
+calibrated probabilities or proof of production quality.
+
+With at least five positive and five explicit negative examples, either a built-in
+or personal Concept uses an L2-regularized, class-balanced logistic classifier over
+the embedding and its fallback score. Positive examples are authored User tags
+(including confirmations and built-in aliases); negatives are permanent
+Rejections, including tag removal. Unlabelled photos never count as negatives.
+A conflicting Rejection wins. The learned confidence cutoff is 0.8. Below the
+training gate, built-ins keep their existing calibrated scoring/activation rules
+and personal Concepts keep their gated prototype. Opting a photo out of Auto tags
+does not discard its authored training examples.
+
+Each feedback batch retrains from cached embeddings and rematerializes the whole
+library without inference. Completing/changing an example's embedding also
+retrains; ordinary unlabelled backfill only invalidates the completed photo.
+Examples are sorted by photo ID, and fitting starts from zero with fixed
+iterations. Coefficients are disposable: restarts retrain from current authored
+state, never reuse potentially stale saved weights. Rebuilding embeddings and
+the derived file with the same model/vocabulary and feedback reproduces the same
+predictions. Removing a personal User tag commits its stable Rejection immediately,
+even when the tagger is offline.
+
+Local optimized verification: 323 backend tests pass (four opt-in tests ignored),
+including training gates, duplicate/alias counting, deterministic rebuilds, a
+two-cluster Concept missed by its prototype, and real owner HTTP feedback in
+public/private gallery modes. A single explicit synthetic benchmark measured
+retraining plus full materialization of 7,100 photos, 768 dimensions and 72 built-in
+Concepts plus one personal Concept at 282 ms. This is a local measurement, not a
+beesslc benchmark. The later owner quality review and rollout gates still apply.
+No frontend source changed; the hybrid-scroll gate was not requested or run.
+
+### Original Auto-tag acceptance
 
 Only disposable local data and public/synthetic fixtures were used. With the
 pinned CPU sidecar (two threads), a genuinely new default-on PNG had materialized

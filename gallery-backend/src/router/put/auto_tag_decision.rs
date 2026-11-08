@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 
 use crate::{
-    operations::{auto_tags, autotag::BuiltinCatalog, tag_feedback},
+    operations::{auto_tags, tag_feedback},
     public::{
         db::tree::{TREE, state::TargetSet},
         error::{AppError, ErrorKind},
@@ -159,18 +159,13 @@ pub async fn preview(
                 public_photos += 1;
             }
         }
-        let catalog =
-            BuiltinCatalog::embedded().map_err(|e| AppError::from_err(ErrorKind::Internal, e))?;
+        drop(state);
         Ok(Json(SelectionPreview {
             photos: resolved.len,
             public_photos,
-            concepts: catalog
-                .concepts
+            concepts: tag_feedback::concept_choices()?
                 .into_iter()
-                .map(|c| ConceptChoice {
-                    concept: c.id,
-                    label: c.label_fr,
-                })
+                .map(|(concept, label)| ConceptChoice { concept, label })
                 .collect(),
         }))
     })
@@ -188,24 +183,21 @@ pub async fn decide(
     let _ = writable?;
     tokio::task::spawn_blocking(move || {
         let data = data.into_inner();
-        let catalog =
-            BuiltinCatalog::embedded().map_err(|e| AppError::from_err(ErrorKind::Internal, e))?;
-        let concept = catalog
-            .concepts
-            .iter()
-            .find(|c| c.id == data.concept)
+        let (concept, label) = tag_feedback::concept_choices()?
+            .into_iter()
+            .find(|(id, _)| id == &data.concept)
             .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Unknown Concept"))?;
         let resolved = data.target.resolve()?;
         let add = match data.action {
-            Action::Confirm => BTreeSet::from([concept.label_fr.clone()]),
+            Action::Confirm => BTreeSet::from([label.clone()]),
             Action::Reject => BTreeSet::new(),
         };
-        let rejection = matches!(data.action, Action::Reject).then_some(concept.id.as_str());
+        let rejection = matches!(data.action, Action::Reject).then_some(concept.as_str());
         let count = tag_feedback::edit(&resolved, &add, &BTreeSet::new(), rejection)?;
         auto_tags::rematerialize();
         Ok(Json(DecisionResult {
             photos: count,
-            label: concept.label_fr.clone(),
+            label,
         }))
     })
     .await

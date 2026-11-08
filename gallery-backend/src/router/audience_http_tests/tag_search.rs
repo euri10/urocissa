@@ -150,7 +150,11 @@ pub(super) async fn checks(client: &Client, store: &EmbeddingStore) {
         tags: tags
             .iter()
             .map(|(concept, displayed)| StoredAutoTag {
-                concept: (*concept).into(),
+                concept: if *concept == "antifa" {
+                    crate::operations::autotag::learning::personal_id(concept)
+                } else {
+                    (*concept).into()
+                },
                 label: (*concept).into(),
                 confidence: 0.9,
                 displayed: *displayed,

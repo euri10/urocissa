@@ -10,6 +10,7 @@ pub(super) const REJECTIONS: TableDefinition<(&str, &str), u8> =
     TableDefinition::new("auto_tag_rejections_v1");
 const CONCEPTS: TableDefinition<(&str, &str), &[u8]> = TableDefinition::new("concept_vectors_v1");
 const TAGS: TableDefinition<&str, &[u8]> = TableDefinition::new("auto_tags_v1");
+const LEARNING: TableDefinition<(&str, &str), &[u8]> = TableDefinition::new("concept_learning_v1");
 
 pub struct AutoTagSettings(ReadOnlyTable<&'static str, u8>);
 
@@ -102,6 +103,7 @@ impl EmbeddingStore {
         let write = self.db.begin_write()?;
         write.open_table(CONCEPTS)?;
         write.open_table(TAGS)?;
+        write.open_table(LEARNING)?;
         write.commit()?;
         Ok(())
     }
@@ -129,6 +131,36 @@ impl EmbeddingStore {
             .insert((model, vocabulary), bytes.as_slice())?;
         write.commit()?;
         Ok(())
+    }
+
+    pub fn put_learning(
+        &self,
+        model: &str,
+        vocabulary: &str,
+        learning: &crate::operations::autotag::learning::Learning,
+    ) -> Result<()> {
+        let bytes = serde_json::to_vec(learning)?;
+        let write = self.db.begin_write()?;
+        write
+            .open_table(LEARNING)?
+            .insert((model, vocabulary), bytes.as_slice())?;
+        write.commit()?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub fn learning(
+        &self,
+        model: &str,
+        vocabulary: &str,
+    ) -> Result<Option<crate::operations::autotag::learning::Learning>> {
+        self.db
+            .begin_read()?
+            .open_table(LEARNING)?
+            .get((model, vocabulary))?
+            .map(|bytes| serde_json::from_slice(bytes.value()))
+            .transpose()
+            .map_err(Into::into)
     }
 
     pub fn auto_tags(&self, id: &str) -> Result<Option<MaterializedTags>> {

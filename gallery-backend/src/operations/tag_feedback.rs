@@ -16,7 +16,10 @@ use crate::{
     },
 };
 
-use super::autotag::{BuiltinCatalog, Vocabulary};
+use super::autotag::{
+    BuiltinCatalog, Vocabulary,
+    learning::{personal_id, personal_names},
+};
 
 static VOCABULARY: std::sync::LazyLock<Vocabulary> = std::sync::LazyLock::new(|| {
     BuiltinCatalog::embedded()
@@ -26,9 +29,43 @@ static VOCABULARY: std::sync::LazyLock<Vocabulary> = std::sync::LazyLock::new(||
 
 pub fn concepts_for_tags(tags: &BTreeSet<String>) -> Vec<String> {
     tags.iter()
-        .filter_map(|tag| VOCABULARY.concept_named(tag))
-        .map(|c| c.id.clone())
+        .filter(|tag| !tag.trim().is_empty())
+        .map(|tag| {
+            VOCABULARY
+                .concept_named(tag)
+                .map_or_else(|| personal_id(tag), |c| c.id.clone())
+        })
         .collect()
+}
+
+/// Choices come from authored vocabulary, so feedback works while the tagger is offline.
+pub fn concept_choices() -> AppResult<Vec<(String, String)>> {
+    let state = TREE
+        .state
+        .read()
+        .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+    let personal = personal_names(
+        &VOCABULARY,
+        state.query.tags.iter().filter_map(|(tag, members)| {
+            members
+                .iter()
+                .any(|ordinal| {
+                    state
+                        .slot_for_ordinal(ordinal)
+                        .and_then(|s| state.get(s))
+                        .is_some_and(|r| {
+                            r.object_type == crate::public::structure::object::ObjectType::Image
+                        })
+                })
+                .then_some(tag.as_str())
+        }),
+    );
+    Ok(VOCABULARY
+        .concepts()
+        .iter()
+        .map(|c| (c.id.clone(), c.label_fr.clone()))
+        .chain(personal)
+        .collect())
 }
 
 pub fn edit(
