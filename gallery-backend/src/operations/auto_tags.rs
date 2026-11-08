@@ -21,6 +21,7 @@ struct Input {
     version: u32,
     tags: Vec<String>,
     enabled: bool,
+    rejections: Vec<String>,
 }
 type PhotoInputs = HashMap<String, Input>;
 type TagCounts = Vec<(String, usize)>;
@@ -51,6 +52,11 @@ pub struct AutoTagStatus {
 }
 
 impl AutoTags {
+    #[cfg(test)]
+    pub(crate) fn test_store(&self) -> EmbeddingStore {
+        self.store.clone()
+    }
+
     pub fn new(store: EmbeddingStore) -> Result<Self> {
         Ok(Self {
             store,
@@ -126,6 +132,12 @@ impl AutoTags {
     }
 
     pub fn reconcile(&self) -> Result<()> {
+        // Serialize input snapshots and derived writes with authored decisions. Otherwise
+        // an older worker snapshot could overwrite the result of a completed rejection.
+        let _persistence = TREE
+            .persistence_lock
+            .lock()
+            .map_err(|_| anyhow::anyhow!("tree persistence lock poisoned"))?;
         let (inputs, counts) = gallery_inputs()?;
         self.materialize(&inputs, &counts)
     }
@@ -167,12 +179,13 @@ impl AutoTags {
                 continue;
             };
             let user_tags: Vec<_> = input.tags.iter().map(String::as_str).collect();
+            let rejections: Vec<_> = input.rejections.iter().map(String::as_str).collect();
             let tags = prepared
                 .engine
                 .tag_photo(&PhotoInput {
                     embedding: &embedding.vector,
                     user_tags: &user_tags,
-                    rejections: &[],
+                    rejections: &rejections,
                     auto_tags_off: !input.enabled,
                 })?
                 .into_iter()
@@ -222,6 +235,7 @@ impl AutoTags {
 
 fn gallery_inputs() -> Result<(PhotoInputs, TagCounts)> {
     let settings = TREE.store.auto_tag_settings()?;
+    let mut rejections = TREE.store.auto_tag_rejections()?;
     let state = TREE
         .state
         .read()
@@ -240,6 +254,7 @@ fn gallery_inputs() -> Result<(PhotoInputs, TagCounts)> {
                 version: record.cache_version,
                 tags: Vec::new(),
                 enabled: settings.enabled(record.id.as_str())?,
+                rejections: rejections.remove(record.id.as_str()).unwrap_or_default(),
             },
         );
     }
@@ -268,9 +283,9 @@ pub fn owner_status(id: &str, version: u32) -> Result<Option<AutoTagStatus>> {
         return Ok(None);
     };
     let enabled = TREE.store.auto_tag_settings()?.enabled(id)?;
-    service.auto_tags.get().map_or_else(
+    let mut status = service.auto_tags.get().map_or_else(
         || {
-            Ok(Some(AutoTagStatus {
+            Ok::<_, anyhow::Error>(Some(AutoTagStatus {
                 auto_tags_enabled: enabled,
                 auto_tags_pending: enabled,
                 ..Default::default()
@@ -288,7 +303,34 @@ pub fn owner_status(id: &str, version: u32) -> Result<Option<AutoTagStatus>> {
                 },
             )))
         },
-    )
+    )?;
+    // Authored decisions win even if derived storage is stale or the worker is offline.
+    if let Some(status) = &mut status {
+        let rejected = TREE.store.auto_tag_rejections_for(id)?;
+        let tags = TREE.store.read(|reader| {
+            Ok::<_, anyhow::Error>(
+                reader
+                    .get(id)?
+                    .map(|r| r.into_value().tag().iter().cloned().collect())
+                    .unwrap_or_default(),
+            )
+        })?;
+        let aliases = super::tag_feedback::concepts_for_tags(&tags);
+        status
+            .auto_tags
+            .retain(|tag| !rejected.contains(&tag.concept) && !aliases.contains(&tag.concept));
+    }
+    Ok(status)
+}
+
+/// Decisions use cached vectors only; ML availability never gates authored changes.
+pub fn rematerialize() {
+    if let Some(tags) = super::embedding::service().and_then(|s| s.auto_tags.get())
+        && let Err(error) = tags.reconcile()
+    {
+        log::warn!("Could not rematerialize Auto tags: {error:#}");
+    }
+    super::embedding::wake();
 }
 
 #[cfg(test)]

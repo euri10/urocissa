@@ -43,6 +43,7 @@ fn cached_concepts_rematerialize_without_photo_or_text_inference() -> Result<()>
                 version: 3,
                 tags: vec![],
                 enabled,
+                rejections: vec![],
             },
         )])
     };
@@ -121,5 +122,82 @@ fn preferences_survive_derived_file_loss_without_changing_v6() -> Result<()> {
     assert!(main.auto_tag_settings()?.enabled("photo")?);
     // An old reader still sees the frozen, unchanged records table.
     assert_eq!(main.read(|r| Ok::<_, anyhow::Error>(r.iter()?.count()))?, 0);
+    Ok(())
+}
+
+#[test]
+fn rejection_survives_recompute_vocabulary_model_changes_and_derived_rebuild() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let main_path = dir.path().join("main.redb");
+    let main = DataStore::initialize_empty(&main_path)?;
+    main.write(|writer| writer.reject_auto_tag("photo", "cat"))?;
+    let mut input = HashMap::from([(
+        "photo".into(),
+        Input {
+            version: 1,
+            tags: vec![],
+            enabled: true,
+            rejections: main.auto_tag_rejections_for("photo")?,
+        },
+    )]);
+    drop(main);
+    let path = dir.path().join("derived.redb");
+    let mut original = None;
+    for round in 0..3 {
+        let main = DataStore::open(&main_path)?;
+        input.get_mut("photo").unwrap().rejections = main.auto_tag_rejections_for("photo")?;
+        let store = EmbeddingStore::open(&path)?;
+        let mut tags = AutoTags::new(store.clone())?;
+        tags.catalog.version = format!("{}-{round}", tags.catalog.version);
+        tags.catalog.model_id = format!("{}-{round}", tags.catalog.model_id);
+        let model = ModelInfo {
+            model_id: tags.catalog.model_id.clone(),
+            embedding_dim: 2,
+            device: "CPU".into(),
+            logit_scale: Some(10.0),
+            logit_bias: Some(0.0),
+        };
+        store.set_model(&model)?;
+        store.put_concept_vectors(
+            &model.model_id,
+            &tags.catalog.version,
+            &crate::storage::auto_tags::ConceptVectors {
+                scale: 10.0,
+                bias: 0.0,
+                vectors: tags
+                    .catalog
+                    .concepts
+                    .iter()
+                    .map(|c| (c.id.clone(), vec![1.0, 0.0]))
+                    .collect(),
+            },
+        )?;
+        store.put(
+            "photo",
+            &model.model_id,
+            0,
+            &StoredEmbedding {
+                thumbnail_version: 1,
+                vector: vec![1.0, 0.0],
+            },
+        )?;
+        let fake = Fake(AtomicUsize::new(0));
+        tags.prepare(&model, &fake)?;
+        for _ in 0..2 {
+            tags.materialize(&input, &[])?;
+        }
+        let result = tags.status("photo", 1, true)?.auto_tags;
+        assert!(!result.is_empty());
+        assert!(!result.iter().any(|t| t.concept == "cat"));
+        if let Some(previous) = &original {
+            assert_eq!(&result, previous);
+        }
+        original = Some(result);
+        assert_eq!(fake.0.load(Ordering::Relaxed), 0);
+        drop(tags);
+        drop(store);
+        // Only a disposable test file is removed; authored data stays intact.
+        std::fs::remove_file(&path)?;
+    }
     Ok(())
 }

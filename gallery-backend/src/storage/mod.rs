@@ -1,5 +1,7 @@
 pub mod audience;
 pub mod auto_tags;
+#[cfg(test)]
+mod auto_tags_tests;
 pub mod cache;
 pub mod codec;
 pub mod embeddings;

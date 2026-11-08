@@ -1,0 +1,364 @@
+use super::*;
+use serde_json::json;
+
+async fn decision(client: &Client, hash: &str, concept: &str, action: &str) -> Value {
+    let response = owner(
+        client.put("/put/auto_tag_decision").json(&json!({
+            "hash": hash, "concept": concept, "action": action
+        })),
+        true,
+    )
+    .dispatch()
+    .await;
+    assert_eq!(response.status(), Status::Ok);
+    response.into_json().await.unwrap()
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "Sequential owner/visitor HTTP acceptance scenario"
+)]
+pub(super) async fn checks(client: &Client) {
+    for action in ["confirm", "reject"] {
+        let body = json!({"hash": PUBLIC, "concept": "cat", "action": action});
+        for request in [
+            client.put("/put/auto_tag_decision").json(&body),
+            client
+                .put("/put/auto_tag_decision")
+                .json(&body)
+                .header(Header::new("x-album-id", ALBUM))
+                .header(Header::new("x-share-id", "fixture-share")),
+        ] {
+            assert_eq!(request.dispatch().await.status(), Status::Unauthorized);
+        }
+    }
+    assert_eq!(
+        client
+            .post("/post/auto_tag_selection")
+            .json(&json!({"hash": PUBLIC}))
+            .dispatch()
+            .await
+            .status(),
+        Status::Unauthorized
+    );
+    APP_CONFIG
+        .get()
+        .unwrap()
+        .write()
+        .unwrap()
+        .public
+        .read_only_mode = true;
+    assert_eq!(
+        owner(
+            client
+                .put("/put/auto_tag_decision")
+                .json(&json!({"hash": PUBLIC, "concept": "cat", "action": "confirm"})),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::MethodNotAllowed
+    );
+    APP_CONFIG
+        .get()
+        .unwrap()
+        .write()
+        .unwrap()
+        .public
+        .read_only_mode = false;
+    for body in [
+        json!({"hash": ALBUM, "concept": "cat", "action": "confirm"}),
+        json!({"hash": "invalid", "concept": "cat", "action": "reject"}),
+        json!({"hash": PUBLIC, "concept": "unknown", "action": "confirm"}),
+        json!({"hash": PUBLIC, "timestamp": 1, "concept": "cat", "action": "confirm"}),
+    ] {
+        assert_eq!(
+            owner(client.put("/put/auto_tag_decision").json(&body), true)
+                .dispatch()
+                .await
+                .status(),
+            Status::BadRequest
+        );
+    }
+    // Confirmation is durable ordinary metadata, independent of the feature and worker.
+    assert_eq!(
+        decision(client, PUBLIC, "cat", "confirm").await,
+        json!({"photos": 1, "label": "chat"})
+    );
+    assert_eq!(
+        decision(client, PUBLIC, "cat", "confirm").await["photos"],
+        1
+    );
+    assert!(
+        TREE.store
+            .reader()
+            .unwrap()
+            .get(PUBLIC)
+            .unwrap()
+            .unwrap()
+            .into_value()
+            .tag()
+            .contains("chat")
+    );
+    for request in [
+        owner(client.get(format!("/get/resource/{PUBLIC}")), true),
+        client
+            .get(format!("/get/resource/{PUBLIC}"))
+            .header(Header::new("x-album-id", ALBUM))
+            .header(Header::new("x-share-id", "fixture-share")),
+    ] {
+        let data = request.dispatch().await.into_json::<Value>().await.unwrap();
+        assert!(
+            data["data"]["abstractData"]["tags"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("chat"))
+        );
+    }
+    if crate::router::fairing::guard_gallery::public_gallery_enabled() {
+        let data = client
+            .get(format!("/get/resource/{PUBLIC}"))
+            .dispatch()
+            .await
+            .into_json::<Value>()
+            .await
+            .unwrap();
+        assert!(
+            data["data"]["abstractData"]["tags"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("chat"))
+        );
+    }
+    TREE.store.set_auto_tags_enabled(&[PUBLIC], false).unwrap();
+    assert!(
+        TREE.store
+            .reader()
+            .unwrap()
+            .get(PUBLIC)
+            .unwrap()
+            .unwrap()
+            .into_value()
+            .tag()
+            .contains("chat")
+    );
+    let snapshot = snapshot(client, true, "descending").await;
+    let rows = owner(client.get(snapshot_path("data", &snapshot)), true)
+        .dispatch()
+        .await
+        .into_json::<Vec<Value>>()
+        .await
+        .unwrap();
+    let index = rows
+        .iter()
+        .position(|r| r["abstractData"]["id"] == PUBLIC)
+        .unwrap();
+    assert_eq!(owner(client.put("/put/edit_tag").json(&json!({
+        "timestamp": snapshot.prefetch.timestamp, "selection": {"mode": "explicit", "indices": [index]}, "addTagsArray": [], "removeTagsArray": ["chat"]
+    })), true).dispatch().await.status(), Status::Ok);
+    assert!(
+        !TREE
+            .store
+            .reader()
+            .unwrap()
+            .get(PUBLIC)
+            .unwrap()
+            .unwrap()
+            .into_value()
+            .tag()
+            .contains("chat")
+    );
+    assert!(
+        TREE.store
+            .auto_tag_rejections_for(PUBLIC)
+            .unwrap()
+            .contains(&"cat".to_owned())
+    );
+    TREE.store.set_auto_tags_enabled(&[PUBLIC], true).unwrap();
+    decision(client, PRIVATE, "bird", "reject").await;
+    decision(client, PRIVATE, "bird", "reject").await;
+    assert_eq!(
+        TREE.store.auto_tag_rejections_for(PRIVATE).unwrap(),
+        vec!["bird"]
+    );
+    let response = owner(client.get(format!("/get/auto-tags/{PUBLIC}")), true)
+        .dispatch()
+        .await
+        .into_json::<Value>()
+        .await
+        .unwrap();
+    assert!(
+        !response["autoTags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tag| tag["concept"] == "cat")
+    );
+    assert_eq!(
+        decision(client, PUBLIC_VIDEO, "cat", "confirm").await["photos"],
+        0
+    );
+    bulk(client).await;
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "Fixture setup and timed 500-photo HTTP acceptance scenario"
+)]
+async fn bulk(client: &Client) {
+    use crate::{
+        operations::{
+            auto_tags::AutoTags,
+            autotag::BuiltinCatalog,
+            embedding::client::{Embedder, ImageEmbedding, ModelInfo},
+        },
+        storage::{auto_tags::ConceptVectors, embeddings::StoredEmbedding},
+    };
+    struct CachedOnly;
+    impl Embedder for CachedOnly {
+        fn info(&self) -> anyhow::Result<ModelInfo> {
+            unreachable!()
+        }
+        fn embed_image(&self, _: Vec<u8>) -> anyhow::Result<ImageEmbedding> {
+            panic!("no image inference")
+        }
+        fn embed_text(&self, _: &str) -> anyhow::Result<ImageEmbedding> {
+            panic!("no text inference")
+        }
+    }
+    let records: Vec<_> = (0..500)
+        .map(|i| {
+            let hash = format!("{i:064x}");
+            let id = id(&hash);
+            AbstractData::Image(ImageCombined {
+                object: ObjectSchema::new(id, ObjectType::Image),
+                metadata: ImageMetadata::new(id, 13, 32, 24, "jpg".into()),
+            })
+        })
+        .collect();
+    TREE.store
+        .write(|writer| {
+            for record in &records {
+                writer.insert(record)?;
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .unwrap();
+    *TREE.state.write().unwrap() = TreeState::from_records(records.clone());
+    let catalog = BuiltinCatalog::embedded().unwrap();
+    let tags: &AutoTags = crate::operations::embedding::service()
+        .unwrap()
+        .auto_tags
+        .get()
+        .unwrap();
+    let store = tags.test_store();
+    let model = ModelInfo {
+        model_id: catalog.model_id.clone(),
+        embedding_dim: 2,
+        device: "CPU".into(),
+        logit_scale: Some(10.0),
+        logit_bias: Some(0.0),
+    };
+    store.set_model(&model).unwrap();
+    store
+        .put_concept_vectors(
+            &model.model_id,
+            &catalog.version,
+            &ConceptVectors {
+                scale: 10.0,
+                bias: 0.0,
+                vectors: catalog
+                    .concepts
+                    .iter()
+                    .map(|c| (c.id.clone(), vec![1.0, 0.0]))
+                    .collect(),
+            },
+        )
+        .unwrap();
+    for record in &records {
+        store
+            .put(
+                record.hash().as_str(),
+                &model.model_id,
+                0,
+                &StoredEmbedding {
+                    thumbnail_version: 0,
+                    vector: vec![1.0, 0.0],
+                },
+            )
+            .unwrap();
+    }
+    tags.prepare(&model, &CachedOnly).unwrap();
+    tags.reconcile().unwrap();
+    assert!(
+        store
+            .auto_tags(records[0].hash().as_str())
+            .unwrap()
+            .unwrap()
+            .tags
+            .iter()
+            .any(|t| t.concept == "cat")
+    );
+    let snapshot = snapshot(client, true, "descending").await;
+    let selection = json!({"timestamp": snapshot.prefetch.timestamp, "selection": {"mode": "allExcept", "excludedIndices": []}});
+    let preview = owner(
+        client.post("/post/auto_tag_selection").json(&selection),
+        true,
+    )
+    .dispatch()
+    .await
+    .into_json::<Value>()
+    .await
+    .unwrap();
+    assert_eq!(preview["photos"], 500);
+    assert_eq!(preview["publicPhotos"], 0);
+    for (concept, action) in [("cat", "confirm"), ("dog", "reject")] {
+        let mut body = selection.clone();
+        body["concept"] = json!(concept);
+        body["action"] = json!(action);
+        let started = Instant::now();
+        let response = owner(client.put("/put/auto_tag_decision").json(&body), true)
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.into_json::<Value>().await.unwrap()["photos"], 500);
+        eprintln!(
+            "500-photo {action} + rematerialization: {:?}",
+            started.elapsed()
+        );
+        assert!(started.elapsed() < Duration::from_secs(5));
+        for record in &records {
+            let row = store.auto_tags(record.hash().as_str()).unwrap().unwrap();
+            assert!(!row.tags.iter().any(|tag| tag.concept == concept));
+            if action == "confirm" {
+                assert!(
+                    TREE.store
+                        .reader()
+                        .unwrap()
+                        .get(record.hash().as_str())
+                        .unwrap()
+                        .unwrap()
+                        .into_value()
+                        .tag()
+                        .contains("chat")
+                );
+            } else {
+                assert!(
+                    TREE.store
+                        .auto_tag_rejections_for(record.hash().as_str())
+                        .unwrap()
+                        .contains(&concept.to_owned())
+                );
+            }
+        }
+    }
+    let stale = json!({"timestamp": -1, "selection": {"mode": "explicit", "indices": [0]}, "concept": "cat", "action": "reject"});
+    assert_eq!(
+        owner(client.put("/put/auto_tag_decision").json(&stale), true)
+            .dispatch()
+            .await
+            .status(),
+        Status::Conflict
+    );
+}

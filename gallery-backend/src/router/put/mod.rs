@@ -2,6 +2,7 @@
 use rocket::Route;
 
 pub mod album_audience;
+pub mod auto_tag_decision;
 pub mod edit_album;
 pub mod edit_auto_tags;
 pub mod edit_config;
@@ -18,6 +19,8 @@ mod thumbnail_mutation_tests;
 pub fn generate_put_routes() -> Vec<Route> {
     routes![
         album_audience::set_album_audience,
+        auto_tag_decision::decide,
+        auto_tag_decision::preview,
         edit_album::edit_album,
         edit_album::set_album_cover,
         edit_album::set_album_title,

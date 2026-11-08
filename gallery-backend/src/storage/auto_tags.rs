@@ -1,11 +1,13 @@
 //! Authored preferences stay in the main database; all predictions are disposable.
 use anyhow::Result;
-use redb::{Durability, ReadOnlyTable, ReadableDatabase, TableDefinition};
+use redb::{Durability, ReadOnlyTable, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 
 use super::{DataStore, embeddings::EmbeddingStore};
 
 const OFF: TableDefinition<&str, u8> = TableDefinition::new("auto_tags_off_v1");
+pub(super) const REJECTIONS: TableDefinition<(&str, &str), u8> =
+    TableDefinition::new("auto_tag_rejections_v1");
 const CONCEPTS: TableDefinition<(&str, &str), &[u8]> = TableDefinition::new("concept_vectors_v1");
 const TAGS: TableDefinition<&str, &[u8]> = TableDefinition::new("auto_tags_v1");
 
@@ -21,12 +23,36 @@ impl DataStore {
     pub(super) fn initialize_auto_tag_settings(&self) -> Result<()> {
         let write = self.db.begin_write()?;
         write.open_table(OFF)?;
+        write.open_table(REJECTIONS)?;
         write.commit()?;
         Ok(())
     }
 
     pub fn auto_tag_settings(&self) -> Result<AutoTagSettings> {
         Ok(AutoTagSettings(self.db.begin_read()?.open_table(OFF)?))
+    }
+
+    /// Stable Concept IDs are authored state, independent of model/vocabulary releases.
+    pub fn auto_tag_rejections(&self) -> Result<std::collections::HashMap<String, Vec<String>>> {
+        let mut result = std::collections::HashMap::<String, Vec<String>>::new();
+        for entry in self.db.begin_read()?.open_table(REJECTIONS)?.iter()? {
+            let (key, _) = entry?;
+            let (photo, concept) = key.value();
+            result
+                .entry(photo.to_owned())
+                .or_default()
+                .push(concept.to_owned());
+        }
+        Ok(result)
+    }
+
+    pub fn auto_tag_rejections_for(&self, id: &str) -> Result<Vec<String>> {
+        self.db
+            .begin_read()?
+            .open_table(REJECTIONS)?
+            .range((id, "")..=(id, "\u{10ffff}"))?
+            .map(|entry| Ok(entry?.0.value().1.to_owned()))
+            .collect()
     }
 
     pub fn set_auto_tags_enabled(&self, ids: &[&str], enabled: bool) -> Result<()> {

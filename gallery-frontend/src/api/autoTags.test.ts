@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import axios from 'axios'
 import { createPinia, setActivePinia } from 'pinia'
-import { editAutoTags, fetchAutoTags } from './autoTags'
+import { decideAutoTag, editAutoTags, fetchAutoTags, previewAutoTagSelection } from './autoTags'
 import { useConfigStore } from '@/store/configStore'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
@@ -64,5 +64,35 @@ describe('owner Auto tags', () => {
     expect(useDataStore('shareId').data.get(0)).not.toHaveProperty('autoTags')
     get.mockResolvedValue({ data: { autoTagsEnabled: true, autoTagsPending: false, autoTags: [{ ...tag, confidence: 2 }] } })
     await expect(fetchAutoTags('photo', new AbortController().signal)).rejects.toThrow()
+  })
+  it('confirms the canonical French User tag across owner caches and refreshes collections/facets', async () => {
+    const put = vi.spyOn(axios, 'put').mockResolvedValue({ data: { photos: 1, label: 'chat' } })
+    vi.spyOn(axios, 'get').mockResolvedValue({ status: 200, data: { tags: [{ value: 'chat', count: 1 }], makes: [], models: [] } })
+    expect(await decideAutoTag('photo', 'cat', 'confirm', 'detailId')).toBe(true)
+    expect(put).toHaveBeenCalledWith('/put/auto_tag_decision', { hash: 'photo', concept: 'cat', action: 'confirm' })
+    expect(useDataStore('detailId').data.get(0)?.tags).toContain('chat')
+    // Share caches contain only server-projected metadata; no Auto state is written into them.
+    expect(useDataStore('shareId').data.get(0)).not.toHaveProperty('autoTags')
+  })
+  it('sends compact bulk decisions and rejects non-owner/share writes', async () => {
+    const put = vi.spyOn(axios, 'put').mockResolvedValue({ data: { photos: 500, label: 'chat' } })
+    vi.spyOn(axios, 'get').mockResolvedValue({ status: 200, data: { tags: [], makes: [], models: [] } })
+    usePrefetchStore('mainId').timestamp = 7
+    usePrefetchStore('mainId').dataLength = 500
+    await decideAutoTag({ mode: 'allExcept', excludedIndices: [] }, 'cat', 'reject', 'mainId')
+    expect(put).toHaveBeenCalledWith('/put/auto_tag_decision', { timestamp: 7, selection: { mode: 'allExcept', excludedIndices: [] }, concept: 'cat', action: 'reject' })
+    expect(useDataStore('mainId').data.get(0)?.tags).not.toContain('chat')
+    put.mockClear()
+    expect(await decideAutoTag('photo', 'cat', 'confirm', 'shareId')).toBe(false)
+    useConfigStore('mainId').config = { isAdmin: false, readOnlyMode: false } as AppConfig
+    expect(await decideAutoTag('photo', 'cat', 'confirm', 'mainId')).toBe(false)
+    expect(put).not.toHaveBeenCalled()
+  })
+  it('previews exact photos and published-photo counts and preserves caches on failure', async () => {
+    vi.spyOn(axios, 'post').mockResolvedValue({ data: { photos: 500, publicPhotos: 31, concepts: [{ concept: 'cat', label: 'chat' }] } })
+    expect((await previewAutoTagSelection('photo', 'detailId')).publicPhotos).toBe(31)
+    vi.spyOn(axios, 'put').mockRejectedValue(new Error('offline'))
+    await expect(decideAutoTag('photo', 'cat', 'confirm', 'detailId')).rejects.toThrow('offline')
+    expect(useDataStore('mainId').data.get(0)?.tags).not.toContain('chat')
   })
 })

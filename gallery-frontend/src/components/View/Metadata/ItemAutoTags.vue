@@ -1,10 +1,29 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, watch } from 'vue'
-import { fetchAutoTags } from '@/api/autoTags'
-import type { GalleryImage } from '@/type/types'
+import { computed, onMounted, onUnmounted, shallowRef, watch } from 'vue'
+import { decideAutoTag, fetchAutoTags, type AutoTagAction } from '@/api/autoTags'
+import type { GalleryImage, IsolationId } from '@/type/types'
+import { useConfigStore } from '@/store/configStore'
 import { useMetadataItemLayout } from './useMetadataItemLayout'
 
-const props = defineProps<{ photo: GalleryImage }>()
+const props = defineProps<{ photo: GalleryImage, isolationId: IsolationId }>()
+const config = useConfigStore('mainId')
+const busy = shallowRef<string | null>(null)
+const error = shallowRef<string | null>(null)
+const revision = shallowRef(0)
+async function decide(concept: string, action: AutoTagAction): Promise<void> {
+  if (busy.value !== null || !config.canWrite) return
+  busy.value = concept
+  error.value = null
+  stop()
+  try {
+    await decideAutoTag(props.photo.id, concept, action, props.isolationId)
+  } catch {
+    error.value = 'Could not save this decision. Please try again.'
+  } finally {
+    busy.value = null
+    revision.value += 1
+  }
+}
 const { metadataChipSize } = useMetadataItemLayout()
 const displayed = computed(() => props.photo.autoTagsEnabled === false
   ? [] : (props.photo.autoTags ?? []).filter(tag => tag.displayed))
@@ -19,7 +38,7 @@ function stop(): void {
   controller?.abort()
 }
 
-onMounted(() => watch(() => [props.photo.id, props.photo.autoTagsEnabled, props.photo.autoTagsPending, props.photo.tags.join('\u0000')], () => {
+onMounted(() => watch(() => [props.photo.id, props.photo.autoTagsEnabled, props.photo.autoTagsPending, props.photo.tags.join('\u0000'), revision.value], () => {
   stop()
   if (props.photo.autoTagsEnabled === false) return
   const id = props.photo.id
@@ -61,7 +80,24 @@ onUnmounted(stop)
             prepend-icon="mdi-auto-fix"
             :size="metadataChipSize"
             tabindex="0"
-          >{{ tag.label }}</v-chip>
+          >
+            {{ tag.label }}
+            <template #append>
+              <v-btn
+                icon="mdi-check" size="24" variant="text" class="ms-1"
+                :aria-label="`Confirm ${tag.label} as a User tag`"
+                :disabled="!config.canWrite || busy !== null"
+                :loading="busy === tag.concept"
+                @click.stop="decide(tag.concept, 'confirm')"
+              />
+              <v-btn
+                icon="mdi-close" size="24" variant="text" color="error"
+                :aria-label="`Reject ${tag.label} permanently`"
+                :disabled="!config.canWrite || busy !== null"
+                @click.stop="decide(tag.concept, 'reject')"
+              />
+            </template>
+          </v-chip>
         </template>
       </v-tooltip>
       <v-list-item-subtitle v-if="displayed.length === 0">
@@ -69,5 +105,6 @@ onUnmounted(stop)
           : photo.autoTagsPending ? 'Waiting for Auto tags' : 'No Auto tags' }}
       </v-list-item-subtitle>
     </v-sheet>
+    <v-alert v-if="error" type="error" density="compact" :text="error" />
   </v-list-item>
 </template>

@@ -18,10 +18,30 @@ tags off hides them immediately, but does not disable embeddings for semantic
 search or Similar photos. Turning them back on uses cached vectors, including
 while the sidecar is offline.
 
+Each Auto chip has **Confirm** (check) and **Reject** (cross) buttons. Confirmation
+writes the Concept's French label into the ordinary V6 User tags. That tag is
+visible to visitors on published photos and remains when tagging is disabled or
+the gallery binary is rolled back. Rejection permanently suppresses that stable
+Concept ID on the photo, across recomputes, vocabulary releases and model changes.
+Removing a matching User tag records the same permanent Rejection, including
+while tagging is off or offline. Manually adding a User tag remains possible;
+it never erases a Rejection or permits the Concept to auto-apply again.
+
+The selection menu's **Confirm or reject Auto tags** dialog applies a chosen
+Concept to every selected photo, including ones without a current prediction.
+It previews the exact photo count and how many are published before confirmation.
+Videos are ignored and albums are rejected. The dialog states that rejection is
+permanent. All decisions require writable owner access and use the existing
+snapshot generation checks. Loading, read-only and failed requests keep the
+controls and feedback explicit.
+
 ## Storage and response boundaries
 
 - Main database: `auto_tags_off_v1` stores authored, default-on preferences. It is
-  additive; frozen V6 records and their User tags are unchanged.
+  additive; `auto_tag_rejections_v1` stores permanent `(photo, Concept ID)` decisions.
+  The V6 schema stays frozen: confirmations use its existing User tag field.
+  Rejections and matching tag removals commit atomically with immediate durability,
+  preserving pending edits. Both authored tables belong in normal database backups.
 - Disposable `db/embeddings.redb`: `concept_vectors_v1` caches text vectors and
   scoring metadata by exact model ID + vocabulary release. `auto_tags_v1` stores
   predictions, confidence, displayed/hidden placement, thumbnail version, and
@@ -41,8 +61,17 @@ while the sidecar is offline.
   `PUT /put/edit_auto_tags` requires writable owner access and accepts either
   `{hash, enabled}` or `{timestamp, selection, enabled}`. Selection validation uses
   the existing snapshot identity/generation checks and publication lock order.
+- `PUT /put/auto_tag_decision` accepts `{hash, concept, action}` or
+  `{timestamp, selection, concept, action}`, with `action: "confirm" | "reject"`.
+  It returns `{photos, label}` using the canonical French label. The owner-only
+  `POST /post/auto_tag_selection` previews `{photos, publicPhotos, concepts}` for
+  the same target. Decisions synchronously rematerialize from cached vectors;
+  no inference is requested, even when the sidecar is offline. Materialization
+  and authored writes share the persistence lock so an old worker snapshot cannot
+  undo a completed decision. Owner reads also suppress stale rejected/confirmed
+  predictions if derived storage is temporarily unavailable.
 
-Confirm/reject feedback, learned Concepts, review UI, and Auto tag search are
+Learned Concepts, review UI, and Auto tag search are
 separate follow-up slices; predictions are not yet included in User tag search.
 Calibration fix `infra-urocissa-autotag-sjfz.16` replaces the positive-enriched
 sampling and observed-precision-only gate. Vocabulary `2026-11-08.2` uses

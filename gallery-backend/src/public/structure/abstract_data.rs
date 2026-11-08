@@ -506,7 +506,6 @@ impl AbstractData {
     }
 
     /// Get tags (reference)
-    #[cfg(any(test, feature = "performance-test"))]
     pub fn tag(&self) -> &HashSet<String> {
         match self {
             AbstractData::Image(img) => &img.object.tags,

@@ -149,6 +149,7 @@ watch(
           <ItemAutoTags
             v-if="configStore.isAdmin && !isShareMode && configStore.config?.embeddingEnabled && abstractData.type === 'image'"
             :photo="abstractData"
+            :isolation-id="props.isolationId"
           />
           <v-list-item
             v-if="configStore.isAdmin && !isShareMode && configStore.config?.embeddingEnabled && abstractData.type === 'video'"

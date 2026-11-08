@@ -18,6 +18,7 @@ mod auto_tags;
 mod media;
 mod mutations;
 mod search;
+mod tag_feedback;
 
 use crate::{
     public::{
@@ -688,6 +689,9 @@ async fn http_child() {
                 edit_share,
                 edit_photo_audience,
                 crate::router::put::edit_auto_tags::edit_auto_tags,
+                crate::router::put::auto_tag_decision::decide,
+                crate::router::put::auto_tag_decision::preview,
+                crate::router::put::edit_tag::edit_tag,
                 crate::router::embeddings::get_auto_tags,
                 upload,
             ],
@@ -701,6 +705,10 @@ async fn http_child() {
     }
     search::checks(&client).await;
     auto_tags::checks(&client).await;
+    if std::env::var_os("UROCISSA_FEEDBACK_TEST").is_some() {
+        tag_feedback::checks(&client).await;
+        return;
+    }
     if crate::router::fairing::guard_gallery::public_gallery_enabled() {
         public_checks(&client, &records).await;
     } else {
@@ -710,11 +718,18 @@ async fn http_child() {
 }
 
 fn isolated(public: bool, download: bool) {
+    isolated_mode(public, download, false);
+}
+
+fn isolated_mode(public: bool, download: bool, feedback: bool) {
     let root = tempfile::tempdir().unwrap();
     let mut command = Command::new(std::env::current_exe().unwrap());
     command.env_clear();
     if download {
         command.env("UROCISSA_DOWNLOAD_TEST", "1");
+    }
+    if feedback {
+        command.env("UROCISSA_FEEDBACK_TEST", "1");
     }
     let mut child = command
         .env("UROCISSA_AUDIENCE_TEST_ROOT", root.path())
@@ -738,6 +753,14 @@ fn isolated(public: bool, download: bool) {
         std::thread::sleep(Duration::from_millis(20));
     }
     let output = child.wait_with_output().unwrap();
+    if feedback {
+        for line in String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .filter(|line| line.starts_with("500-photo"))
+        {
+            eprintln!("public={public}: {line}");
+        }
+    }
     assert!(
         output.status.success(),
         "public={public}:\n{}\n{}",
@@ -749,6 +772,12 @@ fn isolated(public: bool, download: bool) {
 #[test]
 fn public_audience_http() {
     isolated(true, false);
+}
+
+#[test]
+fn authored_feedback_http() {
+    isolated_mode(true, false, true);
+    isolated_mode(false, false, true);
 }
 
 #[test]

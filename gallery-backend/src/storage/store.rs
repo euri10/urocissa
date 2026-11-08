@@ -59,6 +59,7 @@ impl RecordValue {
 pub struct RecordWriter<'txn> {
     table: Table<'txn, &'static str, RawV6Bytes>,
     audiences: Table<'txn, &'static str, u8>,
+    rejections: Table<'txn, (&'static str, &'static str), u8>,
     codec: Buffer,
     io_timing: RecordIoTiming,
 }
@@ -178,6 +179,10 @@ impl DataStore {
             .map_err(E::from)?;
         let mut writer = RecordWriter {
             table,
+            rejections: txn
+                .open_table(super::auto_tags::REJECTIONS)
+                .map_err(anyhow::Error::from)
+                .map_err(E::from)?,
             audiences: txn
                 .open_table(super::audience::PHOTO_AUDIENCE)
                 .map_err(anyhow::Error::from)
@@ -212,6 +217,10 @@ impl DataStore {
             .map_err(E::from)?;
         let mut writer = RecordWriter {
             table,
+            rejections: txn
+                .open_table(super::auto_tags::REJECTIONS)
+                .map_err(anyhow::Error::from)
+                .map_err(E::from)?,
             audiences: txn
                 .open_table(super::audience::PHOTO_AUDIENCE)
                 .map_err(anyhow::Error::from)
@@ -358,6 +367,12 @@ impl RecordValuesIter<'_> {
 }
 
 impl RecordWriter<'_> {
+    /// Written in the same immediate transaction as any accompanying User tag edit.
+    pub fn reject_auto_tag(&mut self, photo: &str, concept: &str) -> Result<()> {
+        self.rejections.insert((photo, concept), 1)?;
+        Ok(())
+    }
+
     pub fn get(&mut self, key: &str) -> Result<Option<RecordValue>> {
         self.get_v6(key)?
             .map(V6AbstractData::into_domain)

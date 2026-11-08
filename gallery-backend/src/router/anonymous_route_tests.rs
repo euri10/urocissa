@@ -84,7 +84,7 @@ fn probe_body(path: &str) -> Value {
         "showMetadata": false, "showDownload": false, "showUpload": false, "exp": 0,
         "name": "dummy-search", "context": "home", "query": "tag:dummy", "ids": [],
         "path": "/dummy-import", "operations": ["exif"],
-        "paused": true, "enabled": true,
+        "paused": true, "enabled": true, "concept": "cat", "action": "confirm",
         "token": "invalid-token", "expiredHashToken": "invalid-token"
     })
 }

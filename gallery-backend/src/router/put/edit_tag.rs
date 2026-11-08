@@ -48,6 +48,17 @@ pub async fn edit_tag(
     let mut add = data.add_tags_array.into_iter().collect::<BTreeSet<_>>();
     let remove = data.remove_tags_array.into_iter().collect::<BTreeSet<_>>();
     add.retain(|tag| !remove.contains(tag));
+    // Removal of a Concept alias must commit its permanent Rejection atomically.
+    if !crate::operations::tag_feedback::concepts_for_tags(&remove).is_empty() {
+        tokio::task::spawn_blocking(move || {
+            crate::operations::tag_feedback::edit(&resolved, &add, &remove, None)?;
+            crate::operations::auto_tags::rematerialize();
+            Ok::<_, AppError>(())
+        })
+        .await
+        .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))??;
+        return Ok(Json(TREE.read_tags()));
+    }
     let identity_epoch = resolved.identity_epoch;
     let selection_epoch = resolved.selection_epoch;
     let targets = resolved.targets;
@@ -74,82 +85,87 @@ pub async fn edit_tag(
         .sum::<usize>()
         + touch_preview.estimated_bytes();
     WRITE_BEHIND.reserve(bytes).await?;
-
-    let Ok(mut state) = TREE.state.write() else {
-        WRITE_BEHIND.release_reservation(bytes);
-        return Err(AppError::new(
-            ErrorKind::Internal,
-            "tree state lock poisoned",
-        ));
-    };
-    if !resolved_selection_is_current(&state, identity_epoch, selection_epoch, &targets) {
-        WRITE_BEHIND.release_reservation(bytes);
-        return Err(AppError::new(
-            ErrorKind::Conflict,
-            "selection became stale before publication",
-        ));
-    }
-    let universe = state.arena.capacity();
-    let mut operations = Vec::with_capacity(add.len() + remove.len());
-    for tag in &add {
-        let existing = state.query.tags.get(tag);
-        let changed = crate::public::db::tree::state::TargetSet::from_unique_slot_refs(
-            targets
-                .iter()
-                .filter(|slot_ref| !existing.is_some_and(|set| set.contains(slot_ref.index()))),
-            universe,
-        );
-        if !changed.is_empty() {
-            operations.push(DirtyOperation::Tags {
-                targets: changed,
-                add: BTreeSet::from([tag.clone()]),
-                remove: BTreeSet::new(),
-            });
+    {
+        let Ok(mut state) = TREE.state.write() else {
+            WRITE_BEHIND.release_reservation(bytes);
+            return Err(AppError::new(
+                ErrorKind::Internal,
+                "tree state lock poisoned",
+            ));
+        };
+        if !resolved_selection_is_current(&state, identity_epoch, selection_epoch, &targets) {
+            WRITE_BEHIND.release_reservation(bytes);
+            return Err(AppError::new(
+                ErrorKind::Conflict,
+                "selection became stale before publication",
+            ));
         }
-    }
-    for tag in &remove {
-        let existing = state.query.tags.get(tag);
-        let changed = crate::public::db::tree::state::TargetSet::from_unique_slot_refs(
-            targets
-                .iter()
-                .filter(|slot_ref| existing.is_some_and(|set| set.contains(slot_ref.index()))),
-            universe,
-        );
-        if !changed.is_empty() {
-            operations.push(DirtyOperation::Tags {
-                targets: changed,
-                add: BTreeSet::new(),
-                remove: BTreeSet::from([tag.clone()]),
-            });
+        let universe = state.arena.capacity();
+        let mut operations = Vec::with_capacity(add.len() + remove.len());
+        for tag in &add {
+            let existing = state.query.tags.get(tag);
+            let changed = crate::public::db::tree::state::TargetSet::from_unique_slot_refs(
+                targets
+                    .iter()
+                    .filter(|slot_ref| !existing.is_some_and(|set| set.contains(slot_ref.index()))),
+                universe,
+            );
+            if !changed.is_empty() {
+                operations.push(DirtyOperation::Tags {
+                    targets: changed,
+                    add: BTreeSet::from([tag.clone()]),
+                    remove: BTreeSet::new(),
+                });
+            }
         }
-    }
-    let changed_at = next_mutation_timestamp();
-    state
-        .query
-        .edit_tags(targets.ordinals(), &add, &remove, universe);
-    state.edit_cached_album_objects(&targets, changed_at, |object| {
-        object.tags.extend(add.iter().cloned());
         for tag in &remove {
-            object.tags.remove(tag);
+            let existing = state.query.tags.get(tag);
+            let changed = crate::public::db::tree::state::TargetSet::from_unique_slot_refs(
+                targets
+                    .iter()
+                    .filter(|slot_ref| existing.is_some_and(|set| set.contains(slot_ref.index()))),
+                universe,
+            );
+            if !changed.is_empty() {
+                operations.push(DirtyOperation::Tags {
+                    targets: changed,
+                    add: BTreeSet::new(),
+                    remove: BTreeSet::from([tag.clone()]),
+                });
+            }
         }
-    });
-    if !targets.is_empty() {
-        operations.push(DirtyOperation::Touch {
-            targets,
-            changed_at,
+        let changed_at = next_mutation_timestamp();
+        state
+            .query
+            .edit_tags(targets.ordinals(), &add, &remove, universe);
+        state.edit_cached_album_objects(&targets, changed_at, |object| {
+            object.tags.extend(add.iter().cloned());
+            for tag in &remove {
+                object.tags.remove(tag);
+            }
         });
-    }
-    if operations.is_empty() {
-        WRITE_BEHIND.release_reservation(bytes);
-    } else {
-        let mut reservation_left = bytes;
-        for operation in operations {
-            WRITE_BEHIND.enqueue_reserved(operation, reservation_left);
-            reservation_left = 0;
+        if !targets.is_empty() {
+            operations.push(DirtyOperation::Touch {
+                targets,
+                changed_at,
+            });
         }
+        if operations.is_empty() {
+            WRITE_BEHIND.release_reservation(bytes);
+        } else {
+            let mut reservation_left = bytes;
+            for operation in operations {
+                WRITE_BEHIND.enqueue_reserved(operation, reservation_left);
+                reservation_left = 0;
+            }
+        }
+        VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
+        drop(state);
     }
-    VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
-    drop(state);
+
+    tokio::task::spawn_blocking(crate::operations::auto_tags::rematerialize)
+        .await
+        .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))?;
 
     Ok(Json(TREE.read_tags()))
 }
