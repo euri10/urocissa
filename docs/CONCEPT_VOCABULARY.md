@@ -1,8 +1,10 @@
 # Built-in Concept vocabulary
 
-Owners: `infra-urocissa-autotag-sjfz.3` and calibration fix `.16`. Definitions live in
+Owners: `infra-urocissa-autotag-sjfz.3` and calibration fixes `.16`/`.17`.
+Definitions live in
 `gallery-backend/assets/concepts.json`; the aggregate measurements are in
-`tools/concepts/calibration-report.json`. This source work does not activate
+`tools/concepts/calibration-report.json`; `tools/concepts/release-quarantine.json`
+records independent release vetoes. This source work does not activate
 Auto tags or backfill on the production library.
 
 Each Concept has a stable ID, English scoring label, French display label,
@@ -93,7 +95,7 @@ Equal-prior precision is `TPR / (TPR + FPR)`, where TPR is recall and FPR is
 false positives / explicit negatives. It weights the two classes equally rather
 than inheriting the annotation pool's prevalence. Without both classes or
 predictions it is zero. An always-on classifier scores 0.5, even in a pool with
-95% positives. The report (schema 2) records both precision measures and FPR.
+95% positives. The report records both precision measures and FPR.
 Selection maximizes recall, then equal-prior precision, observed precision and
 threshold; the evaluation partition never tunes that choice.
 
@@ -105,21 +107,40 @@ The epic's independent approximately 100-photo owner review, target precision
 human-labelled data. Do not relax the thresholds to make a preferred word fire.
 Semantic search and personal learning are the recall paths.
 
+### Independent release quarantine
+
+An independently reviewed false positive can veto a Concept's release even
+when its sampled metrics pass. `release-quarantine.json` records the issue,
+reason and reviewed images, bound to the exact model and SHA-256 of
+`fixture-scores.json`. Calibration checks those captured model/runtime, prompt
+and source-image identities before using the policy. A mismatch fails the run.
+The report (schema 3) embeds the policy and marks affected Concepts `dropped`
+with reason `release_quarantine` and a `null` activation threshold. The original
+sample-selected threshold and both partitions' metrics remain unchanged and
+auditable. The independent images never enter selection or evaluation.
+
+Removing a quarantine requires broader verified evidence and fresh independent
+acceptance. Raising a threshold against the failed regression image is not
+recalibration. The built-in name, French label, aliases, hierarchy and authored
+User tags remain available while zero-shot guesses are inactive.
+
 ### Recorded calibration (2026-11-08)
 
-Vocabulary **2026-11-08.2** processes **6,601 public photos** for 72 candidate
-Concepts, with 606 additional downloads beyond the previous cache. **21** pass
-both partitions: observed held-out precision ranges from **91.3% to 100%**,
+Vocabulary **2026-11-08.3** processes the same **6,601 public photos** for 72 candidate
+Concepts. **21** pass both sampled partitions; **20** remain active after the
+independent Flower quarantine. Active Concepts' observed held-out precision
+ranges from **91.3% to 100%**,
 equal-prior precision from **90.6% to 100%**, and recall from **23.4% to 96.6%**.
-Passing examples include animal, foule, chat, chien, oiseau, fleur, portrait
+Passing examples include animal, foule, chat, chien, oiseau, portrait
 and train.
 The image cache, manifest and inference responses remain local; only aggregate
 measurements are committed. A subsequent run using the generated catalog and
 the same cache reproduced both artifacts byte for byte.
 
-The **51 inactive Concepts** comprise 10 with insufficient sampled support,
+The **52 inactive Concepts** comprise 10 with insufficient sampled support,
 11 unable to meet the selection gate, and 30 failing evaluation at the selected
-threshold. Insufficient support includes stork: it does not prove
+threshold, plus Flower's independent release veto. Insufficient support includes
+stork: it does not prove
 the model cannot recognize them. The sampled positives/negatives are recorded
 for each partition; raising support requires more verified data, not a guessed
 threshold. Stork remains a named Concept and a child of bird for User tag
@@ -141,7 +162,8 @@ threshold selection. `check_fixtures.py` records exact-sidecar scores in
 checks only explicitly reviewed absences (others are unknown), plus positive
 controls requiring Cat on the cat and Bird on both stork fixtures. These scores
 never enter the calibration sample or threshold selection. All checks pass for
-this release; they detected six failures in the previous one.
+this release; they detected six Cloud/Snow failures in the initial release and
+the cat-as-Flower error in vocabulary 2026-11-08.2.
 
 ```sh
 python3 -B tools/concepts/check_fixtures.py \
@@ -154,17 +176,25 @@ in `gallery-tagger/tests/fixtures/ATTRIBUTION.md`. The CI fixture also checks
 their hashes, and runs when either the calibration files or source images change.
 
 Local acceptance: 12 Python calibration/provenance/regression tests and 314
-backend tests pass (3 intentionally ignored). A source-built gallery opened a
+backend tests pass (3 intentionally ignored; the timing-sensitive semantic
+HTTP gate passed in isolation after exceeding its budget under concurrent load).
+A source-built gallery opened a
 disposable copy containing nine already-embedded fixture photos and rematerialized
 them for the new vocabulary version. Actual batch and direct owner responses retain
-Cat on the cat and Bird on both storks, with no Cloud/Snow. Anonymous responses
+Cat alone on the cat and Bird on both storks, with no Flower on the cat and no
+Cloud/Snow. Anonymous responses
 still omit Auto tags. No frontend or authored-record schema changed.
 
-Remaining quality issue `infra-urocissa-autotag-sjfz.17`: the cat still triggers
-Flower (score 0.0039003, threshold 0.00117167), despite Flower passing both
-sampled precision gates. This separate false positive is not covered by the
-Cloud/Snow absence assertions or claimed fixed here. Sampled metrics and these
-nine fixtures do not replace the production owner review.
+Quality fix `infra-urocissa-autotag-sjfz.17`: the cat triggered Flower (score
+0.0039003060664981604, sample-selected threshold 0.001171667710877955), despite
+Flower passing both sampled precision gates. The 80 selected verified Flower
+negatives contained neither of the two verified cat negatives among the source's
+2,233 Flower negatives. This does not prove a preprocessing error or that adding
+those two examples alone would fix model quality. A fresh exact-model probe
+reproduced the captured scores byte for byte. The cat's reviewed Flower absence
+now fails before the fix; Flower is quarantined for the release rather than
+assigned a hand-tuned threshold. Cat/Bird positive controls remain required.
+Sampled metrics and these nine fixtures do not replace the production owner review.
 
 The Python fixture in CI exercises download/hash checks, the sidecar HTTP
 contract, threshold selection, held-out rejection and cache resume with

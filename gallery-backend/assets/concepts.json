@@ -200,7 +200,7 @@
       "label_fr": "fleur",
       "open_images": "Flower",
       "parents": [],
-      "threshold": 0.001171667710877955
+      "threshold": null
     },
     {
       "id": "forest",
@@ -630,5 +630,5 @@
   "model_id": "siglip2-base-patch16-224@75de2d55ec2d/fp16-text-int8",
   "prompt_template": "a photo of {label}",
   "schema_version": 1,
-  "version": "2026-11-08.2"
+  "version": "2026-11-08.3"
 }

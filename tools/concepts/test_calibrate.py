@@ -160,7 +160,7 @@ class CalibrationTests(unittest.TestCase):
                 args = argparse.Namespace(catalog=root / "catalog.json", dataset_lock=root / "lock.json",
                     cache=root / "cache", output=root / "output", deadline=60,
                     tagger=f"http://127.0.0.1:{server.server_port}", sample_per_concept=40,
-                    precision=0.9, recall=0.1, minimum=5)
+                    precision=0.9, recall=0.1, minimum=5, release_quarantine=None)
                 tool.run(args)
                 report = (args.output / "calibration-report.json").read_bytes()
                 self.assertEqual(tool.read_json(args.output / "calibration-report.json")["concepts"]["cat"]["status"], "calibrated")
@@ -168,6 +168,32 @@ class CalibrationTests(unittest.TestCase):
                 tool.run(args)
                 self.assertEqual(Sidecar.calls, 40)
                 self.assertEqual(report, (args.output / "calibration-report.json").read_bytes())
+                # A release veto must preserve independently selected thresholds
+                # and held-out results, rather than tuning against its evidence.
+                sampled = tool.read_json(args.output / "calibration-report.json")["concepts"]["cat"]
+                catalog = tool.read_json(args.catalog)
+                observed = {"model": info, "prompt_sha256": check_fixtures.prompt_hash(catalog),
+                            "images": {"cat.jpg": {
+                                "sha256": tool.digest((check_fixtures.IMAGES / "cat.jpg").read_bytes()),
+                                "scores": {"cat": 0.5}}}}
+                tool.write_json(root / "fixture-scores.json", observed)
+                policy = {"schema_version": 1, "model_id": "fixture",
+                          "observations_sha256": tool.digest((root / "fixture-scores.json").read_bytes()),
+                          "concepts": {"cat": {"issue": "synthetic-test", "reason": "synthetic only",
+                                               "images": ["cat.jpg"]}}}
+                args.release_quarantine = root / "quarantine.json"
+                tool.write_json(args.release_quarantine, policy)
+                tool.run(args)
+                quarantined = tool.read_json(args.output / "calibration-report.json")["concepts"]["cat"]
+                self.assertEqual(quarantined, {**sampled, "status": "dropped",
+                                              "reason": "release_quarantine", "threshold": None})
+                self.assertIsNone(tool.read_json(args.catalog)["concepts"][0]["threshold"])
+                for key, value in (("model_id", "wrong-model"), ("observations_sha256", "wrong"),
+                                   ("concepts", {"unknown": policy["concepts"]["cat"]})):
+                    tool.write_json(args.release_quarantine, {**policy, key: value})
+                    with self.assertRaisesRegex(ValueError, "quarantine"):
+                        tool.run(args)
+                tool.write_json(args.release_quarantine, policy)
                 info["model_id"] = "other-model"
                 with self.assertRaisesRegex(ValueError, "pinned model"):
                     tool.run(args)
@@ -211,7 +237,10 @@ class CommittedArtifactsTests(unittest.TestCase):
         self.assertEqual(report["catalog_definition_sha256"], tool.digest(json.dumps(definitions, sort_keys=True).encode()))
         self.assertEqual(catalog["model_id"], report["model"]["model_id"])
         self.assertEqual(catalog["version"], report["vocabulary_version"])
-        self.assertEqual(report["schema_version"], 2)
+        self.assertEqual(report["schema_version"], 3)
+        quarantine = tool.release_quarantine(Path(tool.__file__).with_name("release-quarantine.json"),
+                                              catalog, report["model"])
+        self.assertEqual(report["release_quarantine"], quarantine)
         self.assertEqual(report["method"]["precision_gates"], ["observed", "equal_prior"])
         self.assertEqual(set(report["concepts"]), {c["id"] for c in catalog["concepts"]})
         for concept in catalog["concepts"]:
@@ -232,6 +261,15 @@ class CommittedArtifactsTests(unittest.TestCase):
                 self.assertEqual(result["status"], "dropped")
                 self.assertIsNone(result["threshold"])
                 self.assertTrue(result["reason"])
+            if concept["id"] in quarantine["concepts"]:
+                self.assertEqual(result["reason"], "release_quarantine")
+                sampled_catalog = json.loads(json.dumps(catalog))
+                for entry in sampled_catalog["concepts"]:
+                    if entry["id"] == concept["id"]:
+                        entry["threshold"] = result["selected_threshold"]
+                observations = tool.read_json(Path(tool.__file__).with_name("fixture-scores.json"))
+                self.assertTrue(any(f"absent {concept['id']} fires" in failure
+                                    for failure in check_fixtures.failures(sampled_catalog, observations)))
 
 
 if __name__ == "__main__":

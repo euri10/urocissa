@@ -13,7 +13,7 @@ import calibrate as tool
 
 IMAGES = tool.ROOT / "gallery-tagger/tests/fixtures/images"
 ABSENT = {
-    "cat.jpg": ["cloud", "snow"],
+    "cat.jpg": ["cloud", "snow", "flower"],
     "stork_pair.jpg": ["snow"],
     "stork_fledglings.jpg": ["snow"],
     "bicycles.jpg": ["snow"],
