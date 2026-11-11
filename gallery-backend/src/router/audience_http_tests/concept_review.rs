@@ -113,7 +113,7 @@ pub(super) async fn checks(client: &Client) {
     assert_eq!(ids, vec![PRIVATE, TRASHED, PUBLIC]);
     assert_eq!(
         body["conceptReview"],
-        json!({"concept": "cat", "label": "chat", "positiveExamples": 1, "negativeExamples": 0})
+        json!({"concept": "cat", "label": "chat", "positiveExamples": 1, "negativeExamples": 0, "learningMode": "pending"})
     );
     // Labels/aliases resolve to the same stable Concept; explicit sort/filter mixing is refused.
     assert_eq!(review(client, "Chat").await.1, ids);

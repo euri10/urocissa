@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { PrefetchReturn } from '@/type/types'
+import AutoTagLearning from '@/components/AutoTags/AutoTagLearning.vue'
 
 defineProps<{
   summary: PrefetchReturn['conceptReview'] | null
@@ -33,14 +34,22 @@ const emit = defineEmits<{
       </template>
     </v-card-item>
     <v-sheet v-if="summary" color="transparent" class="d-flex flex-wrap ga-2 mb-2" aria-live="polite">
-      <v-chip size="small" variant="outlined">{{ summary.positiveExamples }}/5 positive examples</v-chip>
-      <v-chip size="small" variant="outlined">{{ summary.negativeExamples }}/5 negative examples</v-chip>
+      <v-chip size="small" variant="outlined">{{ summary.positiveExamples < 5 ? `${summary.positiveExamples}/5` : summary.positiveExamples }} positive examples</v-chip>
+      <v-chip size="small" variant="outlined">{{ summary.negativeExamples < 5 ? `${summary.negativeExamples}/5` : summary.negativeExamples }} negative examples</v-chip>
       <v-card-subtitle class="pa-0 text-wrap w-100">
+        {{ summary.learningMode === 'learned' ? 'Learning from your confirmations and rejections.'
+          : summary.learningMode === 'similarity' ? 'Matching similar photos using your tagged examples.'
+          : summary.learningMode === 'builtin' ? 'Using built-in visual detection.'
+          : summary.learningMode === 'inactive' && summary.concept.startsWith('personal:') && summary.positiveExamples < 5
+            ? `Tag ${5 - summary.positiveExamples} more ${summary.positiveExamples === 4 ? 'photo' : 'photos'} to start suggesting similar matches.`
+          : summary.learningMode === 'inactive' ? 'No automatic matches available for this Concept yet.'
+          : 'Waiting for learning to update.' }}
         {{ summary.positiveExamples >= 5 && summary.negativeExamples >= 5
-          ? 'Enough examples for a learned classifier.' : 'The classifier needs at least 5 of each.' }}
+          ? 'Enough examples for a learned classifier.' : 'Learning finer distinctions needs at least 5 positive and 5 negative examples.' }}
         Counts use photos with current embeddings.
       </v-card-subtitle>
     </v-sheet>
+    <AutoTagLearning />
     <v-progress-linear v-if="!ready && !failed" indeterminate color="primary" aria-label="Loading Concept review" class="mb-2" />
     <v-sheet color="transparent" class="d-flex flex-wrap align-center ga-2">
       <v-btn v-if="!selecting" prepend-icon="mdi-checkbox-multiple-marked-outline" :disabled="!ready || total === 0 || !canWrite" @click="emit('select')">Select photos</v-btn>

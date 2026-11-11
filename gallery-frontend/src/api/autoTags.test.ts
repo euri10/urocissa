@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import axios from 'axios'
 import { createPinia, setActivePinia } from 'pinia'
-import { decideAutoTag, editAutoTags, fetchAutoTags, previewAutoTagSelection } from './autoTags'
+import { decideAutoTag, editAutoTags, fetchAutoTags, previewAutoTagSelection, getAutoTagStatus, recalculateAutoTags } from './autoTags'
 import { useConfigStore } from '@/store/configStore'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
@@ -25,6 +25,19 @@ describe('owner Auto tags', () => {
     }
   })
   afterEach(() => { vi.restoreAllMocks() })
+
+  it('validates completion counts and uses the guarded recalculation endpoints', async () => {
+    const status = { running: false, upToDate: true, lastCompletedAt: 1000, changes: { added: 2, removed: 1 }, lastError: null }
+    const get = vi.spyOn(axios, 'get').mockResolvedValue({ data: status })
+    const put = vi.spyOn(axios, 'put').mockResolvedValue({ data: status })
+    const signal = new AbortController().signal
+    expect(await getAutoTagStatus(signal)).toEqual(status)
+    expect(await recalculateAutoTags(signal)).toEqual(status)
+    expect(get).toHaveBeenCalledWith('/get/auto-tag-status', { signal, timeout: 10000 })
+    expect(put).toHaveBeenCalledWith('/put/recalculate_auto_tags', null, { signal, timeout: 60000 })
+    get.mockResolvedValue({ data: { ...status, changes: { added: -1, removed: 0 } } })
+    await expect(getAutoTagStatus()).rejects.toThrow()
+  })
 
   it('turns cached photos off in place without editing User tags or share records', async () => {
     const put = vi.spyOn(axios, 'put').mockResolvedValue({})

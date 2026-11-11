@@ -5,7 +5,7 @@ import FacetTable from './FacetTable.vue'
 import { searchFacetsSchema } from '@/type/schemas'
 
 describe('tag facets', () => {
-  it.each([false, true])('offers Concept review only for reviewable Auto counts, reviewable=%s', async (reviewable) => {
+  it.each([false, true])('offers learning review even without Auto matches, reviewable=%s', async (reviewable) => {
     const reviewed: string[] = []
     const app = createSSRApp(FacetTable, {
       valueLabel: 'Tag', emptyText: 'No tags', reviewable,
@@ -20,8 +20,8 @@ describe('tag facets', () => {
     })
     const html = await renderToString(app)
     expect(html.includes('Review chat across the library')).toBe(reviewable)
-    expect(html).not.toContain('Review holiday across the library')
-    expect(reviewed).toEqual(reviewable ? ['chat'] : [])
+    expect(html.includes('Review holiday across the library')).toBe(reviewable)
+    expect(reviewed).toEqual(reviewable ? ['chat', 'holiday'] : [])
   })
   it('preserves owner split counts and renders ordinary visitor counts', async () => {
     const facets = searchFacetsSchema.parse({ tags: [

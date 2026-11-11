@@ -112,6 +112,7 @@ fn edit(data: EditAutoTagsData) -> AppResult<()> {
         .map_err(|error| AppError::from_err(ErrorKind::Database, error))?;
     drop(state);
     drop(persistence);
+    crate::operations::auto_tags::invalidate();
     crate::operations::embedding::wake();
     Ok(())
 }

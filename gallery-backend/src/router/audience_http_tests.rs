@@ -18,6 +18,7 @@ mod auto_tags;
 mod concept_review;
 mod media;
 mod mutations;
+mod recalculation;
 mod search;
 mod tag_feedback;
 mod tag_search;
@@ -695,6 +696,8 @@ async fn http_child() {
                 crate::router::put::auto_tag_decision::preview,
                 crate::router::put::edit_tag::edit_tag,
                 crate::router::embeddings::get_auto_tags,
+                crate::router::embeddings::get_auto_tag_status,
+                crate::router::embeddings::recalculate_auto_tags,
                 upload,
             ],
         ),

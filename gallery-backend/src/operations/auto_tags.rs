@@ -1,5 +1,11 @@
 //! Background materialization. HTTP readers never run inference or modify V6 records.
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::HashMap,
+    sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
 use anyhow::{Context, Result, ensure};
 use serde::Serialize;
@@ -35,12 +41,16 @@ struct Prepared {
     seen: HashMap<String, Input>,
     feedback: HashMap<String, Input>,
     learning_dirty: bool,
+    learning_methods: HashMap<String, String>,
 }
 
 pub struct AutoTags {
     store: EmbeddingStore,
     catalog: BuiltinCatalog,
     prepared: Mutex<Option<Prepared>>,
+    recalculation: Mutex<recalculation::RecalculationStatus>,
+    recalculation_lock: Mutex<()>,
+    input_revision: AtomicU64,
 }
 
 #[derive(Default, Serialize)]
@@ -90,6 +100,9 @@ impl AutoTags {
             store,
             catalog: BuiltinCatalog::embedded()?,
             prepared: Mutex::new(None),
+            recalculation: Mutex::default(),
+            recalculation_lock: Mutex::new(()),
+            input_revision: AtomicU64::new(0),
         })
     }
 
@@ -156,7 +169,8 @@ impl AutoTags {
             ScoreModel::new(vectors.scale, vectors.bias)?,
         )?;
         // Text inference must not hold the lock used by owner decision rematerialization.
-        *self.prepared.lock().unwrap() = Some(Prepared {
+        let mut prepared = self.prepared.lock().unwrap();
+        *prepared = Some(Prepared {
             model: model.model_id.clone(),
             base: engine.vocabulary().clone(),
             score: ScoreModel::new(vectors.scale, vectors.bias)?,
@@ -165,36 +179,37 @@ impl AutoTags {
             seen: HashMap::new(),
             feedback: HashMap::new(),
             learning_dirty: true,
+            learning_methods: HashMap::new(),
         });
+        self.input_revision.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
     pub fn reconcile(&self) -> Result<()> {
-        // Serialize input snapshots and derived writes with authored decisions. Otherwise
-        // an older worker snapshot could overwrite the result of a completed rejection.
-        let _persistence = TREE
-            .persistence_lock
-            .lock()
-            .map_err(|_| anyhow::anyhow!("tree persistence lock poisoned"))?;
-        let (inputs, counts) = gallery_inputs()?;
-        self.materialize(&inputs, &counts)
+        let _run = self.recalculation_lock.lock().unwrap();
+        self.reconcile_locked(false)
     }
 
     /// Missing vectors are remembered too: backfill must not re-read every pending
     /// photo after each new embedding. The writer invalidates only its completed ID.
     pub fn photo_embedded(&self, id: &str) {
+        self.input_revision.fetch_add(1, Ordering::Relaxed);
         if let Some(prepared) = self.prepared.lock().unwrap().as_mut() {
             prepared.seen.remove(id);
             prepared.learning_dirty |= prepared.feedback.contains_key(id);
         }
     }
 
-    fn materialize(&self, inputs: &PhotoInputs, counts: &[(String, usize)]) -> Result<()> {
+    fn materialize(
+        &self,
+        inputs: &PhotoInputs,
+        counts: &[(String, usize)],
+    ) -> Result<Option<recalculation::Changes>> {
         let mut guard = self.prepared.lock().unwrap();
         let Some(prepared) = guard.as_mut() else {
-            return Ok(());
+            return Ok(None);
         };
-        self.refresh_learning(prepared, inputs)?;
+        let mut worked = self.refresh_learning(prepared, inputs)?;
         let aliases = AliasIndex::build(
             prepared.engine.vocabulary(),
             counts.iter().map(|(tag, count)| (tag.as_str(), *count)),
@@ -203,13 +218,17 @@ impl AutoTags {
             prepared.engine.set_aliases(&aliases);
             prepared.aliases = aliases;
             prepared.seen.clear();
+            worked = true;
         }
+        worked |= prepared.seen.len() != inputs.len();
         let mut rows = Vec::new();
         let mut completed = Vec::new();
+        let mut changes = recalculation::Changes::default();
         for (id, input) in inputs {
             if prepared.seen.get(id) == Some(input) {
                 continue;
             }
+            worked = true;
             let Some(embedding) = self
                 .store
                 .get(id, &prepared.model, 0)?
@@ -220,7 +239,7 @@ impl AutoTags {
             };
             let user_tags: Vec<_> = input.tags.iter().map(String::as_str).collect();
             let rejections: Vec<_> = input.rejections.iter().map(String::as_str).collect();
-            let tags = prepared
+            let tags: Vec<_> = prepared
                 .engine
                 .tag_photo(&PhotoInput {
                     embedding: &embedding.vector,
@@ -236,6 +255,7 @@ impl AutoTags {
                     displayed: tag.placement == Placement::Displayed,
                 })
                 .collect();
+            changes.compare(self.store.auto_tags(id)?.as_ref(), &tags);
             rows.push((
                 id.clone(),
                 MaterializedTags {
@@ -251,7 +271,7 @@ impl AutoTags {
         self.store.put_auto_tags(&rows)?;
         prepared.seen.retain(|id, _| inputs.contains_key(id));
         prepared.seen.extend(completed);
-        Ok(())
+        Ok(worked.then_some(changes))
     }
 
     pub fn status(&self, id: &str, version: u32, enabled: bool) -> Result<AutoTagStatus> {
@@ -365,6 +385,7 @@ pub fn owner_status(id: &str, version: u32) -> Result<Option<AutoTagStatus>> {
 
 /// Decisions use cached vectors only; ML availability never gates authored changes.
 pub fn rematerialize() {
+    invalidate();
     if let Some(tags) = super::embedding::service().and_then(|s| s.auto_tags.get())
         && let Err(error) = tags.reconcile()
     {
@@ -373,7 +394,14 @@ pub fn rematerialize() {
     super::embedding::wake();
 }
 
+pub fn invalidate() {
+    if let Some(tags) = super::embedding::service().and_then(|service| service.auto_tags.get()) {
+        tags.input_revision.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
 mod learning;
+pub mod recalculation;
 pub mod review;
 #[cfg(test)]
 mod tests;

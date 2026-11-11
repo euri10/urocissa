@@ -434,6 +434,7 @@ async fn bulk(client: &Client) {
         Status::Conflict
     );
     personal_learning(client).await;
+    super::recalculation::checks(client, &records, &store, &model, &vector).await;
 }
 
 async fn personal_learning(client: &Client) {

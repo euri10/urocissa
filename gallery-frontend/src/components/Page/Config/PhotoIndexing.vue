@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import AutoTagLearning from '@/components/AutoTags/AutoTagLearning.vue'
 import {
   getEmbeddingStatus,
   pauseEmbeddingBackfill,
@@ -121,6 +122,7 @@ onBeforeUnmount(() => {
           </v-list-item-subtitle>
         </v-list-item>
       </v-list>
+      <AutoTagLearning />
       <v-alert v-if="error || status?.lastError" type="warning" variant="tonal" class="mx-4 mb-4 text-break">
         {{ error || status?.lastError }}
       </v-alert>

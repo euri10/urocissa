@@ -1,6 +1,7 @@
 use rocket::serde::json::Json;
 use serde::Deserialize;
 
+use crate::operations::auto_tags::recalculation::RecalculationStatus;
 use crate::operations::embedding::{self, EmbeddingStatus};
 use crate::router::fairing::{guard_auth::GuardAuth, guard_read_only_mode::GuardReadOnlyMode};
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
@@ -34,6 +35,41 @@ pub fn get_embedding_status(auth: GuardResult<GuardAuth>) -> AppResult<Json<Embe
     embedding::service()
         .map(|service| Json(service.status()))
         .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Photo embeddings are disabled"))
+}
+
+#[get("/get/auto-tag-status")]
+pub fn get_auto_tag_status(auth: GuardResult<GuardAuth>) -> AppResult<Json<RecalculationStatus>> {
+    let _ = auth?;
+    let tags = embedding::service()
+        .and_then(|service| service.auto_tags.get())
+        .ok_or_else(|| AppError::new(ErrorKind::Unavailable, "Auto tags are not ready"))?;
+    Ok(Json(tags.recalculation_status()))
+}
+
+#[put("/put/recalculate_auto_tags")]
+pub async fn recalculate_auto_tags(
+    auth: GuardResult<GuardAuth>,
+    read_only: GuardResult<GuardReadOnlyMode>,
+) -> AppResult<Json<RecalculationStatus>> {
+    let _ = auth?;
+    let _ = read_only?;
+    tokio::task::spawn_blocking(|| {
+        let tags = embedding::service()
+            .and_then(|service| service.auto_tags.get())
+            .ok_or_else(|| AppError::new(ErrorKind::Unavailable, "Auto tags are not ready"))?;
+        if !tags
+            .recalculate()
+            .map_err(|error| AppError::from_err(ErrorKind::Internal, error))?
+        {
+            return Err(AppError::new(
+                ErrorKind::Conflict,
+                "Auto tags are already recalculating",
+            ));
+        }
+        Ok(Json(tags.recalculation_status()))
+    })
+    .await
+    .map_err(|error| AppError::from_err(ErrorKind::Internal, error.into()))?
 }
 
 #[derive(Deserialize)]

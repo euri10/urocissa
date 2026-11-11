@@ -107,6 +107,34 @@ owner quality review is still required; this source fix authorizes no rollout.
 No tagging failure blocks uploads or the photo embedding queue. Derived read
 errors show a pending owner state without breaking gallery reads.
 
+## Learning progress and recalculation (.18)
+
+Settings → Photo indexing and the Concept review toolbar show whether Auto tags
+are current, recalculating or awaiting an update, the last successful completion
+time and the number of displayed suggestions added/removed. An unchanged result
+is explicit. Automatic feedback-driven updates and manual recalculation use the
+same status. Completion metadata is disposable and starts unknown after restart;
+failed runs keep the previous successful time and result.
+
+Every owner tag facet now opens Concept review, including personal Concepts with
+no Auto matches. Review shows current positive/negative example counts and the
+actual fitted learning method: built-in visual detection, personal similarity,
+learned classification, inactive or pending. Four positive personal examples
+explain that one more tagged photo is needed. Five positive and five explicit
+negative examples permit classification, without promising new matches or better
+accuracy. These are example/processing counts, not measured precision.
+
+`GET /get/auto-tag-status` is owner-only. Writable owners can invoke
+`PUT /put/recalculate_auto_tags` to retrain and recalculate eligible indexed
+photos using cached vectors, with no image/text inference or re-embedding.
+Rejections, User tags, publication settings and Auto-tags-off preferences remain
+authored state. Overlapping manual requests return 409; a failed run can be
+retried. New feedback/embeddings invalidate the current-status claim, so an older
+snapshot cannot mark newer edits as processed. Guests and share visitors cannot
+read the status or run recalculation; read-only owners can inspect status only.
+
+This source feature does not change the independent rollout acceptance in `.13`.
+
 ## Local acceptance (2026-11-08)
 
 ### Personal Concepts and learning (.7)

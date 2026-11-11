@@ -29,7 +29,7 @@ interface State {
   busy: boolean
   error: string | null
 }
-const summary = { concept: 'cat', label: 'chat', positiveExamples: 4, negativeExamples: 3 }
+const summary = { concept: 'cat', label: 'chat', positiveExamples: 4, negativeExamples: 3, learningMode: 'builtin' as const }
 const stub: FunctionalComponent = (_props, { attrs, slots }) => h('div', attrs, [slots.title?.(), slots.subtitle?.(), slots.default?.()])
 
 beforeEach(() => {
@@ -103,6 +103,15 @@ describe('Concept review', () => {
     expect(html).toContain('3/5 negative examples')
     expect(html).toContain('Confirm selected')
     expect(html).toContain('Reject selected')
+  })
+  it.each([
+    ['inactive', 4, 0, 'Tag 1 more photo to start suggesting similar matches.'],
+    ['similarity', 5, 0, 'Matching similar photos using your tagged examples.'],
+    ['learned', 5, 5, 'Learning from your confirmations and rejections.']
+  ] as const)('explains the actual %s learning state', async (learningMode, positiveExamples, negativeExamples, text) => {
+    const app = createSSRApp(ReviewToolbar, { summary: { ...summary, concept: 'personal:fixture', learningMode, positiveExamples, negativeExamples }, total: 0, selected: 0, selecting: false, ready: true, failed: false, canWrite: true })
+    for (const name of ['VSheet', 'VCardItem', 'VCardTitle', 'VCardSubtitle', 'VChip', 'VBtn']) app.component(name, stub)
+    expect(await renderToString(app)).toContain(text)
   })
   it('never renders the gallery for a visitor', async () => {
     useConfigStore('mainId').config = { isAdmin: false, readOnlyMode: false } as AppConfig

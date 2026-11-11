@@ -13,6 +13,7 @@ pub struct ReviewSummary {
     pub label: String,
     pub positive_examples: usize,
     pub negative_examples: usize,
+    pub learning_mode: String,
 }
 
 pub struct ConceptReview {
@@ -73,12 +74,26 @@ impl AutoTags {
             })
             .collect::<Vec<_>>();
         photos.sort_unstable_by(|a, b| a.2.total_cmp(&b.2).then(a.0.cmp(&b.0)));
+        let learning_mode = self
+            .prepared
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|prepared| {
+                model
+                    .as_ref()
+                    .is_some_and(|model| model.model_id == prepared.model)
+            })
+            .and_then(|prepared| prepared.learning_methods.get(&concept))
+            .cloned()
+            .unwrap_or_else(|| "pending".into());
         Ok(ConceptReview {
             summary: ReviewSummary {
                 concept,
                 label,
                 positive_examples,
                 negative_examples,
+                learning_mode,
             },
             photos,
         })

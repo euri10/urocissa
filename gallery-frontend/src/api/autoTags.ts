@@ -13,6 +13,25 @@ import { useSearchFacetStore } from '@/store/searchFacetStore'
 import { z } from 'zod'
 
 export type AutoTagAction = 'confirm' | 'reject'
+const recalculationSchema = z.object({
+  running: z.boolean(),
+  upToDate: z.boolean(),
+  lastCompletedAt: z.number().nullable(),
+  changes: z.object({ added: z.number().int().nonnegative(), removed: z.number().int().nonnegative() }),
+  lastError: z.string().nullable()
+})
+export type AutoTagRecalculation = z.infer<typeof recalculationSchema>
+
+export async function getAutoTagStatus(signal?: AbortSignal): Promise<AutoTagRecalculation> {
+  const response = await axios.get('/get/auto-tag-status', { signal, timeout: 10000 })
+  return recalculationSchema.parse(response.data)
+}
+
+export async function recalculateAutoTags(signal?: AbortSignal): Promise<AutoTagRecalculation> {
+  const response = await axios.put('/put/recalculate_auto_tags', null, { signal, timeout: 60000 })
+  return recalculationSchema.parse(response.data)
+}
+
 const previewSchema = z.object({
   photos: z.number().int().nonnegative(),
   publicPhotos: z.number().int().nonnegative(),

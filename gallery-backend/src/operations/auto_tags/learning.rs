@@ -9,7 +9,7 @@ impl AutoTags {
         &self,
         prepared: &mut Prepared,
         inputs: &PhotoInputs,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let feedback = inputs
             .iter()
             .filter(|(_, input)| !input.tags.is_empty() || !input.rejections.is_empty())
@@ -21,7 +21,7 @@ impl AutoTags {
             })
             .collect::<HashMap<_, _>>();
         if !prepared.learning_dirty && prepared.feedback == feedback {
-            return Ok(());
+            return Ok(false);
         }
         let mut examples = Vec::new();
         for (id, input) in &feedback {
@@ -72,11 +72,16 @@ impl AutoTags {
             Learning::fit(&prepared.base, active, prepared.score, &photos)?;
         self.store
             .put_learning(&prepared.model, &self.catalog.version, &learning)?;
+        prepared.learning_methods = vocabulary
+            .concepts()
+            .iter()
+            .map(|concept| (concept.id.clone(), learning.method(&concept.id).to_owned()))
+            .collect();
         prepared.engine = AutoTagEngine::new(vocabulary, prepared.score).with_classifier(learning);
         prepared.feedback = feedback;
         prepared.learning_dirty = false;
         prepared.aliases = AliasIndex::default();
         prepared.seen.clear();
-        Ok(())
+        Ok(true)
     }
 }

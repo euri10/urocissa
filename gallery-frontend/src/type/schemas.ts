@@ -196,7 +196,8 @@ export const conceptReviewSchema = z.object({
   concept: z.string(),
   label: z.string(),
   positiveExamples: z.number().int().nonnegative(),
-  negativeExamples: z.number().int().nonnegative()
+  negativeExamples: z.number().int().nonnegative(),
+  learningMode: z.enum(['pending', 'inactive', 'builtin', 'similarity', 'learned']).optional()
 })
 
 export const prefetchReturnSchema = z

@@ -329,6 +329,16 @@ fn feedback_retrains_all_photos_and_rebuilds_identical_derived_predictions() -> 
     let (dir, tags, mut inputs, model) = learning_fixture(12, 3)?;
     let target = format!("{:064x}", 10);
     let concept = personal_id("Moka");
+    tags.materialize(&inputs, &[])?;
+    assert_eq!(
+        tags.prepared
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .learning_methods[&concept],
+        "inactive"
+    );
     let fires = |tags: &AutoTags| -> Result<bool> {
         Ok(tags
             .status(&target, 1, true)?
@@ -344,7 +354,17 @@ fn feedback_retrains_all_photos_and_rebuilds_identical_derived_predictions() -> 
         .tags
         .push("Moka".into());
     // A newly authored tag invalidates every photo, not just the edited one.
-    tags.materialize(&inputs, &[])?;
+    let changes = tags.materialize(&inputs, &[])?.unwrap();
+    assert!(changes.added > 0);
+    assert_eq!(
+        tags.prepared
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .learning_methods[&concept],
+        "similarity"
+    );
     assert!(fires(&tags)?);
     for i in 5..10 {
         inputs
@@ -355,12 +375,22 @@ fn feedback_retrains_all_photos_and_rebuilds_identical_derived_predictions() -> 
     }
     tags.materialize(&inputs, &[])?;
     assert!(fires(&tags)?);
+    assert_eq!(
+        tags.prepared
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .learning_methods[&concept],
+        "learned"
+    );
     inputs
         .get_mut(&target)
         .unwrap()
         .rejections
         .push(concept.clone());
-    tags.materialize(&inputs, &[])?;
+    let changes = tags.materialize(&inputs, &[])?.unwrap();
+    assert!(changes.removed > 0);
     assert!(!fires(&tags)?);
     let weights = tags
         .store

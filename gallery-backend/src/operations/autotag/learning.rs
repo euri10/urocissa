@@ -97,6 +97,19 @@ pub struct Learning {
 }
 
 impl Learning {
+    /// Actual fitted state, rather than a prediction based only on example counts.
+    pub fn method(&self, concept: &str) -> &'static str {
+        if self.classifiers.contains_key(concept) {
+            "learned"
+        } else if self.prototypes.contains_key(concept) {
+            "similarity"
+        } else if self.active.contains(concept) {
+            "builtin"
+        } else {
+            "inactive"
+        }
+    }
+
     /// `photos` may contain only cached, current-version embeddings. IDs canonicalize order;
     /// aliases count once per photo, and a Rejection wins over a contradictory User tag.
     pub fn fit(

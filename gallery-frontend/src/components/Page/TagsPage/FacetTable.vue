@@ -46,7 +46,7 @@ function selectValue(value: string): void {
             {{ item.value }}
           </v-btn>
           <v-btn
-            v-if="props.reviewable && (item.autoCount ?? 0) > 0"
+            v-if="props.reviewable"
             icon="mdi-view-grid-outline" size="small" variant="text"
             :aria-label="`Review ${item.value} across the library`"
             @click="emit('review', item.value)"

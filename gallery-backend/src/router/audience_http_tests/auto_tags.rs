@@ -48,6 +48,7 @@ pub(super) async fn checks(client: &Client) {
             .set(AutoTags::new(store.clone()).unwrap())
             .is_ok()
     );
+    super::recalculation::boundaries(client).await;
 
     let response = owner(client.get(format!("/get/resource/{PUBLIC}")), true)
         .dispatch()
