@@ -18,7 +18,7 @@ use crate::{
     public::{db::tree::TREE, structure::object::ObjectType},
     storage::{
         auto_tags::{ConceptVectors, MaterializedTags, StoredAutoTag},
-        embeddings::EmbeddingStore,
+        embeddings::{EmbeddingStore, StoredEmbedding},
     },
 };
 
@@ -224,49 +224,39 @@ impl AutoTags {
         let mut rows = Vec::new();
         let mut completed = Vec::new();
         let mut changes = recalculation::Changes::default();
-        for (id, input) in inputs {
-            if prepared.seen.get(id) == Some(input) {
-                continue;
-            }
+        let pending: Vec<_> = inputs
+            .iter()
+            .filter(|(id, input)| prepared.seen.get(*id) != Some(*input))
+            .collect();
+        // Read a bounded batch before scoring. Interleaving database page reads
+        // with one GEMM scratch allocation per photo fragments worker heaps.
+        for chunk in pending.chunks(256) {
             worked = true;
-            let Some(embedding) = self
-                .store
-                .get(id, &prepared.model, 0)?
-                .filter(|e| e.thumbnail_version == input.version)
-            else {
+            let mut embedded = Vec::with_capacity(chunk.len());
+            for &(id, input) in chunk {
+                if let Some(embedding) = self
+                    .store
+                    .get(id, &prepared.model, 0)?
+                    .filter(|e| e.thumbnail_version == input.version)
+                {
+                    embedded.push((id, input, embedding));
+                }
                 completed.push((id.clone(), input.clone()));
-                continue;
-            };
-            let user_tags: Vec<_> = input.tags.iter().map(String::as_str).collect();
-            let rejections: Vec<_> = input.rejections.iter().map(String::as_str).collect();
-            let tags: Vec<_> = prepared
-                .engine
-                .tag_photo(&PhotoInput {
-                    embedding: &embedding.vector,
-                    user_tags: &user_tags,
-                    rejections: &rejections,
-                    auto_tags_off: !input.enabled,
-                })?
-                .into_iter()
-                .map(|tag| StoredAutoTag {
-                    concept: tag.concept.to_owned(),
-                    label: tag.label.to_owned(),
-                    confidence: tag.confidence,
-                    displayed: tag.placement == Placement::Displayed,
-                })
-                .collect();
-            changes.compare(self.store.auto_tags(id)?.as_ref(), &tags);
-            rows.push((
-                id.clone(),
-                MaterializedTags {
-                    enabled: input.enabled,
-                    model_id: prepared.model.clone(),
-                    vocabulary_version: self.catalog.version.clone(),
-                    thumbnail_version: input.version,
-                    tags,
-                },
-            ));
-            completed.push((id.clone(), input.clone()));
+            }
+            for ((id, input, _), tags) in embedded.iter().zip(tag_batch(prepared, &embedded)) {
+                let tags = tags?;
+                changes.compare(self.store.auto_tags(id)?.as_ref(), &tags);
+                rows.push((
+                    (*id).clone(),
+                    MaterializedTags {
+                        enabled: input.enabled,
+                        model_id: prepared.model.clone(),
+                        vocabulary_version: self.catalog.version.clone(),
+                        thumbnail_version: input.version,
+                        tags,
+                    },
+                ));
+            }
         }
         self.store.put_auto_tags(&rows)?;
         prepared.seen.retain(|id, _| inputs.contains_key(id));
@@ -291,6 +281,53 @@ impl AutoTags {
             auto_tags_enabled: true,
         })
     }
+}
+
+fn tag_batch(
+    prepared: &Prepared,
+    embedded: &[(&String, &Input, StoredEmbedding)],
+) -> Vec<Result<Vec<StoredAutoTag>>> {
+    let names: Vec<_> = embedded
+        .iter()
+        .map(|(_, input, _)| {
+            (
+                input.tags.iter().map(String::as_str).collect::<Vec<_>>(),
+                input
+                    .rejections
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    let photos: Vec<_> = embedded
+        .iter()
+        .zip(&names)
+        .map(
+            |((_, input, embedding), (user_tags, rejections))| PhotoInput {
+                embedding: &embedding.vector,
+                user_tags,
+                rejections,
+                auto_tags_off: !input.enabled,
+            },
+        )
+        .collect();
+    prepared
+        .engine
+        .tag_library(&photos)
+        .into_iter()
+        .map(|result| {
+            Ok(result?
+                .into_iter()
+                .map(|tag| StoredAutoTag {
+                    concept: tag.concept.to_owned(),
+                    label: tag.label.to_owned(),
+                    confidence: tag.confidence,
+                    displayed: tag.placement == Placement::Displayed,
+                })
+                .collect())
+        })
+        .collect()
 }
 
 fn gallery_inputs() -> Result<(PhotoInputs, TagCounts)> {
@@ -401,6 +438,8 @@ pub fn invalidate() {
 }
 
 mod learning;
+#[cfg(all(test, target_os = "linux"))]
+mod memory_tests;
 pub mod recalculation;
 pub mod review;
 #[cfg(test)]

@@ -138,6 +138,22 @@ read the status or run recalculation; read-only owners can inspect status only.
 
 This source feature does not change the independent rollout acceptance in `.13`.
 
+### Feedback memory regression (.23)
+
+Materialization reads and scores at most 256 cached photo vectors per batch.
+This avoids interleaving thousands of single-photo matrix scratch allocations
+with database reads, which retained large fragmented heaps on production worker
+threads. Authored feedback and the single derived-results commit are unchanged.
+
+The ordinary suite compares batched and individual predictions across multiple
+chunks, including stale/missing embeddings, rejections and disabled photos.
+Run the separate 6,500-photo/30-decision RSS regression alone in the optimized
+Linux production runtime (the limit includes the whole process):
+
+```sh
+cargo test --locked --profile dev-release repeated_feedback_memory -- --ignored --nocapture
+```
+
 ## Local acceptance (2026-11-08)
 
 ### Personal Concepts and learning (.7)

@@ -324,6 +324,66 @@ fn learning_fixture(
 }
 
 #[test]
+fn batched_materialization_matches_individual_predictions_across_chunks() -> Result<()> {
+    let (_dir, tags, mut inputs, model) = learning_fixture(513, 3)?;
+    for (index, input) in inputs.values_mut().enumerate() {
+        input.enabled = index % 13 != 0;
+        if index % 7 == 0 {
+            input.rejections.push("cat".into());
+        }
+        if index % 19 == 0 {
+            input.version = 2; // A stale embedding must not shift adjacent results.
+        }
+    }
+    inputs.insert(
+        "missing-embedding".into(),
+        Input {
+            version: 1,
+            tags: vec![],
+            enabled: true,
+            rejections: vec![],
+        },
+    );
+    assert!(tags.materialize(&inputs, &[])?.is_some());
+    assert!(tags.materialize(&inputs, &[])?.is_none());
+    let guard = tags.prepared.lock().unwrap();
+    let prepared = guard.as_ref().unwrap();
+    for (id, input) in &inputs {
+        let Some(embedding) = tags
+            .store
+            .get(id, &model.model_id, 0)?
+            .filter(|embedding| embedding.thumbnail_version == input.version)
+        else {
+            assert!(tags.store.auto_tags(id)?.is_none());
+            continue;
+        };
+        let user_tags: Vec<_> = input.tags.iter().map(String::as_str).collect();
+        let rejections: Vec<_> = input.rejections.iter().map(String::as_str).collect();
+        let expected: Vec<_> = prepared
+            .engine
+            .tag_photo(&PhotoInput {
+                embedding: &embedding.vector,
+                user_tags: &user_tags,
+                rejections: &rejections,
+                auto_tags_off: !input.enabled,
+            })?
+            .into_iter()
+            .map(|tag| StoredAutoTag {
+                concept: tag.concept.to_owned(),
+                label: tag.label.to_owned(),
+                confidence: tag.confidence,
+                displayed: tag.placement == Placement::Displayed,
+            })
+            .collect();
+        let actual = tags.store.auto_tags(id)?.unwrap();
+        assert_eq!(actual.tags, expected, "photo {id}");
+        assert_eq!(actual.enabled, input.enabled);
+        assert_eq!(actual.thumbnail_version, input.version);
+    }
+    Ok(())
+}
+
+#[test]
 fn feedback_retrains_all_photos_and_rebuilds_identical_derived_predictions() -> Result<()> {
     use crate::operations::autotag::learning::personal_id;
     let (dir, tags, mut inputs, model) = learning_fixture(12, 3)?;
