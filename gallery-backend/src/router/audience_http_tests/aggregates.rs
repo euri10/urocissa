@@ -316,8 +316,52 @@ async fn album_list_checks(client: &Client) {
     TREE.store
         .set_album_audience(OTHER_ALBUM, Audience::Public, false)
         .unwrap();
-    assert_album_list(client, Visitor::Owner, &[ALBUM, OTHER_ALBUM, TRASHED_ALBUM]).await;
+    assert_album_list(client, Visitor::Owner, &[ALBUM, OTHER_ALBUM]).await;
     assert_album_list(client, Visitor::Anonymous, &[ALBUM, OTHER_ALBUM]).await;
+    assert_album_list(client, Visitor::Share, &[ALBUM]).await;
+
+    // Trashing removes destinations, while Trash and Restore retain album contents.
+    for is_trashed in [true, false] {
+        let response = owner(client.get(format!("/get/resource/{ALBUM}")), true)
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        let resource: Value = response.into_json().await.unwrap();
+        assert_eq!(resource["data"]["abstractData"]["isTrashed"], !is_trashed);
+        let response = owner(
+            client.put("/put/edit_flags").json(&serde_json::json!({
+                "indexArray": [0],
+                "timestamp": resource["prefetch"]["timestamp"],
+                "isTrashed": is_trashed,
+            })),
+            true,
+        )
+        .dispatch()
+        .await;
+        assert_eq!(response.status(), Status::Ok);
+        let expected = if is_trashed {
+            vec![OTHER_ALBUM]
+        } else {
+            vec![ALBUM, OTHER_ALBUM]
+        };
+        assert_album_list(client, Visitor::Owner, &expected).await;
+        assert_album_list(client, Visitor::Anonymous, &expected).await;
+        let query = Expression::And(vec![
+            Expression::ExtType("album".into()),
+            Expression::Trashed(is_trashed),
+        ]);
+        let response = owner(client.post("/get/prefetch").json(&query), true)
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        let snapshot: PrefetchReturn = response.into_json().await.unwrap();
+        assert!(hashes(client, &snapshot, true).await.contains(ALBUM));
+        album_counts(client, Visitor::Owner, 3).await;
+        assert_eq!(
+            TREE.store.photo_audiences().unwrap().get(PRIVATE).unwrap(),
+            Audience::Private
+        );
+    }
     assert_album_list(client, Visitor::Share, &[ALBUM]).await;
 
     // A share grants its private album without granting unrelated public albums.

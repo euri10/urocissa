@@ -691,6 +691,7 @@ async fn http_child() {
                 renew_hash_token,
                 edit_share,
                 edit_photo_audience,
+                crate::router::put::edit_flags::edit_flags,
                 crate::router::put::edit_auto_tags::edit_auto_tags,
                 crate::router::put::auto_tag_decision::decide,
                 crate::router::put::auto_tag_decision::preview,

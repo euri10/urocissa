@@ -78,7 +78,9 @@ pub async fn get_albums(auth: GuardResult<GuardShare>) -> AppResult<Json<Vec<Alb
             .map_err(|_| AppError::new(ErrorKind::Internal, "Tree state lock poisoned"))?;
         let mut album_info_list = Vec::new();
         for album in album_list {
-            if !visibility.allows_data(&AbstractData::Album(album.clone()))? {
+            if album.object.is_trashed
+                || !visibility.allows_data(&AbstractData::Album(album.clone()))?
+            {
                 continue;
             }
             let mut has_private_photos = false;
