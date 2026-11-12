@@ -168,7 +168,8 @@ impl Learning {
         }
         let vocabulary = Vocabulary::new(base.dim(), concepts)?;
         for concept in vocabulary.concepts() {
-            let examples = photos
+            // (embedding, owner says positive) for every photo the owner labelled.
+            let labelled = photos
                 .iter()
                 .filter_map(|(_, photo)| {
                     let rejected = photo.rejections.contains(&concept.id.as_str());
@@ -177,14 +178,31 @@ impl Learning {
                             .concept_named(tag)
                             .is_some_and(|c| c.id == concept.id)
                     });
-                    (positive || rejected).then(|| {
-                        let zero_shot = Self::zero_shot(concept, photo.embedding, score);
-                        (photo.embedding, zero_shot, positive && !rejected)
-                    })
+                    (positive || rejected).then_some((photo.embedding, positive && !rejected))
                 })
                 .collect::<Vec<_>>();
-            let positives = examples.iter().filter(|e| e.2).count();
-            if positives >= MIN_EXAMPLES && examples.len() - positives >= MIN_EXAMPLES {
+            let positives = labelled.iter().filter(|e| e.1).count();
+            // An uncalibrated built-in never fires zero-shot, so it can never be shown and
+            // rejected: owner positives alone must activate it, exactly like a personal tag.
+            if !concept.id.starts_with("personal:")
+                && !learning.active.contains(&concept.id)
+                && positives >= MIN_EXAMPLES
+                && let Some(prototype) =
+                    normalized_mean(labelled.iter().filter(|e| e.1).map(|e| e.0), base.dim())
+            {
+                learning.prototypes.insert(concept.id.clone(), prototype);
+            }
+            if positives >= MIN_EXAMPLES && labelled.len() - positives >= MIN_EXAMPLES {
+                let examples = labelled
+                    .iter()
+                    .map(|&(embedding, positive)| {
+                        (
+                            embedding,
+                            learning.zero_shot(concept, embedding, score),
+                            positive,
+                        )
+                    })
+                    .collect::<Vec<_>>();
                 learning
                     .classifiers
                     .insert(concept.id.clone(), Logistic::fit(&examples, base.dim()));
@@ -193,12 +211,24 @@ impl Learning {
         Ok((vocabulary, learning))
     }
 
-    fn zero_shot(concept: &Concept, embedding: &[f32], score: ScoreModel) -> f32 {
-        let similarity = dot(&concept.vector, embedding);
+    /// The prior score a classifier refines. Training and prediction must use the same one:
+    /// similarity to the owner's examples once a Concept matches by them, otherwise the
+    /// built-in prompt's calibrated probability.
+    fn zero_shot(&self, concept: &Concept, embedding: &[f32], score: ScoreModel) -> f32 {
+        match self.similarity_prototype(concept) {
+            Some(prototype) => similarity(prototype, embedding),
+            None => score.probability(dot(&concept.vector, embedding)),
+        }
+    }
+
+    /// Personal Concepts always match by example; calibrated built-ins never do.
+    fn similarity_prototype<'a>(&'a self, concept: &'a Concept) -> Option<&'a [f32]> {
         if concept.id.starts_with("personal:") {
-            sigmoid(12.0 * (similarity - PERSONAL_SIMILARITY))
+            Some(&concept.vector)
+        } else if self.active.contains(&concept.id) {
+            None
         } else {
-            score.probability(similarity)
+            self.prototypes.get(&concept.id).map(Vec::as_slice)
         }
     }
 }
@@ -215,11 +245,9 @@ impl ConceptClassifier for Learning {
     }
 
     fn classify(&self, concept: &Concept, embedding: &[f32], zero_shot: f32) -> Classification {
-        let zero_shot = if concept.id.starts_with("personal:") {
-            sigmoid(12.0 * (dot(&concept.vector, embedding) - PERSONAL_SIMILARITY))
-        } else {
-            zero_shot
-        };
+        let zero_shot = self
+            .similarity_prototype(concept)
+            .map_or(zero_shot, |prototype| similarity(prototype, embedding));
         self.classifiers.get(&concept.id).map_or(
             Classification {
                 probability: zero_shot,
@@ -231,6 +259,22 @@ impl ConceptClassifier for Learning {
             },
         )
     }
+}
+
+/// Probability-like similarity to the owner's examples; 0.5 at cosine [`PERSONAL_SIMILARITY`].
+fn similarity(prototype: &[f32], embedding: &[f32]) -> f32 {
+    sigmoid(12.0 * (dot(prototype, embedding) - PERSONAL_SIMILARITY))
+}
+
+fn normalized_mean<'a>(vectors: impl Iterator<Item = &'a [f32]>, dim: usize) -> Option<Vec<f32>> {
+    let mut mean = vec![0.0; dim];
+    for vector in vectors {
+        for (sum, value) in mean.iter_mut().zip(vector) {
+            *sum += value;
+        }
+    }
+    let norm = dot(&mean, &mean).sqrt();
+    (norm > 1e-6).then(|| mean.into_iter().map(|value| value / norm).collect())
 }
 
 fn dot(left: &[f32], right: &[f32]) -> f32 {

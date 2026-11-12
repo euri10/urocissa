@@ -105,11 +105,13 @@ describe('Concept review', () => {
     expect(html).toContain('Reject selected')
   })
   it.each([
-    ['inactive', 4, 0, 'Tag 1 more photo to start suggesting similar matches.'],
-    ['similarity', 5, 0, 'Matching similar photos using your tagged examples.'],
-    ['learned', 5, 5, 'Learning from your confirmations and rejections.']
-  ] as const)('explains the actual %s learning state', async (learningMode, positiveExamples, negativeExamples, text) => {
-    const app = createSSRApp(ReviewToolbar, { summary: { ...summary, concept: 'personal:fixture', learningMode, positiveExamples, negativeExamples }, total: 0, selected: 0, selecting: false, ready: true, failed: false, canWrite: true })
+    ['personal:fixture', 'inactive', 4, 0, 'Tag 1 more photo to start suggesting similar matches.'],
+    // An uncalibrated built-in learns from tagged examples the same way.
+    ['sunset', 'inactive', 2, 0, 'Tag 3 more photos to start suggesting similar matches.'],
+    ['sunset', 'similarity', 11, 0, 'Matching similar photos using your tagged examples.'],
+    ['personal:fixture', 'learned', 5, 5, 'Learning from your confirmations and rejections.']
+  ] as const)('explains the actual %s %s learning state', async (concept, learningMode, positiveExamples, negativeExamples, text) => {
+    const app = createSSRApp(ReviewToolbar, { summary: { ...summary, concept, learningMode, positiveExamples, negativeExamples }, total: 0, selected: 0, selecting: false, ready: true, failed: false, canWrite: true })
     for (const name of ['VSheet', 'VCardItem', 'VCardTitle', 'VCardSubtitle', 'VChip', 'VBtn']) app.component(name, stub)
     expect(await renderToString(app)).toContain(text)
   })

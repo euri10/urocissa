@@ -26,7 +26,8 @@ gate was not requested and was not run.
 When the optional tagger is configured, photos receive Auto tags from the reviewed,
 calibrated built-in Concept vocabulary. User tags remain authored, filled chips;
 Auto tags are separate outlined sparkle chips with keyboard/hover confidence
-tooltips. Videos are not auto-tagged. Inactive, uncalibrated Concepts never fire.
+tooltips. Videos are not auto-tagged. Uncalibrated Concepts never fire from their
+prompt; they start matching once the owner tags five photos with them (below).
 
 The upload dialog's **Auto-tag** switch starts on and remembers its choice in local
 storage. **Publish immediately** still resets off whenever the dialog reopens.
@@ -119,8 +120,9 @@ failed runs keep the previous successful time and result.
 Every owner tag facet now opens Concept review, including personal Concepts with
 no Auto matches. Review shows current positive/negative example counts and the
 actual fitted learning method: built-in visual detection, personal similarity,
-learned classification, inactive or pending. Four positive personal examples
-explain that one more tagged photo is needed. Five positive and five explicit
+learned classification, inactive or pending. An inactive personal or uncalibrated
+built-in Concept with fewer than five positive examples explains how many more
+tagged photos are needed. Five positive and five explicit
 negative examples permit classification, without promising new matches or better
 accuracy. These are example/processing counts, not measured precision.
 
@@ -152,14 +154,23 @@ is `sigmoid(12 * (cosine - 0.8))`. A degenerate mean stays inactive until a
 classifier can be trained. These are precision-oriented starting defaults, not
 calibrated probabilities or proof of production quality.
 
+An uncalibrated built-in Concept (`threshold: null`, such as sunset or beach) uses
+the same prototype rule from the owner's User tags that name it (`infra-urocissa-autotag-sjfz.20`).
+Without it such a Concept could never learn: it never fires zero-shot, so it never
+shows a suggestion the owner could reject, and the classifier gate needs Rejections.
+Its matches are now rejectable and those Rejections feed the classifier. Calibrated
+built-ins keep their prompt and threshold; owner positives alone do not replace them.
+
 With at least five positive and five explicit negative examples, either a built-in
 or personal Concept uses an L2-regularized, class-balanced logistic classifier over
-the embedding and its fallback score. Positive examples are authored User tags
+the embedding and its fallback score: the prototype similarity for personal and
+owner-activated built-in Concepts, otherwise the calibrated prompt probability.
+Training and prediction use the same fallback. Positive examples are authored User tags
 (including confirmations and built-in aliases); negatives are permanent
 Rejections, including tag removal. Unlabelled photos never count as negatives.
 A conflicting Rejection wins. The learned confidence cutoff is 0.8. Below the
-training gate, built-ins keep their existing calibrated scoring/activation rules
-and personal Concepts keep their gated prototype. Opting a photo out of Auto tags
+training gate, calibrated built-ins keep their scoring/activation rules, and
+personal and uncalibrated built-in Concepts keep their gated prototype. Opting a photo out of Auto tags
 does not discard its authored training examples.
 
 Each feedback batch retrains from cached embeddings and rematerializes the whole

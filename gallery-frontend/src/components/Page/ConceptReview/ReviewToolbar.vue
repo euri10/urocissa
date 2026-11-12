@@ -40,7 +40,7 @@ const emit = defineEmits<{
         {{ summary.learningMode === 'learned' ? 'Learning from your confirmations and rejections.'
           : summary.learningMode === 'similarity' ? 'Matching similar photos using your tagged examples.'
           : summary.learningMode === 'builtin' ? 'Using built-in visual detection.'
-          : summary.learningMode === 'inactive' && summary.concept.startsWith('personal:') && summary.positiveExamples < 5
+          : summary.learningMode === 'inactive' && summary.positiveExamples < 5
             ? `Tag ${5 - summary.positiveExamples} more ${summary.positiveExamples === 4 ? 'photo' : 'photos'} to start suggesting similar matches.`
           : summary.learningMode === 'inactive' ? 'No automatic matches available for this Concept yet.'
           : 'Waiting for learning to update.' }}

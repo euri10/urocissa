@@ -179,3 +179,77 @@ fn multimodal_personal_concept_learns_beyond_its_prototype_deterministically() {
             .is_empty()
     );
 }
+
+#[test]
+fn uncalibrated_builtin_activates_from_owner_positives_alone() {
+    let ids = (0..6).map(|i| i.to_string()).collect::<Vec<_>>();
+    let tagged = photo(&[0.0, 1.0, 0.0], &["cat"], &[]);
+    let score = ScoreModel::new(10.0, -5.0).unwrap();
+    let similar = [0.0, 0.98, 0.198_997_5];
+    let different = [0.0, 0.0, 1.0];
+    let fires = |engine: &AutoTagEngine, embedding: &[f32], rejections: &[&str]| {
+        engine
+            .tag_photo(&photo(embedding, &[], rejections))
+            .unwrap()
+            .iter()
+            .any(|tag| tag.concept == "cat")
+    };
+    for count in [4, 5] {
+        let examples = ids[..count]
+            .iter()
+            .map(|id| (id.as_str(), tagged))
+            .collect::<Vec<_>>();
+        // Uncalibrated (not active): never a zero-shot guess, so no Rejection can ever exist.
+        let (vocabulary, learning) =
+            Learning::fit(&base(), BTreeSet::new(), score, &examples).unwrap();
+        assert_eq!(
+            learning.method("cat"),
+            if count == 5 { "similarity" } else { "inactive" }
+        );
+        assert!(learning.classifiers.is_empty());
+        let engine = AutoTagEngine::new(vocabulary, score).with_classifier(learning);
+        assert_eq!(fires(&engine, &similar, &[]), count == 5);
+        assert!(!fires(&engine, &different, &[]));
+        assert!(
+            !fires(&engine, &similar, &["cat"]),
+            "a Rejection always wins"
+        );
+        // A tagged photo shows its User tag, not a duplicate Auto tag.
+        assert!(engine.tag_photo(&tagged).unwrap().is_empty());
+    }
+    // A calibrated built-in keeps its prompt; owner positives alone do not replace it.
+    let examples = ids[..5]
+        .iter()
+        .map(|id| (id.as_str(), tagged))
+        .collect::<Vec<_>>();
+    let (_, learning) =
+        Learning::fit(&base(), BTreeSet::from(["cat".into()]), score, &examples).unwrap();
+    assert_eq!(learning.method("cat"), "builtin");
+}
+
+#[test]
+fn activated_builtin_learns_finer_distinctions_from_rejections() {
+    let ids = (0..10).map(|i| i.to_string()).collect::<Vec<_>>();
+    let positive = photo(&[0.0, 1.0, 0.0], &["cat"], &[]);
+    let negative = photo(&[0.0, 0.6, 0.8], &[], &["cat"]);
+    let examples = ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.as_str(), if i < 5 { positive } else { negative }))
+        .collect::<Vec<_>>();
+    let score = ScoreModel::new(10.0, -5.0).unwrap();
+    let (vocabulary, learning) = Learning::fit(&base(), BTreeSet::new(), score, &examples).unwrap();
+    assert_eq!(learning.method("cat"), "learned");
+    let engine = AutoTagEngine::new(vocabulary, score).with_classifier(learning);
+    let fires = |embedding: &[f32]| {
+        engine
+            .tag_photo(&photo(embedding, &[], &[]))
+            .unwrap()
+            .iter()
+            .any(|tag| tag.concept == "cat")
+    };
+    // The prompt vector (axis 0) is irrelevant: only the owner's examples decide.
+    assert!(fires(positive.embedding));
+    assert!(!fires(negative.embedding));
+    assert!(!fires(&[1.0, 0.0, 0.0]));
+}
