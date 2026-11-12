@@ -216,6 +216,6 @@ pub(super) async fn checks(
             .unwrap()
             .into_value()
             .tag()
-            .contains("chat")
+            .contains("cat")
     );
 }

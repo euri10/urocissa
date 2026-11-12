@@ -7,8 +7,8 @@ Definitions live in
 records independent release vetoes. This source work does not activate
 Auto tags or backfill on the production library.
 
-Each Concept has a stable ID, English scoring label, French display label,
-optional aliases, parent IDs and a calibrated probability threshold. The whole
+Each Concept has a stable ID, one English label (both the scoring prompt and the
+display name), optional synonyms, parent IDs and a calibrated probability threshold. The whole
 file has a vocabulary version and an exact model ID. Prompts use
 `a photo of {label}`. The gallery must cache their vectors by **both** model ID
 and vocabulary version. A model or prompt change requires new calibration;
@@ -121,8 +121,21 @@ auditable. The independent images never enter selection or evaluation.
 
 Removing a quarantine requires broader verified evidence and fresh independent
 acceptance. Raising a threshold against the failed regression image is not
-recalibration. The built-in name, French label, aliases, hierarchy and authored
+recalibration. The built-in name, synonyms, hierarchy and authored
 User tags remain available while zero-shot guesses are inactive.
+
+### English-only relabel (2026-11-12)
+
+Vocabulary **2026-11-12.1** (schema 2, `infra-urocissa-autotag-sjfz.19`) removes the
+French display labels and the French-only `bicyclette` synonym; the English label is
+now the display name. IDs, prompts, parents, Open Images mappings, thresholds and
+model are unchanged, so the 2026-11-08.3 calibration below still applies.
+`tools/concepts/relabel.json` binds the two: the artifact test checks that it names
+the calibrated report's definition digest and that a digest of every scoring input
+of the current catalog is unchanged. The version bump rebuilds prompt vectors,
+materialized Auto tags and learning. A one-time startup migration
+(`storage/english_tags.rs`) rewrites stored User tags spelled with a former French
+label (`coucher de soleil` → `sunset`); personal tags are untouched.
 
 ### Recorded calibration (2026-11-08)
 
@@ -131,7 +144,7 @@ Concepts. **21** pass both sampled partitions; **20** remain active after the
 independent Flower quarantine. Active Concepts' observed held-out precision
 ranges from **91.3% to 100%**,
 equal-prior precision from **90.6% to 100%**, and recall from **23.4% to 96.6%**.
-Passing examples include animal, foule, chat, chien, oiseau, portrait
+Passing examples include animal, crowd, cat, dog, bird, portrait
 and train.
 The image cache, manifest and inference responses remain local; only aggregate
 measurements are committed. A subsequent run using the generated catalog and
@@ -199,13 +212,13 @@ Sampled metrics and these nine fixtures do not replace the production owner revi
 The Python fixture in CI exercises download/hash checks, the sidecar HTTP
 contract, threshold selection, held-out rejection and cache resume with
 synthetic data. It is not model-quality evidence. Rust tests additionally cover
-schema/policy refusal, French labels, model/vector mismatch, inactive Concepts
+schema/policy refusal, English-only names, model/vector mismatch, inactive Concepts
 and hierarchy expansion. No frontend changed; the opt-in hybrid-scroll gate
 is not required for this work.
 
 ## Sources and licences
 
-The 72 Concept choices, French translations, stable IDs and hierarchy were
+The 72 Concept choices, stable IDs and hierarchy were
 authored for this epic under the repository's licence, using the owner's
 confirmed scope and common photo subjects. English mapping names come from
 Open Images' class descriptions; no third-party vocabulary package was copied.

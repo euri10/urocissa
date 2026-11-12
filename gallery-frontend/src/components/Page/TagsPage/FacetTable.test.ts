@@ -9,7 +9,7 @@ describe('tag facets', () => {
     const reviewed: string[] = []
     const app = createSSRApp(FacetTable, {
       valueLabel: 'Tag', emptyText: 'No tags', reviewable,
-      items: [{ value: 'chat', count: 6, autoCount: 2, userCount: 4 }, { value: 'holiday', count: 3 }],
+      items: [{ value: 'cat', count: 6, autoCount: 2, userCount: 4 }, { value: 'holiday', count: 3 }],
       onReview: (value: string) => reviewed.push(value)
     })
     const stub: FunctionalComponent = (_props, { attrs, slots }) => h('div', attrs, slots.default?.())
@@ -19,13 +19,13 @@ describe('tag facets', () => {
       return h('button', attrs, slots.default?.())
     })
     const html = await renderToString(app)
-    expect(html.includes('Review chat across the library')).toBe(reviewable)
+    expect(html.includes('Review cat across the library')).toBe(reviewable)
     expect(html.includes('Review holiday across the library')).toBe(reviewable)
-    expect(reviewed).toEqual(reviewable ? ['chat', 'holiday'] : [])
+    expect(reviewed).toEqual(reviewable ? ['cat', 'holiday'] : [])
   })
   it('preserves owner split counts and renders ordinary visitor counts', async () => {
     const facets = searchFacetsSchema.parse({ tags: [
-      { value: 'cigogne', count: 29, userCount: 8, autoCount: 23 },
+      { value: 'stork', count: 29, userCount: 8, autoCount: 23 },
       { value: 'holiday', count: 3 }
     ], makes: [], models: [] })
     const app = createSSRApp(FacetTable, { valueLabel: 'Tag', items: facets.tags, emptyText: 'No tags' })

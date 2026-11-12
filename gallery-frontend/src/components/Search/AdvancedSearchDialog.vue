@@ -83,8 +83,8 @@ function submitSearch(): void {
           v-if="canSearchSemantic"
           v-model="criteria.semantic"
           label="Describe a photo"
-          placeholder="e.g. enfant à vélo, sunset on the beach"
-          hint="Searches indexed photos in French or English. Videos and pending photos are excluded."
+          placeholder="e.g. child on a bike, sunset on the beach"
+          hint="Searches indexed photos by description. Videos and pending photos are excluded."
           persistent-hint
           prepend-inner-icon="mdi-image-search-outline"
           variant="outlined"

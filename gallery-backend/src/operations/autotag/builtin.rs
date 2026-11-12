@@ -21,8 +21,8 @@ const REVIEWED_IDS: &str = "person crowd portrait selfie baby child animal bird 
 #[serde(deny_unknown_fields)]
 pub struct BuiltinConcept {
     pub id: String,
+    /// The English name: display label and scoring prompt.
     pub label_en: String,
-    pub label_fr: String,
     #[serde(default)]
     pub synonyms: Vec<String>,
     pub parents: Vec<String>,
@@ -35,8 +35,7 @@ impl BuiltinConcept {
     fn with_vector(&self, vector: Vec<f32>) -> Concept {
         Concept {
             id: self.id.clone(),
-            label_en: self.label_en.clone(),
-            label_fr: self.label_fr.clone(),
+            label: self.label_en.clone(),
             synonyms: self.synonyms.clone(),
             parents: self.parents.clone(),
             // Inactive Concepts still participate in aliases and hierarchy. The
@@ -76,7 +75,7 @@ impl BuiltinCatalog {
 
     pub fn from_json(source: &str) -> Result<Self> {
         let catalog: Self = serde_json::from_str(source).context("invalid built-in vocabulary")?;
-        ensure!(catalog.schema_version == 1, "unsupported vocabulary schema");
+        ensure!(catalog.schema_version == 2, "unsupported vocabulary schema");
         ensure!(
             !catalog.version.trim().is_empty(),
             "missing vocabulary version"

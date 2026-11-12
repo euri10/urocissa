@@ -70,16 +70,16 @@ fn cached_concepts_rematerialize_without_photo_or_text_inference() -> Result<()>
     tags.materialize(&input(true), &[])?;
     assert_eq!(tags.status("photo", 3, true)?.auto_tags, original);
     // Library aliases and per-photo User tags rematerialize without inference.
-    tags.materialize(&input(true), &[("Chat".into(), 1)])?;
+    tags.materialize(&input(true), &[("Cat".into(), 1)])?;
     assert!(
         tags.status("photo", 3, true)?
             .auto_tags
             .iter()
-            .any(|t| t.concept == "cat" && t.label == "Chat")
+            .any(|t| t.concept == "cat" && t.label == "Cat")
     );
     let mut aliased = input(true);
     aliased.get_mut("photo").unwrap().tags.push("cat".into());
-    tags.materialize(&aliased, &[("Chat".into(), 1)])?;
+    tags.materialize(&aliased, &[("Cat".into(), 1)])?;
     assert!(
         !tags
             .status("photo", 3, true)?

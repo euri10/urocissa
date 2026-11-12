@@ -72,7 +72,7 @@ impl OwnerTagIndex {
                     .map(|c| {
                         (
                             c.id.clone(),
-                            aliases.alias(&c.id).unwrap_or(&c.label_fr).to_owned(),
+                            aliases.alias(&c.id).unwrap_or(&c.label).to_owned(),
                         )
                     })
                     .collect::<Vec<_>>();
@@ -123,7 +123,7 @@ impl OwnerTagIndex {
                         |concept| {
                             aliases
                                 .alias(&concept.id)
-                                .unwrap_or(&concept.label_fr)
+                                .unwrap_or(&concept.label)
                                 .to_owned()
                         },
                     );

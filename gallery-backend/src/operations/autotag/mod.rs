@@ -8,10 +8,10 @@
 //!    hidden, fired or implied, whatever its score or classifier, and even when one of the
 //!    photo's User tags names it. A Rejection removes only that Concept: its ancestors may
 //!    still be implied by other present Concepts.
-//! 3. **Alias**: a User tag whose trimmed, Unicode-lowercased text equals a Concept's French
-//!    label, English label or synonym aliases that Concept. A photo carrying the User tag gets
+//! 3. **Alias**: a User tag whose trimmed, Unicode-lowercased text equals a Concept's label
+//!    or synonym aliases that Concept. A photo carrying the User tag gets
 //!    no Auto tag for the Concept (the User tag is what shows). Library-wide, an aliased
-//!    Concept displays the User tag text instead of its French label ([`AliasIndex`]).
+//!    Concept displays the User tag text instead of its label ([`AliasIndex`]).
 //! 4. **Scoring**: zero-shot probability `sigmoid(logit_scale * dot + logit_bias)`; a Concept
 //!    fires when the probability reaches its threshold. A [`ConceptClassifier`] may replace the
 //!    probability and threshold per photo, or make a Concept [`ConceptMode::Inactive`] (it then
@@ -19,7 +19,7 @@
 //! 5. **Hierarchy**: Concepts *present* on the photo are the fired ones plus those aliased by
 //!    its User tags. Every transitive ancestor of a present Concept is recorded but never
 //!    displayed ([`Placement::SuppressedAncestor`] if it fired itself, otherwise
-//!    [`Placement::Implied`]), so `tag:oiseau` still finds storks. Its confidence is the
+//!    [`Placement::Implied`]), so `tag:bird` still finds storks. Its confidence is the
 //!    maximum of its own fired probability and its best present descendant's (an aliasing User
 //!    tag counts as 1). Ancestors present as aliasing User tags get no Auto tag.
 //! 6. **Cap**: the remaining (specific) fired Concepts are ranked by confidence, then Concept
@@ -31,7 +31,7 @@
 //! Each photo yields its Auto tags sorted by confidence descending, then Concept ID. Every tag
 //! matches owner tag search (including parent expansion); only [`Placement::Displayed`] tags are
 //! chips. A detail view may list [`Placement::OverCap`] tags as further specific tags; ancestor
-//! placements exist for search and facets. Labels are the alias override or the French label.
+//! placements exist for search and facets. Labels are the alias override or the Concept label.
 //!
 //! # Determinism and performance
 //!

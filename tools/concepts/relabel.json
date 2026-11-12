@@ -1,0 +1,9 @@
+{
+  "calibrated_definition_sha256": "66054af300c60a1c466ba69352fa2590732dfc335572c67d6f20a22f96a846a8",
+  "calibrated_vocabulary_version": "2026-11-08.3",
+  "issue": "infra-urocissa-autotag-sjfz.19",
+  "reason": "English-only Concepts: French display labels and the French-only synonym removed. IDs, English prompts, parents, Open Images mappings, thresholds and model are unchanged, so the calibration still applies.",
+  "schema_version": 1,
+  "scoring_definition_sha256": "1fd2650f6c1a28fded48df1c46101b3275f0d554047fb37ebdaf6cfffcf1b75d",
+  "vocabulary_version": "2026-11-12.1"
+}

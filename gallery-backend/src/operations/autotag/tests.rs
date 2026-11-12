@@ -17,11 +17,10 @@ fn axis(dim: usize, index: usize) -> Vec<f32> {
     vector
 }
 
-fn concept(id: &str, fr: &str, en: &str, parents: &[&str], axis_index: usize) -> Concept {
+fn concept(id: &str, label: &str, parents: &[&str], axis_index: usize) -> Concept {
     Concept {
         id: id.to_owned(),
-        label_fr: fr.to_owned(),
-        label_en: en.to_owned(),
+        label: label.to_owned(),
         synonyms: Vec::new(),
         parents: parents.iter().map(|&parent| parent.to_owned()).collect(),
         threshold: 0.5,
@@ -30,15 +29,15 @@ fn concept(id: &str, fr: &str, en: &str, parents: &[&str], axis_index: usize) ->
 }
 
 fn fixture_concepts() -> Vec<Concept> {
-    let mut stork = concept("stork", "cigogne", "stork", &["bird"], STORK);
+    let mut stork = concept("stork", "stork", &["bird"], STORK);
     stork.synonyms.push("white stork".to_owned());
     vec![
-        concept("sunset", "coucher de soleil", "sunset", &[], SUNSET),
+        concept("sunset", "sunset", &[], SUNSET),
         stork,
-        concept("dog", "chien", "dog", &["animal"], DOG),
-        concept("bird", "oiseau", "bird", &["animal"], BIRD),
-        concept("beach", "plage", "beach", &[], BEACH),
-        concept("animal", "animal", "animal", &[], ANIMAL),
+        concept("dog", "dog", &["animal"], DOG),
+        concept("bird", "bird", &["animal"], BIRD),
+        concept("beach", "beach", &[], BEACH),
+        concept("animal", "animal", &[], ANIMAL),
     ]
 }
 
@@ -177,26 +176,26 @@ fn rules_table() {
             .reject(&["bird"])
             .expect(&[("animal", Implied, p7), ("stork", Displayed, p7)]),
         Case::new("rejection beats an aliasing User tag", &[])
-            .tags(&["cigogne"])
+            .tags(&["stork"])
             .reject(&["stork"]),
         Case::new("unknown rejection is ignored", &[(BEACH, 0.7)])
             .reject(&["unicorn"])
             .expect(&[("beach", Displayed, p7)]),
         // Alias versus Auto tag.
         Case::new("alias replaces the Auto tag", &[(STORK, 0.9)])
-            .tags(&[" Cigogne "])
+            .tags(&[" Stork "])
             .expect(&[("animal", Implied, 1.0), ("bird", Implied, 1.0)]),
-        Case::new("alias by English label", &[])
+        Case::new("alias by label in any case", &[])
             .tags(&["STORK"])
             .expect(&[("animal", Implied, 1.0), ("bird", Implied, 1.0)]),
         Case::new("alias by synonym", &[])
             .tags(&["White Stork"])
             .expect(&[("animal", Implied, 1.0), ("bird", Implied, 1.0)]),
         Case::new("aliased ancestor needs no Auto tag", &[(STORK, 0.7)])
-            .tags(&["oiseau"])
+            .tags(&["bird"])
             .expect(&[("animal", Implied, 1.0), ("stork", Displayed, p7)]),
         Case::new("aliased leaf suppresses its fired ancestor", &[(BIRD, 0.7)])
-            .tags(&["cigogne"])
+            .tags(&["stork"])
             .expect(&[("animal", Implied, 1.0), ("bird", SuppressedAncestor, 1.0)]),
         Case::new("unrelated User tag", &[(BEACH, 0.7)])
             .tags(&["vacances"])
@@ -204,7 +203,7 @@ fn rules_table() {
         // Auto-tags-off.
         Case::new("auto tags off", &[(STORK, 0.7), (BEACH, 0.7)]).off(),
         Case::new("auto tags off beats an alias", &[])
-            .tags(&["cigogne"])
+            .tags(&["stork"])
             .off(),
     ];
     for case in &cases {
@@ -266,7 +265,7 @@ fn classifier_hook_table() {
                 ..Scripted::default()
             },
             Case::new("inactive Concept still aliases", &[])
-                .tags(&["cigogne"])
+                .tags(&["stork"])
                 .expect(&[("animal", Implied, 1.0), ("bird", Implied, 1.0)]),
         ),
         (
@@ -329,7 +328,7 @@ fn classifier_hook_table() {
                 modes: vec![("beach", Classifier)],
                 decisions: vec![("beach", decide(0.97, 0.1))],
             },
-            Case::new("classifier cannot override an alias", &[(BEACH, 0.9)]).tags(&["plage"]),
+            Case::new("classifier cannot override an alias", &[(BEACH, 0.9)]).tags(&["beach"]),
         ),
     ];
     for (classifier, case) in cases {
@@ -363,8 +362,7 @@ fn cap_keeps_eight_most_confident_specific_tags() {
         .enumerate()
         .map(|(index, &(id, _))| Concept {
             id: id.to_owned(),
-            label_fr: format!("fr {id}"),
-            label_en: format!("en {id}"),
+            label: format!("label {id}"),
             synonyms: Vec::new(),
             parents: if id == "c00" {
                 vec!["root".to_owned()]
@@ -432,7 +430,7 @@ fn threshold_is_inclusive() {
     // Bias 0 and an orthogonal embedding give a probability of exactly 0.5.
     let model = ScoreModel::new(10.0, 0.0).unwrap();
     for (threshold, fires) in [(0.5, true), (0.5_f32.next_up(), false)] {
-        let mut beach = concept("beach", "plage", "beach", &[], BEACH);
+        let mut beach = concept("beach", "beach", &[], BEACH);
         beach.threshold = threshold;
         let engine = AutoTagEngine::new(Vocabulary::new(DIM, vec![beach]).unwrap(), model);
         let embedding = axis(DIM, PAD);
@@ -599,8 +597,7 @@ fn vocabulary_validation_table() {
             "duplicate ID",
             |c| {
                 let mut copy = c[0].clone();
-                copy.label_fr = "autre".to_owned();
-                copy.label_en = "other".to_owned();
+                copy.label = "other".to_owned();
                 c.push(copy);
             },
             AutoTagError::DuplicateConcept {
@@ -608,10 +605,10 @@ fn vocabulary_validation_table() {
             },
         ),
         case(
-            "blank French label",
+            "blank label",
             |c| {
                 let i = position(c, "dog");
-                c[i].label_fr = "  ".to_owned();
+                c[i].label = "  ".to_owned();
             },
             error("dog"),
         ),
@@ -627,12 +624,12 @@ fn vocabulary_validation_table() {
         case(
             "name shared after normalization",
             |c| {
-                let mut puppy = concept("puppy", "chiot", " Chien", &["dog"], DOG);
+                let mut puppy = concept("puppy", " Dog", &["dog"], DOG);
                 puppy.vector = axis(DIM, PAD);
                 c.push(puppy);
             },
             AutoTagError::AmbiguousName {
-                name: "chien".to_owned(),
+                name: "dog".to_owned(),
                 first: "dog".to_owned(),
                 second: "puppy".to_owned(),
             },
@@ -743,19 +740,19 @@ fn score_model_validation_table() {
 fn alias_index_picks_most_used_then_lexicographic() {
     let vocabulary = fixture();
     let library = [
-        ("cigogne", 3),
+        ("stork", 3),
         ("Stork", 5),
         ("vacances", 10),
-        ("chien", 2),
-        ("Chien", 2),
-        ("plage", 0),
+        ("dog", 2),
+        ("Dog", 2),
+        ("beach", 0),
     ];
     let forward = AliasIndex::build(&vocabulary, library);
     let backward = AliasIndex::build(&vocabulary, library.into_iter().rev());
     assert_eq!(forward, backward, "input order must not matter");
     for (concept, alias) in [
         ("stork", Some("Stork")),
-        ("dog", Some("Chien")),
+        ("dog", Some("Dog")),
         ("beach", None),
         ("bird", None),
     ] {
@@ -765,7 +762,7 @@ fn alias_index_picks_most_used_then_lexicographic() {
 }
 
 #[test]
-fn display_label_is_alias_or_french() {
+fn display_label_is_alias_or_concept_label() {
     let vocabulary = fixture();
     let aliases = AliasIndex::build(&vocabulary, [("Stork", 5), ("toutou", 9)]);
     let engine = AutoTagEngine::new(vocabulary, model());
@@ -784,22 +781,22 @@ fn display_label_is_alias_or_french() {
             .map(|tag| (tag.concept.to_owned(), tag.label.to_owned()))
             .collect()
     };
-    let french: Vec<(String, String)> = [
+    let plain: Vec<(String, String)> = [
         ("animal", "animal"),
-        ("bird", "oiseau"),
-        ("stork", "cigogne"),
-        ("beach", "plage"),
+        ("bird", "bird"),
+        ("stork", "stork"),
+        ("beach", "beach"),
     ]
     .map(|(concept, label)| (concept.to_owned(), label.to_owned()))
     .to_vec();
-    assert_eq!(labels(&engine), french);
+    assert_eq!(labels(&engine), plain);
     let engine = engine.with_aliases(&aliases);
-    let mut relabeled = french.clone();
+    let mut relabeled = plain.clone();
     relabeled[2].1 = "Stork".to_owned();
     assert_eq!(labels(&engine), relabeled);
-    // Rebuilding with no aliases restores the French labels.
+    // Rebuilding with no aliases restores the Concept labels.
     let engine = engine.with_aliases(&AliasIndex::default());
-    assert_eq!(labels(&engine), french);
+    assert_eq!(labels(&engine), plain);
 }
 
 #[test]
@@ -816,16 +813,16 @@ fn vocabulary_lookups() {
         ["animal", "beach", "bird", "dog", "stork", "sunset"],
         "sorted by ID"
     );
-    assert_eq!(vocabulary.concept("dog").unwrap().label_fr, "chien");
+    assert_eq!(vocabulary.concept("dog").unwrap().label, "dog");
     assert!(vocabulary.concept("Dog").is_none(), "IDs match exactly");
-    for name in ["cigogne", "  CIGOGNE ", "Stork", "white stork"] {
+    for name in ["stork", "  STORK ", "Stork", "white stork"] {
         assert_eq!(
             vocabulary.concept_named(name).unwrap().id,
             "stork",
             "{name}"
         );
     }
-    assert!(vocabulary.concept_named("cigognes").is_none());
+    assert!(vocabulary.concept_named("storks").is_none());
     let ancestors: Vec<&str> = vocabulary
         .ancestors("stork")
         .map(|concept| concept.id.as_str())
@@ -864,7 +861,7 @@ fn default_engine_is_zero_shot() {
     let embedding = embedding(DIM, &[(STORK, 0.7), (BEACH, 0.55)]);
     let photo = PhotoInput {
         embedding: &embedding,
-        user_tags: &["oiseau"],
+        user_tags: &["bird"],
         rejections: &[],
         auto_tags_off: false,
     };

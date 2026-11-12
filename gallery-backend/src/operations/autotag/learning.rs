@@ -159,8 +159,7 @@ impl Learning {
             }
             concepts.push(Concept {
                 id,
-                label_en: label.clone(),
-                label_fr: label,
+                label,
                 synonyms: vec![],
                 parents: vec![],
                 threshold: 0.5,

@@ -9,27 +9,27 @@ fn source() -> serde_json::Value {
 }
 
 #[test]
-fn embedded_catalog_and_french_sample_validate() {
+fn embedded_catalog_is_english_only() {
     let catalog = BuiltinCatalog::embedded().unwrap();
     let labels: HashMap<_, _> = catalog
         .concepts
         .iter()
-        .map(|c: &BuiltinConcept| (c.id.as_str(), c.label_fr.as_str()))
+        .map(|c: &BuiltinConcept| (c.id.as_str(), c.label_en.as_str()))
         .collect();
-    for (id, fr) in [
-        ("person", "personne"),
-        ("crowd", "foule"),
-        ("baby", "bébé"),
-        ("child", "enfant"),
-        ("bird", "oiseau"),
-        ("stork", "cigogne"),
-        ("protest", "manifestation"),
-        ("banner", "banderole"),
-        ("police", "police"),
-    ] {
-        assert_eq!(labels[id], fr);
-    }
+    assert_eq!(labels["birthday"], "birthday party");
     assert_eq!(catalog.prompts()[0], "a photo of person");
+    let vocabulary = catalog.alias_vocabulary().unwrap();
+    assert_eq!(vocabulary.concept("sunset").unwrap().label, "sunset");
+    assert_eq!(vocabulary.concept_named("Bike").unwrap().id, "bicycle");
+    for french in [
+        "coucher de soleil",
+        "cigogne",
+        "oiseau",
+        "vélo",
+        "bicyclette",
+    ] {
+        assert!(vocabulary.concept_named(french).is_none(), "{french}");
+    }
 }
 
 #[test]
@@ -41,7 +41,20 @@ fn committed_report_and_calibrated_thresholds_match() {
     )))
     .unwrap();
     assert_eq!(report["model"]["model_id"], catalog.model_id);
-    assert_eq!(report["vocabulary_version"], catalog.version);
+    if report["vocabulary_version"] != catalog.version.as_str() {
+        // A display-only relabel keeps the calibrated prompts and thresholds; the Python
+        // artifact test proves the scoring definitions are unchanged.
+        let relabel: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../tools/concepts/relabel.json"
+        )))
+        .unwrap();
+        assert_eq!(
+            relabel["calibrated_vocabulary_version"],
+            report["vocabulary_version"]
+        );
+        assert_eq!(relabel["vocabulary_version"], catalog.version.as_str());
+    }
     assert_eq!(
         report["concepts"].as_object().unwrap().len(),
         catalog.concepts.len()
@@ -91,9 +104,11 @@ fn excluded_attributes_cannot_enter_the_builtin_catalog() {
 #[test]
 fn malformed_catalog_reuses_engine_validation() {
     let mutations: &[fn(&mut serde_json::Value)] = &[
-        |v| v["schema_version"] = 2.into(),
+        |v| v["schema_version"] = 1.into(),
         |v| v["version"] = "".into(),
-        |v| v["concepts"][0]["label_fr"] = "".into(),
+        |v| v["concepts"][0]["label_en"] = "".into(),
+        // French labels cannot come back in through the catalog.
+        |v| v["concepts"][0]["label_fr"] = "personne".into(),
         |v| v["concepts"][1]["id"] = "person".into(),
         |v| v["concepts"][0]["threshold"] = 1.into(),
         |v| v["concepts"][0]["parents"] = serde_json::json!(["missing"]),
@@ -107,13 +122,16 @@ fn malformed_catalog_reuses_engine_validation() {
 }
 
 fn fixture() -> BuiltinCatalog {
-    BuiltinCatalog::from_json(r#"{
-        "schema_version":1,"version":"fixture","model_id":"fixture-model",
+    BuiltinCatalog::from_json(
+        r#"{
+        "schema_version":2,"version":"fixture","model_id":"fixture-model",
         "prompt_template":"a photo of {label}","concepts":[
-        {"id":"animal","label_en":"animal","label_fr":"animal","parents":[],"threshold":null,"open_images":"Animal"},
-        {"id":"bird","label_en":"bird","label_fr":"oiseau","parents":["animal"],"threshold":null,"open_images":"Bird"},
-        {"id":"stork","label_en":"stork","label_fr":"cigogne","parents":["bird"],"threshold":0.8,"open_images":"Stork"}
-        ]}"#).unwrap()
+        {"id":"animal","label_en":"animal","parents":[],"threshold":null,"open_images":"Animal"},
+        {"id":"bird","label_en":"bird","parents":["animal"],"threshold":null,"open_images":"Bird"},
+        {"id":"stork","label_en":"stork","parents":["bird"],"threshold":0.8,"open_images":"Stork"}
+        ]}"#,
+    )
+    .unwrap()
 }
 
 fn vectors() -> HashMap<String, Vec<f32>> {

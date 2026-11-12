@@ -46,7 +46,7 @@ pub enum Placement {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AutoTag<'e> {
     pub concept: &'e str,
-    /// The aliasing User tag text if the library has one, otherwise the French label.
+    /// The aliasing User tag text if the library has one, otherwise the Concept label.
     pub label: &'e str,
     /// The (classifier or zero-shot) probability for fired Concepts. For ancestors, the maximum
     /// of their own fired probability and their best present descendant's confidence, where an
@@ -71,12 +71,12 @@ pub struct AutoTagEngine {
 }
 
 impl AutoTagEngine {
-    /// A zero-shot engine that displays French labels.
+    /// A zero-shot engine that displays Concept labels.
     pub fn new(vocabulary: Vocabulary, model: ScoreModel) -> Self {
         let labels = vocabulary
             .concepts()
             .iter()
-            .map(|concept| concept.label_fr.clone())
+            .map(|concept| concept.label.clone())
             .collect();
         let mut engine = Self {
             vocabulary,
@@ -90,7 +90,7 @@ impl AutoTagEngine {
         engine
     }
 
-    /// Displays each aliased Concept under its library-wide User tag instead of its French
+    /// Displays each aliased Concept under its library-wide User tag instead of its
     /// label. Replaces any previous aliases.
     #[must_use]
     pub fn with_aliases(mut self, aliases: &AliasIndex) -> Self {
@@ -102,7 +102,7 @@ impl AutoTagEngine {
         for (label, concept) in self.labels.iter_mut().zip(self.vocabulary.concepts()) {
             aliases
                 .alias(&concept.id)
-                .unwrap_or(&concept.label_fr)
+                .unwrap_or(&concept.label)
                 .clone_into(label);
         }
     }

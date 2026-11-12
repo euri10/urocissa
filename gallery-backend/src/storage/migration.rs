@@ -35,7 +35,7 @@ pub(crate) fn prepare_storage_at(db_dir: &Path) -> Result<()> {
 
     let current = db_dir.join(V6_DB_NAME);
     if current.exists() {
-        return prepare_audiences(&DataStore::open(&current)?);
+        return prepare_records(&DataStore::open(&current)?);
     }
 
     let migrating = db_dir.join(MIGRATING_DB_NAME);
@@ -52,19 +52,21 @@ pub(crate) fn prepare_storage_at(db_dir: &Path) -> Result<()> {
             "V5 migration completed; V6 database is ready at {}",
             current.display()
         );
-        return prepare_audiences(&DataStore::open(&current)?);
+        return prepare_records(&DataStore::open(&current)?);
     }
 
     // Experimental unversioned files are intentionally ignored. Only the
     // explicitly versioned V5 and V6 paths participate in storage selection.
     info!("Creating a new empty V6 database at {}", current.display());
-    prepare_audiences(&DataStore::initialize_empty(&current)?)?;
+    prepare_records(&DataStore::initialize_empty(&current)?)?;
     Ok(())
 }
 
-fn prepare_audiences(store: &DataStore) -> Result<()> {
+fn prepare_records(store: &DataStore) -> Result<()> {
     store.migrate_photo_audience()?;
-    store.migrate_album_audience()
+    store.migrate_album_audience()?;
+    store.migrate_english_concept_tags()?;
+    Ok(())
 }
 
 fn migrate_v5(source_path: &Path, migrating_path: &Path, current_path: &Path) -> Result<()> {

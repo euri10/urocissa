@@ -28,7 +28,7 @@ async function render(enabled = true, pending = false): Promise<string> {
     type: 'image', id: 'photo', pending: false, width: 10, height: 10, size: 1, ext: 'jpg',
     autoTagsEnabled: enabled, autoTagsPending: pending,
     autoTags: [
-      { concept: 'cat', label: 'chat', confidence: 0.91, displayed: true },
+      { concept: 'cat', label: 'cat', confidence: 0.91, displayed: true },
       { concept: 'animal', label: 'animal', confidence: 0.99, displayed: false }
     ]
   })
@@ -49,30 +49,30 @@ async function render(enabled = true, pending = false): Promise<string> {
 describe('Auto tag chips', () => {
   it('shows only displayed tags as outlined sparkle chips with confidence', async () => {
     const html = await render()
-    expect(html).toContain('chat')
+    expect(html).toContain('cat')
     expect(html).not.toContain('animal')
     expect(html).toContain('variant="outlined"')
     expect(html).toContain('prepend-icon="mdi-auto-fix"')
     expect(html).toContain('Confidence: 91%')
     expect(html).toContain('tabindex="0"')
-    expect(action('Review chat across the library').to).toEqual({ name: 'review', query: { concept: 'cat' } })
+    expect(action('Review cat across the library').to).toEqual({ name: 'review', query: { concept: 'cat' } })
   })
   it('hides stale predictions immediately when turned off', async () => {
     const html = await render(false)
-    expect(html).not.toContain('chat')
+    expect(html).not.toContain('cat')
     expect(html).toContain('Off for this photo')
   })
   it('confirms or permanently rejects the stable Concept through accessible controls', async () => {
     await render()
-    await action('Confirm chat as a User tag').click({ stopPropagation: vi.fn() })
+    await action('Confirm cat as a User tag').click({ stopPropagation: vi.fn() })
     expect(decideAutoTag).toHaveBeenCalledWith('photo', 'cat', 'confirm', 'detailId')
-    await action('Reject chat permanently').click({ stopPropagation: vi.fn() })
+    await action('Reject cat permanently').click({ stopPropagation: vi.fn() })
     expect(decideAutoTag).toHaveBeenCalledWith('photo', 'cat', 'reject', 'detailId')
   })
   it('disables actions in read-only mode', async () => {
     useConfigStore('mainId').config = { isAdmin: true, readOnlyMode: true } as AppConfig
     await render()
-    const control = action('Confirm chat as a User tag')
+    const control = action('Confirm cat as a User tag')
     expect(control.disabled).toBe(true)
     await control.click({ stopPropagation: vi.fn() })
     expect(decideAutoTag).not.toHaveBeenCalled()

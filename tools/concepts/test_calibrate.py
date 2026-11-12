@@ -155,7 +155,7 @@ class CalibrationTests(unittest.TestCase):
                 tool.write_json(root / "catalog.json", {
                     "schema_version": 1, "version": "fixture", "model_id": "fixture",
                     "prompt_template": "a photo of {label}", "concepts": [{
-                        "id": "cat", "label_en": "cat", "label_fr": "chat",
+                        "id": "cat", "label_en": "cat",
                         "open_images": "Cat", "parents": [], "threshold": None}]})
                 args = argparse.Namespace(catalog=root / "catalog.json", dataset_lock=root / "lock.json",
                     cache=root / "cache", output=root / "output", deadline=60,
@@ -207,6 +207,13 @@ class CalibrationTests(unittest.TestCase):
             thread.join(timeout=5)
 
 
+def scoring_definition_sha(catalog):
+    return tool.digest(json.dumps({
+        "model_id": catalog["model_id"], "prompt_template": catalog["prompt_template"],
+        "concepts": [{k: c[k] for k in ("id", "label_en", "parents", "open_images", "threshold")}
+                     for c in catalog["concepts"]]}, sort_keys=True).encode())
+
+
 class CommittedArtifactsTests(unittest.TestCase):
     def test_independent_public_and_neutral_fixtures_reject_false_positives(self):
         catalog = tool.read_json(tool.ROOT / "gallery-backend/assets/concepts.json")
@@ -234,9 +241,19 @@ class CommittedArtifactsTests(unittest.TestCase):
         self.assertEqual(report["dataset"], tool.read_json(Path(tool.__file__).with_name("dataset.lock.json")))
         definitions = {**catalog, "concepts": [{k: v for k, v in c.items() if k != "threshold"}
                                               for c in catalog["concepts"]]}
-        self.assertEqual(report["catalog_definition_sha256"], tool.digest(json.dumps(definitions, sort_keys=True).encode()))
+        definition_sha = tool.digest(json.dumps(definitions, sort_keys=True).encode())
+        if catalog["version"] == report["vocabulary_version"]:
+            self.assertEqual(report["catalog_definition_sha256"], definition_sha)
+        else:
+            # A display-only relabel must leave every scoring input of the calibrated release intact.
+            relabel = tool.read_json(Path(tool.__file__).with_name("relabel.json"))
+            self.assertEqual(relabel["schema_version"], 1)
+            self.assertEqual(relabel["calibrated_vocabulary_version"], report["vocabulary_version"])
+            self.assertEqual(relabel["calibrated_definition_sha256"], report["catalog_definition_sha256"])
+            self.assertEqual(relabel["vocabulary_version"], catalog["version"])
+            self.assertTrue(relabel["issue"] and relabel["reason"])
+            self.assertEqual(relabel["scoring_definition_sha256"], scoring_definition_sha(catalog))
         self.assertEqual(catalog["model_id"], report["model"]["model_id"])
-        self.assertEqual(catalog["version"], report["vocabulary_version"])
         self.assertEqual(report["schema_version"], 3)
         quarantine = tool.release_quarantine(Path(tool.__file__).with_name("release-quarantine.json"),
                                               catalog, report["model"])

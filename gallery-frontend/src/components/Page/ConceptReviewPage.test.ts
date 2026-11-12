@@ -29,7 +29,7 @@ interface State {
   busy: boolean
   error: string | null
 }
-const summary = { concept: 'cat', label: 'chat', positiveExamples: 4, negativeExamples: 3, learningMode: 'builtin' as const }
+const summary = { concept: 'cat', label: 'cat', positiveExamples: 4, negativeExamples: 3, learningMode: 'builtin' as const }
 const stub: FunctionalComponent = (_props, { attrs, slots }) => h('div', attrs, [slots.title?.(), slots.subtitle?.(), slots.default?.()])
 
 beforeEach(() => {
@@ -43,7 +43,7 @@ beforeEach(() => {
   useInitializedStore('mainId').initialized = true
   useCollectionStore('mainId').enterEdit(0)
   useCollectionStore('mainId').addApi(2)
-  vi.mocked(previewAutoTagSelection).mockResolvedValue({ photos: 2, publicPhotos: 1, concepts: [{ concept: 'cat', label: 'chat' }] })
+  vi.mocked(previewAutoTagSelection).mockResolvedValue({ photos: 2, publicPhotos: 1, concepts: [{ concept: 'cat', label: 'cat' }] })
   vi.mocked(decideAutoTag).mockResolvedValue(true)
 })
 

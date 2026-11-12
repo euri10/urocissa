@@ -1,4 +1,4 @@
-//! Library-wide aliases: which User tag text a Concept displays instead of its French label.
+//! Library-wide aliases: which User tag text a Concept displays instead of its label.
 use std::collections::HashMap;
 
 use super::vocabulary::Vocabulary;

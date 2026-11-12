@@ -65,7 +65,7 @@ pub fn concept_choices() -> AppResult<Vec<(String, String)>> {
     Ok(VOCABULARY
         .concepts()
         .iter()
-        .map(|c| (c.id.clone(), c.label_fr.clone()))
+        .map(|c| (c.id.clone(), c.label.clone()))
         .chain(personal)
         .collect())
 }

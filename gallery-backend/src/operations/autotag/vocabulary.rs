@@ -10,10 +10,9 @@ use super::scoring::check_vector;
 pub struct Concept {
     /// Stable ID; also the deterministic tie-break between equal confidences.
     pub id: String,
-    /// The owner-facing label, unless a User tag aliases the Concept library-wide.
-    pub label_fr: String,
-    /// The scoring prompt label.
-    pub label_en: String,
+    /// The English name: the scoring prompt label, and the owner-facing label unless a User tag
+    /// aliases the Concept library-wide.
+    pub label: String,
     /// Further names a User tag may use to alias this Concept.
     pub synonyms: Vec<String>,
     /// Parent Concept IDs. The hierarchy must be acyclic.
@@ -62,9 +61,7 @@ impl Vocabulary {
                     concept: concept.id.clone(),
                 });
             }
-            let names = [&concept.label_fr, &concept.label_en]
-                .into_iter()
-                .chain(&concept.synonyms);
+            let names = std::iter::once(&concept.label).chain(&concept.synonyms);
             for name in names {
                 let name = normalize_name(name);
                 if let Some(&other) = by_name.get(&name) {
@@ -105,8 +102,8 @@ impl Vocabulary {
         self.index_of(id).map(|index| &self.concepts[index])
     }
 
-    /// The Concept a User tag (or a `tag:` search term) names, by normalized French label,
-    /// English label or synonym.
+    /// The Concept a User tag (or a `tag:` search term) names, by normalized label or
+    /// synonym.
     pub fn concept_named(&self, name: &str) -> Option<&Concept> {
         self.index_named(name).map(|index| &self.concepts[index])
     }
@@ -137,7 +134,7 @@ impl Vocabulary {
 }
 
 fn validate_concept(concept: &Concept, dim: usize) -> Result<(), AutoTagError> {
-    let names = [&concept.id, &concept.label_fr, &concept.label_en]
+    let names = [&concept.id, &concept.label]
         .into_iter()
         .chain(&concept.synonyms);
     if names.into_iter().any(|name| name.trim().is_empty()) {

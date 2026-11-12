@@ -34,7 +34,7 @@ pub(super) async fn checks(client: &Client) {
                 thumbnail_version: 7,
                 tags: vec![StoredAutoTag {
                     concept: "cat".into(),
-                    label: "chat".into(),
+                    label: "cat".into(),
                     confidence: 0.91,
                     displayed: true,
                 }],
@@ -57,14 +57,14 @@ pub(super) async fn checks(client: &Client) {
     let record = response.into_json::<Value>().await.unwrap();
     assert_eq!(
         record["data"]["abstractData"]["autoTags"][0]["label"],
-        "chat"
+        "cat"
     );
     assert_eq!(record["data"]["abstractData"]["autoTagsEnabled"], true);
     assert!(
         !record["data"]["abstractData"]["tags"]
             .as_array()
             .unwrap()
-            .contains(&json!("chat"))
+            .contains(&json!("cat"))
     );
     let owner_snapshot = snapshot(client, true, "descending").await;
     let response = owner(client.get(snapshot_path("data", &owner_snapshot)), true)
@@ -73,7 +73,7 @@ pub(super) async fn checks(client: &Client) {
     let rows = response.into_json::<Vec<Value>>().await.unwrap();
     assert!(
         rows.iter()
-            .any(|r| r["abstractData"]["autoTags"][0]["label"] == "chat")
+            .any(|r| r["abstractData"]["autoTags"][0]["label"] == "cat")
     );
 
     for request in [

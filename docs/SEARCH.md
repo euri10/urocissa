@@ -102,7 +102,7 @@ cannot use audience filters. **Clear All** resets Visibility to **All**.
 ### 10. Semantic Search (Owner Only)
 
 With [photo indexing enabled](PHOTO_EMBEDDINGS.md#enable), open **Advanced search →
-Describe a photo** and describe what you want in French or English. Or type:
+Describe a photo** and describe what you want. Or type:
 
 ```
 semantic:"enfant à vélo"
@@ -216,10 +216,10 @@ budget, so run the isolated HTTP gate above for performance acceptance.
 
 ### 12. User and Auto Tags (Owner Only)
 
-Owner `tag:"cigogne"` and `tag:"stork"` searches match the union of User tags
-and current Auto tags. French/English Concept names and synonyms refer to the same
-Concept, ignoring surrounding whitespace and case. Parent queries such as
-`tag:"oiseau"`, `tag:"bird"` and `tag:"animal"` include descendants, including
+Owner `tag:"stork"` and `tag:"Stork"` searches match the union of User tags
+and current Auto tags. Concept names are English; a name and its synonyms (`bike`
+for bicycle) refer to the same Concept, ignoring surrounding whitespace and case.
+Parent queries such as `tag:"bird"` and `tag:"animal"` include descendants, including
 photos whose User tag names a descendant. Custom User tags keep their exact spelling.
 Hidden Auto tags (over the chip cap, suppressed ancestors and implied parents) all
 participate in search and facets. Videos have only User tags.
@@ -227,9 +227,9 @@ participate in search and facets. Videos have only User tags.
 Narrow a tag query by its provenance:
 
 ```
-and(tag:"cigogne", source:user)
+and(tag:"stork", source:user)
 and(tag:"bird", source:"auto", trashed:false)
-or(and(tag:"cigogne", source:user), and(tag:"cat", source:auto))
+or(and(tag:"stork", source:user), and(tag:"cat", source:auto))
 ```
 
 `source:user` and `source:auto` also work alone to find items with any tag from
@@ -240,7 +240,7 @@ query such as `and(tag:false, source:auto)` finds items without Auto tags.
 Tag/source filters can also be combined with semantic and Similar photos searches.
 
 The Tags page shows one row per Concept, using the library's preferred User-tag
-alias or the French label, with counts such as `8 yours + 23 auto`. The API keeps
+alias or the Concept name, with counts such as `8 yours + 23 auto`. The API keeps
 `value` and `count` and adds `userCount` and `autoCount` on owner tag facets only.
 `count` is the deduplicated union, not necessarily the sum: an item may match both
 sources, particularly through parent expansion. Each split count equals a search

@@ -65,7 +65,7 @@ describe('reactive collection prefetch', () => {
   it('requests and refreshes the fixed review snapshot when its Concept changes', async () => {
     const concept = ref<string | undefined>('cat')
     const route = reactive({ query: { sort: 'random' }, params: {}, meta: { level: 1, baseName: 'review' } }) as unknown as RouteLocationNormalizedLoadedGeneric
-    const summary = { concept: 'cat', label: 'chat', positiveExamples: 4, negativeExamples: 3 }
+    const summary = { concept: 'cat', label: 'cat', positiveExamples: 4, negativeExamples: 3 }
     prefetchMock.mockResolvedValue({ ...snapshot(7), conceptReview: summary })
     scope.run(() => { usePrefetch(ref(null), ref(1200), route, 'mainId', { reviewConcept: concept }) })
     await vi.advanceTimersByTimeAsync(100)

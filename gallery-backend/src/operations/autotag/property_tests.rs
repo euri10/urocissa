@@ -105,8 +105,7 @@ impl Scenario {
             };
             concepts.push(Concept {
                 id: format!("c{id:03}"),
-                label_fr: format!("Élan {id}"),
-                label_en: format!("elk {id}"),
+                label: format!("Élan {id}"),
                 synonyms,
                 parents,
                 threshold: rng.random_range(0.05..0.95),
@@ -150,10 +149,9 @@ impl Scenario {
                     format!("vacances {}", rng.random_range(0..5))
                 } else {
                     let concept = &concepts[rng.random_range(0..concept_count)];
-                    let name = match (rng.random_range(0..3), concept.synonyms.first()) {
-                        (0, _) => concept.label_fr.clone(),
+                    let name = match (rng.random_range(0..2), concept.synonyms.first()) {
                         (1, Some(synonym)) => synonym.clone(),
-                        _ => concept.label_en.clone(),
+                        _ => concept.label.clone(),
                     };
                     match rng.random_range(0..3) {
                         0 => name.to_uppercase(),
@@ -272,8 +270,7 @@ fn check_photo(
         .concepts
         .iter()
         .filter(|concept| {
-            [&concept.label_fr, &concept.label_en]
-                .into_iter()
+            std::iter::once(&concept.label)
                 .chain(&concept.synonyms)
                 .any(|name| user_names.contains(&normalize_name(name)))
         })
@@ -292,7 +289,7 @@ fn check_photo(
         assert!(!rejected.contains(tag.concept), "rejected {}", tag.concept);
         assert!(!aliased.contains(tag.concept), "aliased {}", tag.concept);
         assert!(seen.insert(tag.concept), "duplicate {}", tag.concept);
-        assert_eq!(tag.label, by_id[tag.concept].label_fr);
+        assert_eq!(tag.label, by_id[tag.concept].label);
     }
     for pair in tags.windows(2) {
         let order = pair[1]
@@ -548,8 +545,7 @@ fn full_recompute_benchmark() {
     let concepts: Vec<Concept> = (0..CONCEPTS)
         .map(|index| Concept {
             id: format!("concept-{index:04}"),
-            label_fr: format!("libellé {index}"),
-            label_en: format!("label {index}"),
+            label: format!("label {index}"),
             synonyms: Vec::new(),
             // A forest about four levels deep.
             parents: if index >= 50 {

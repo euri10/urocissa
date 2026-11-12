@@ -136,7 +136,7 @@ pub(super) async fn checks(client: &Client) {
     stale_prediction(PUBLIC, "cat");
     assert_eq!(
         decision(client, PUBLIC, "cat", "confirm").await,
-        json!({"photos": 1, "label": "chat"})
+        json!({"photos": 1, "label": "cat"})
     );
     assert_eq!(
         decision(client, PUBLIC, "cat", "confirm").await["photos"],
@@ -151,7 +151,7 @@ pub(super) async fn checks(client: &Client) {
             .unwrap()
             .into_value()
             .tag()
-            .contains("chat")
+            .contains("cat")
     );
     assert_eq!(source_count(client, "cat", TagSource::User).await, 1);
     assert_eq!(source_count(client, "cat", TagSource::Auto).await, 0);
@@ -167,7 +167,7 @@ pub(super) async fn checks(client: &Client) {
             data["data"]["abstractData"]["tags"]
                 .as_array()
                 .unwrap()
-                .contains(&json!("chat"))
+                .contains(&json!("cat"))
         );
     }
     if crate::router::fairing::guard_gallery::public_gallery_enabled() {
@@ -182,7 +182,7 @@ pub(super) async fn checks(client: &Client) {
             data["data"]["abstractData"]["tags"]
                 .as_array()
                 .unwrap()
-                .contains(&json!("chat"))
+                .contains(&json!("cat"))
         );
     }
     TREE.store.set_auto_tags_enabled(&[PUBLIC], false).unwrap();
@@ -195,7 +195,7 @@ pub(super) async fn checks(client: &Client) {
             .unwrap()
             .into_value()
             .tag()
-            .contains("chat")
+            .contains("cat")
     );
     let snapshot = snapshot(client, true, "descending").await;
     let rows = owner(client.get(snapshot_path("data", &snapshot)), true)
@@ -209,7 +209,7 @@ pub(super) async fn checks(client: &Client) {
         .position(|r| r["abstractData"]["id"] == PUBLIC)
         .unwrap();
     assert_eq!(owner(client.put("/put/edit_tag").json(&json!({
-        "timestamp": snapshot.prefetch.timestamp, "selection": {"mode": "explicit", "indices": [index]}, "addTagsArray": [], "removeTagsArray": ["chat"]
+        "timestamp": snapshot.prefetch.timestamp, "selection": {"mode": "explicit", "indices": [index]}, "addTagsArray": [], "removeTagsArray": ["cat"]
     })), true).dispatch().await.status(), Status::Ok);
     assert!(
         !TREE
@@ -221,7 +221,7 @@ pub(super) async fn checks(client: &Client) {
             .unwrap()
             .into_value()
             .tag()
-            .contains("chat")
+            .contains("cat")
     );
     assert!(
         TREE.store
@@ -250,7 +250,7 @@ pub(super) async fn checks(client: &Client) {
             .as_array()
             .unwrap()
             .iter()
-            .any(|tag| tag["value"] == "chat" || tag["value"] == "oiseau")
+            .any(|tag| tag["value"] == "cat" || tag["value"] == "bird")
     );
     let response = owner(client.get(format!("/get/auto-tags/{PUBLIC}")), true)
         .dispatch()
@@ -413,7 +413,7 @@ async fn bulk(client: &Client) {
                         .unwrap()
                         .into_value()
                         .tag()
-                        .contains("chat")
+                        .contains("cat")
                 );
             } else {
                 assert!(

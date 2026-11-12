@@ -6,8 +6,7 @@ fn base() -> Vocabulary {
         3,
         vec![Concept {
             id: "cat".into(),
-            label_en: "cat".into(),
-            label_fr: "chat".into(),
+            label: "cat".into(),
             synonyms: vec![],
             parents: vec![],
             threshold: 0.9,
@@ -33,7 +32,7 @@ fn photo<'a>(
 #[test]
 fn personal_gate_counts_distinct_photos_and_builtin_aliases_never_make_personal_concepts() {
     let ids = (0..5).map(|i| i.to_string()).collect::<Vec<_>>();
-    let input = photo(&[1.0, 0.0, 0.0], &["Moka", " moka ", "CHAT"], &[]);
+    let input = photo(&[1.0, 0.0, 0.0], &["Moka", " moka ", "CAT"], &[]);
     let examples = ids
         .iter()
         .map(|id| (id.as_str(), input))
@@ -68,7 +67,7 @@ fn personal_gate_counts_distinct_photos_and_builtin_aliases_never_make_personal_
 #[test]
 fn classifier_gate_requires_five_explicit_positives_and_negatives() {
     let ids = (0..10).map(|i| i.to_string()).collect::<Vec<_>>();
-    let positive = photo(&[1.0, 0.0, 0.0], &["chat", "cat"], &[]);
+    let positive = photo(&[1.0, 0.0, 0.0], &["Cat", "cat"], &[]);
     let negative = photo(&[0.0, 0.0, 1.0], &[], &["cat"]);
     for (positives, negatives) in [(4, 5), (5, 4), (5, 5)] {
         let mut examples = ids[..positives]

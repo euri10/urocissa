@@ -5,6 +5,7 @@ mod auto_tags_tests;
 pub mod cache;
 pub mod codec;
 pub mod embeddings;
+mod english_tags;
 pub mod legacy_v5;
 pub mod migration;
 pub mod store;

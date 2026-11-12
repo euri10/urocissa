@@ -49,10 +49,10 @@ Both demos are currently in read-only mode, and uploading files or editing tags 
 
 This fork also has an opt-in [background photo embedding index](docs/PHOTO_EMBEDDINGS.md).
 When enabled, owners can [search photos by description](docs/SEARCH.md#10-semantic-search-owner-only)
-in French or English, with relevance and date ordering. Auto tags and similar photos
+with relevance and date ordering. Auto tags and similar photos
 are being delivered in separate slices.
 
-The [built-in Concept vocabulary](docs/CONCEPT_VOCABULARY.md) defines French/English
+The [built-in Concept vocabulary](docs/CONCEPT_VOCABULARY.md) defines English
 Auto tag names and precision-gated thresholds, with a reproducible calibration
 report. The owner-facing Auto tag workflow is a subsequent epic slice.
 

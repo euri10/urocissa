@@ -59,7 +59,7 @@ async fn public_bytes(client: &Client) -> Vec<String> {
             .await;
         assert_eq!(response.status(), Status::Ok);
         bytes.push(response.into_string().await.unwrap());
-        for name in ["cigogne", "stork", "oiseau", "bird", "common-tag"] {
+        for name in ["Stork", "stork", "Bird", "bird", "common-tag"] {
             let response = visitor(
                 client
                     .post("/get/prefetch")
@@ -118,7 +118,7 @@ pub(super) async fn checks(client: &Client, store: &EmbeddingStore) {
             .into_value()
     });
     let mut records = originals.clone();
-    records[0].tag_mut().insert("cigogne".into());
+    records[0].tag_mut().insert("Stork".into());
     records[0].tag_mut().insert("antifa".into());
     records[1].tag_mut().insert("stork".into());
     // Persist only authored fixtures; derived changes below must not alter visitor bytes.
@@ -290,15 +290,15 @@ pub(super) async fn checks(client: &Client, store: &EmbeddingStore) {
         .await
         .is_empty()
     );
-    for name in ["cigogne", "stork", "oiseau", "bird", "animal", " CIGOGNE "] {
+    for name in ["Stork", "stork", "Bird", "bird", "animal", " STORK "] {
         for source in [None, Some(TagSource::User), Some(TagSource::Auto)] {
             let expected: HashSet<_> = match source {
                 None => vec![PUBLIC, PRIVATE, MISSING],
                 Some(TagSource::User) => vec![PUBLIC, PRIVATE],
-                Some(TagSource::Auto) if ["cigogne", "stork", " CIGOGNE "].contains(&name) => {
+                Some(TagSource::Auto) if ["Stork", "stork", " STORK "].contains(&name) => {
                     vec![MISSING]
                 }
-                Some(TagSource::Auto) if ["oiseau", "bird"].contains(&name) => {
+                Some(TagSource::Auto) if ["Bird", "bird"].contains(&name) => {
                     vec![PUBLIC, PRIVATE, MISSING]
                 }
                 Some(TagSource::Auto) => vec![PUBLIC, MISSING],

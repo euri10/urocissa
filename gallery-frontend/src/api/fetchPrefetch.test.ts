@@ -8,7 +8,7 @@ describe('prefetch API', () => {
   })
 
   it('preserves the owner-only review summary and sends its explicit Concept parameter', async () => {
-    const summary = { concept: 'cat', label: 'chat', positiveExamples: 4, negativeExamples: 5 }
+    const summary = { concept: 'cat', label: 'cat', positiveExamples: 4, negativeExamples: 5 }
     const post = vi.spyOn(axios, 'post').mockResolvedValue({ data: { prefetch: { timestamp: 3, dataLength: 2, locateTo: null }, token: 'token', resolvedShareOpt: null, conceptReview: summary } })
     const result = await prefetch(null, '', 'descending', null, undefined, 'cat')
     expect(post.mock.calls[0]?.[2]?.params).toMatchObject({ review_concept: 'cat' })

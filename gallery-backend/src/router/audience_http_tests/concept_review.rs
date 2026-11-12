@@ -74,7 +74,7 @@ pub(super) async fn checks(client: &Client) {
     TREE.store
         .write(|writer| -> anyhow::Result<()> {
             let mut record = writer.get(MISSING)?.unwrap().into_value();
-            record.tag_mut().extend(["Chat".into(), "Moka".into()]);
+            record.tag_mut().extend(["Cat".into(), "Moka".into()]);
             writer.insert(&record)
         })
         .unwrap();
@@ -94,7 +94,7 @@ pub(super) async fn checks(client: &Client) {
         thumbnail_version: version,
         tags: vec![StoredAutoTag {
             concept: "cat".into(),
-            label: "chat".into(),
+            label: "cat".into(),
             confidence,
             displayed: true,
         }],
@@ -113,10 +113,10 @@ pub(super) async fn checks(client: &Client) {
     assert_eq!(ids, vec![PRIVATE, TRASHED, PUBLIC]);
     assert_eq!(
         body["conceptReview"],
-        json!({"concept": "cat", "label": "chat", "positiveExamples": 1, "negativeExamples": 0, "learningMode": "pending"})
+        json!({"concept": "cat", "label": "cat", "positiveExamples": 1, "negativeExamples": 0, "learningMode": "pending"})
     );
     // Labels/aliases resolve to the same stable Concept; explicit sort/filter mixing is refused.
-    assert_eq!(review(client, "Chat").await.1, ids);
+    assert_eq!(review(client, "Cat").await.1, ids);
     for path in [
         "/get/prefetch?review_concept=cat&sort=random",
         "/get/prefetch?review_concept=cat&semantic_selection=stale",

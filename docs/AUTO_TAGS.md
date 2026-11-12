@@ -42,7 +42,7 @@ search or Similar photos. Turning them back on uses cached vectors, including
 while the sidecar is offline.
 
 Each Auto chip has **Confirm** (check) and **Reject** (cross) buttons. Confirmation
-writes the Concept's French label into the ordinary V6 User tags. That tag is
+writes the Concept's English name into the ordinary V6 User tags. That tag is
 visible to visitors on published photos and remains when tagging is disabled or
 the gallery binary is rolled back. Rejection permanently suppresses that stable
 Concept ID on the photo, across recomputes, vocabulary releases and model changes.
@@ -88,7 +88,7 @@ controls and feedback explicit.
   the existing snapshot identity/generation checks and publication lock order.
 - `PUT /put/auto_tag_decision` accepts `{hash, concept, action}` or
   `{timestamp, selection, concept, action}`, with `action: "confirm" | "reject"`.
-  It returns `{photos, label}` using the canonical French label. The owner-only
+  It returns `{photos, label}` using the canonical English name. The owner-only
   `POST /post/auto_tag_selection` previews `{photos, publicPhotos, concepts}` for
   the same target. Decisions synchronously rematerialize from cached vectors;
   no inference is requested, even when the sidecar is offline. Materialization
@@ -218,7 +218,7 @@ ignored), 332 frontend tests, fmt, clippy (baseline warnings only), TypeScript,
 ESLint and the production build. No dependency or custom CSS was added.
 
 HTTP coverage verifies owner-only single/bulk decisions, read-only refusal,
-snapshot validation, ordinary French User tags visible to visitors, permanent
+snapshot validation, ordinary User tags visible to visitors, permanent
 removal feedback, and stale derived search/facet suppression while preparation
 is unavailable. Rejections survive restart, vocabulary/model changes and derived
 file deletion. Slow text preparation does not block decision rematerialization.

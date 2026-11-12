@@ -29,7 +29,7 @@ fn rejections_and_confirmations_are_atomic_and_previous_v6_reader_ignores_new_ta
         object: ObjectSchema::new(id, ObjectType::Image),
         metadata: ImageMetadata::new(id, 10, 32, 24, "jpg".into()),
     });
-    photo.tag_mut().insert("chat".into());
+    photo.tag_mut().insert("cat".into());
     store.write(|writer| {
         writer.insert(&photo)?;
         writer.reject_auto_tag("photo", "dog")
@@ -87,7 +87,7 @@ fn previous_binary_serves_confirmed_user_tags_and_preserves_rejections() -> anyh
         object: ObjectSchema::new(id, ObjectType::Image),
         metadata: ImageMetadata::new(id, 10, 32, 24, "jpg".into()),
     });
-    photo.tag_mut().insert("chat".into());
+    photo.tag_mut().insert("cat".into());
     store.write(|writer| {
         writer.insert(&photo)?;
         writer.reject_auto_tag(id.as_str(), "dog")
@@ -150,7 +150,7 @@ fn previous_binary_serves_confirmed_user_tags_and_preserves_rejections() -> anyh
         response["data"]["abstractData"]["tags"]
             .as_array()
             .unwrap()
-            .contains(&serde_json::json!("chat"))
+            .contains(&serde_json::json!("cat"))
     );
     assert!(!response.to_string().contains("autoTags"));
     drop(child);

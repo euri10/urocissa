@@ -4,8 +4,8 @@ import { generateJsonString } from './generateJson'
 describe('tag provenance expressions', () => {
   it.each(['user', 'auto'])('parses quoted and bare %s source', (source) => {
     for (const value of [source, JSON.stringify(source)]) {
-      expect(JSON.parse(generateJsonString(`and(tag:"cigogne",source:${value})`))).toEqual({
-        And: [{ Tag: 'cigogne' }, { Source: source }]
+      expect(JSON.parse(generateJsonString(`and(tag:"stork",source:${value})`))).toEqual({
+        And: [{ Tag: 'stork' }, { Source: source }]
       })
     }
   })
