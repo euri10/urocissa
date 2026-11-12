@@ -108,8 +108,10 @@ describe('Concept review', () => {
     ['personal:fixture', 'inactive', 4, 0, 'Tag 1 more photo to start suggesting similar matches.'],
     // An uncalibrated built-in learns from tagged examples the same way.
     ['sunset', 'inactive', 2, 0, 'Tag 3 more photos to start suggesting similar matches.'],
-    ['sunset', 'similarity', 11, 0, 'Matching similar photos using your tagged examples.'],
-    ['personal:fixture', 'learned', 5, 5, 'Learning from your confirmations and rejections.']
+    ['sunset', 'similarity', 11, 0, 'Matching photos close to your tagged examples. Each rejection tightens the match.'],
+    // Example matching uses every Rejection immediately: no 5-negative gate to count towards.
+    ['personal:fixture', 'similarity', 43, 2, '2 negative examples'],
+    ['food', 'learned', 5, 5, 'Learning from your confirmations and rejections.']
   ] as const)('explains the actual %s %s learning state', async (concept, learningMode, positiveExamples, negativeExamples, text) => {
     const app = createSSRApp(ReviewToolbar, { summary: { ...summary, concept, learningMode, positiveExamples, negativeExamples }, total: 0, selected: 0, selecting: false, ready: true, failed: false, canWrite: true })
     for (const name of ['VSheet', 'VCardItem', 'VCardTitle', 'VCardSubtitle', 'VChip', 'VBtn']) app.component(name, stub)

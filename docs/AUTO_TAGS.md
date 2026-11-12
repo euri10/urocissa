@@ -69,7 +69,7 @@ controls and feedback explicit.
 - Disposable `db/embeddings.redb`: `concept_vectors_v1` caches text vectors and
   scoring metadata by exact model ID + vocabulary release. `auto_tags_v1` stores
   predictions, confidence, displayed/hidden placement, thumbnail version, and
-  model/vocabulary provenance. `concept_learning_v1` stores derived prototypes and
+  model/vocabulary provenance. `concept_learning_v1` stores derived example sets and
   classifier coefficients under that same model/vocabulary key. Deleting this file
   does not delete preferences, User tags or Rejections.
 - The worker validates vectors and preserves the catalog's calibrated activation
@@ -119,10 +119,11 @@ failed runs keep the previous successful time and result.
 
 Every owner tag facet now opens Concept review, including personal Concepts with
 no Auto matches. Review shows current positive/negative example counts and the
-actual fitted learning method: built-in visual detection, personal similarity,
+actual fitted learning method: built-in visual detection, example similarity,
 learned classification, inactive or pending. An inactive personal or uncalibrated
 built-in Concept with fewer than five positive examples explains how many more
-tagged photos are needed. Five positive and five explicit
+tagged photos are needed. Example similarity uses every Rejection at once, so its
+negative count has no gate. For calibrated built-ins, five positive and five explicit
 negative examples permit classification, without promising new matches or better
 accuracy. These are example/processing counts, not measured precision.
 
@@ -148,30 +149,59 @@ User tag. Album/video tags do not count as photo examples. The existing owner
 confirmation/rejection controls and search/facets also accept these Concepts.
 
 At least five distinct tagged photos with current, valid embeddings are required
-before a personal Concept can auto-apply. Its fallback is the normalized mean of
-those positive embeddings, with a cosine similarity cutoff of 0.8; the confidence
-is `sigmoid(12 * (cosine - 0.8))`. A degenerate mean stays inactive until a
-classifier can be trained. These are precision-oriented starting defaults, not
-calibrated probabilities or proof of production quality.
+before a personal Concept can auto-apply. An uncalibrated built-in Concept
+(`threshold: null`, such as sunset or beach) learns from the owner's User tags that
+name it in the same way (`infra-urocissa-autotag-sjfz.20`): it never fires
+zero-shot, so without this it could never show a suggestion the owner could reject.
+Calibrated built-ins keep their prompt and threshold; owner positives alone do not
+replace them.
 
-An uncalibrated built-in Concept (`threshold: null`, such as sunset or beach) uses
-the same prototype rule from the owner's User tags that name it (`infra-urocissa-autotag-sjfz.20`).
-Without it such a Concept could never learn: it never fires zero-shot, so it never
-shows a suggestion the owner could reject, and the classifier gate needs Rejections.
-Its matches are now rejectable and those Rejections feed the classifier. Calibrated
-built-ins keep their prompt and threshold; owner positives alone do not replace them.
+Both match by the owner's own examples (`infra-urocissa-autotag-sjfz.22`). Let
+`nearest(x)` be a photo's highest cosine similarity to any positive example. A photo
+matches when all three hold:
 
-With at least five positive and five explicit negative examples, either a built-in
-or personal Concept uses an L2-regularized, class-balanced logistic classifier over
-the embedding and its fallback score: the prototype similarity for personal and
-owner-activated built-in Concepts, otherwise the calibrated prompt probability.
-Training and prediction use the same fallback. Positive examples are authored User tags
-(including confirmations and built-in aliases); negatives are permanent
-Rejections, including tag removal. Unlabelled photos never count as negatives.
-A conflicting Rejection wins. The learned confidence cutoff is 0.8. Below the
-training gate, calibrated built-ins keep their scoring/activation rules, and
-personal and uncalibrated built-in Concepts keep their gated prototype. Opting a photo out of Auto tags
-does not discard its authored training examples.
+1. `nearest(x)` is at least the cutoff. The cutoff starts at the 10% quantile of each
+   example's leave-one-out `nearest` similarity: as close to one example as nine in
+   ten examples are to another;
+2. the cutoff is raised to the `nearest` similarity of every rejected photo, so a
+   suggestion must be closer to the examples than anything the owner rejected;
+3. `nearest(x)` exceeds the photo's highest similarity to any rejected photo.
+
+Confidence is `sigmoid(50 * min(nearest - cutoff, nearest - nearest rejection))`, so
+0.5 is the boundary and review's least-confident-first order puts borderline matches
+first. Every Rejection tightens matching immediately, with no five-negative gate.
+Nearest-example matching also finds a Concept whose examples form separate clusters,
+which an averaged prototype misses.
+
+The rule replaced a fixed 0.8 cosine cutoff to the examples' normalized mean. With
+SigLIP2, unrelated photos are routinely 0.7–0.8 similar, so that cutoff matched
+1,074 photos for 19 sunset examples (owner: "most false"), 1,659 for building and
+only 28 for person. A diagnostic over the 6,372-photo beesslc library on 2026-11-12
+compared rules with held-out examples and Rejections. Only aggregate scores left the
+host, and the temporary database copies were deleted:
+
+| Concept (positives/Rejections) | 0.8 to mean | This rule | Held-out positives kept | Held-out Rejections re-suggested |
+|---|---|---|---|---|
+| sunset (43/13) | 1,074* | 20 | 34/43 | 0/13 |
+| building (28/6) | 1,659 | 125 | 6/28 | 1/6 |
+| snow (6/2) | 461 | 22 | 6/6 | 0/2 |
+| person (20/0) | 28 | 215 | 19/20 | – |
+
+\*Measured at 19/9 examples. A visually broad Concept such as building stays weak:
+its examples resemble much of the library, so matching depends on Rejections. A
+Concept with diverse examples and no Rejections can still over-suggest until the
+first Rejections arrive. These are measured starting rules, not calibrated
+probabilities.
+
+With at least five positive and five explicit negative examples, a calibrated
+built-in uses an L2-regularized, class-balanced logistic classifier over the
+embedding and its calibrated prompt probability. Training and prediction use the
+same prior. Positive examples are authored User tags (including confirmations and
+built-in aliases); negatives are permanent Rejections, including tag removal.
+Unlabelled photos never count as negatives. A conflicting Rejection wins. The
+learned confidence cutoff is 0.8. Below the training gate, calibrated built-ins keep
+their scoring and activation rules. Opting a photo out of Auto tags does not discard
+its authored training examples.
 
 Each feedback batch retrains from cached embeddings and rematerializes the whole
 library without inference. Completing/changing an example's embedding also
@@ -185,7 +215,7 @@ even when the tagger is offline.
 
 Local optimized verification: 323 backend tests pass (four opt-in tests ignored),
 including training gates, duplicate/alias counting, deterministic rebuilds, a
-two-cluster Concept missed by its prototype, and real owner HTTP feedback in
+two-cluster Concept, and real owner HTTP feedback in
 public/private gallery modes. A single explicit synthetic benchmark measured
 retraining plus full materialization of 7,100 photos, 768 dimensions and 72 built-in
 Concepts plus one personal Concept at 282 ms. This is a local measurement, not a
@@ -272,8 +302,8 @@ returns the ordinary gallery snapshot plus `conceptReview`: canonical `concept`,
 selections and non-default sorts are refused. Anonymous/share requests are denied
 before Concept lookup. Example counts use current valid embeddings, count each
 photo once, include authored examples on opted-out photos, and let Rejections win
-over conflicting User tags. The toolbar shows progress toward the five-positive /
-five-negative classifier gate; reaching the count is not a quality/rollout approval.
+over conflicting User tags. The toolbar shows progress toward the five-positive gate
+and, for calibrated built-ins, the five-negative classifier gate; reaching the count is not a quality/rollout approval.
 
 Bulk confirm/reject uses the existing feedback endpoints and compact selection
 descriptors. The confirmation preview pins the Concept, selection and snapshot;

@@ -35,17 +35,18 @@ const emit = defineEmits<{
     </v-card-item>
     <v-sheet v-if="summary" color="transparent" class="d-flex flex-wrap ga-2 mb-2" aria-live="polite">
       <v-chip size="small" variant="outlined">{{ summary.positiveExamples < 5 ? `${summary.positiveExamples}/5` : summary.positiveExamples }} positive examples</v-chip>
-      <v-chip size="small" variant="outlined">{{ summary.negativeExamples < 5 ? `${summary.negativeExamples}/5` : summary.negativeExamples }} negative examples</v-chip>
+      <v-chip size="small" variant="outlined">{{ summary.negativeExamples < 5 && summary.learningMode !== 'similarity' ? `${summary.negativeExamples}/5` : summary.negativeExamples }} negative examples</v-chip>
       <v-card-subtitle class="pa-0 text-wrap w-100">
         {{ summary.learningMode === 'learned' ? 'Learning from your confirmations and rejections.'
-          : summary.learningMode === 'similarity' ? 'Matching similar photos using your tagged examples.'
+          : summary.learningMode === 'similarity' ? 'Matching photos close to your tagged examples. Each rejection tightens the match.'
           : summary.learningMode === 'builtin' ? 'Using built-in visual detection.'
           : summary.learningMode === 'inactive' && summary.positiveExamples < 5
             ? `Tag ${5 - summary.positiveExamples} more ${summary.positiveExamples === 4 ? 'photo' : 'photos'} to start suggesting similar matches.`
           : summary.learningMode === 'inactive' ? 'No automatic matches available for this Concept yet.'
           : 'Waiting for learning to update.' }}
-        {{ summary.positiveExamples >= 5 && summary.negativeExamples >= 5
-          ? 'Enough examples for a learned classifier.' : 'Learning finer distinctions needs at least 5 positive and 5 negative examples.' }}
+        {{ summary.learningMode === 'similarity' ? ''
+          : summary.positiveExamples >= 5 && summary.negativeExamples >= 5
+            ? 'Enough examples for a learned classifier.' : 'Learning finer distinctions needs at least 5 positive and 5 negative examples.' }}
         Counts use photos with current embeddings.
       </v-card-subtitle>
     </v-sheet>

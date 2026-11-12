@@ -375,6 +375,7 @@ fn feedback_retrains_all_photos_and_rebuilds_identical_derived_predictions() -> 
     }
     tags.materialize(&inputs, &[])?;
     assert!(fires(&tags)?);
+    // Personal Concepts keep matching by example; Rejections tighten that match directly.
     assert_eq!(
         tags.prepared
             .lock()
@@ -382,7 +383,7 @@ fn feedback_retrains_all_photos_and_rebuilds_identical_derived_predictions() -> 
             .as_ref()
             .unwrap()
             .learning_methods[&concept],
-        "learned"
+        "similarity"
     );
     inputs
         .get_mut(&target)
@@ -395,7 +396,7 @@ fn feedback_retrains_all_photos_and_rebuilds_identical_derived_predictions() -> 
     let weights = tags
         .store
         .learning(&model.model_id, &tags.catalog.version)?;
-    assert!(weights.as_ref().unwrap().classifiers.contains_key(&concept));
+    assert_eq!(weights.as_ref().unwrap().method(&concept), "similarity");
     let original = tags
         .store
         .all_auto_tags()?

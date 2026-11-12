@@ -120,8 +120,21 @@ fn classifier_gate_requires_five_explicit_positives_and_negatives() {
     assert!(learning.classifiers.is_empty());
 }
 
+/// Unit vector at `angle` radians in the (y, z) plane: cosines between two are cos(Δangle).
+fn at(angle: f32) -> [f32; 3] {
+    [0.0, angle.cos(), angle.sin()]
+}
+
+fn fires(engine: &AutoTagEngine, concept: &str, embedding: &[f32], rejections: &[&str]) -> bool {
+    engine
+        .tag_photo(&photo(embedding, &[], rejections))
+        .unwrap()
+        .iter()
+        .any(|tag| tag.concept == concept)
+}
+
 #[test]
-fn multimodal_personal_concept_learns_beyond_its_prototype_deterministically() {
+fn multimodal_personal_concept_matches_each_cluster_deterministically() {
     let ids = (0..10).map(|i| i.to_string()).collect::<Vec<_>>();
     let id = personal_id("Moka");
     let rejected = [&*id];
@@ -145,59 +158,43 @@ fn multimodal_personal_concept_learns_beyond_its_prototype_deterministically() {
         })
         .collect::<Vec<_>>();
     let score = ScoreModel::new(10.0, -5.0).unwrap();
-    let (prototype_vocab, prototype) =
-        Learning::fit(&base(), BTreeSet::new(), score, &examples[..5]).unwrap();
-    let prototype_engine = AutoTagEngine::new(prototype_vocab, score).with_classifier(prototype);
-    let target = photo(positive_b.embedding, &[], &[]);
-    assert!(prototype_engine.tag_photo(&target).unwrap().is_empty());
+    // The examples' mean (axis 0) is near neither cluster; nearest-example matching finds both.
+    for examples in [&examples[..5], &examples[..]] {
+        let (vocabulary, learning) =
+            Learning::fit(&base(), BTreeSet::new(), score, examples).unwrap();
+        assert_eq!(learning.method(&id), "similarity");
+        let engine = AutoTagEngine::new(vocabulary, score).with_classifier(learning);
+        for embedding in [positive_a.embedding, positive_b.embedding] {
+            assert!(fires(&engine, &id, embedding, &[]));
+            assert!(!fires(&engine, &id, embedding, &rejected));
+        }
+        assert!(!fires(&engine, &id, negative.embedding, &[]));
+        assert!(!fires(&engine, &id, &[1.0, 0.0, 0.0], &[]));
+    }
     let (vocabulary, learning) = Learning::fit(&base(), BTreeSet::new(), score, &examples).unwrap();
-    assert!(learning.classifiers.contains_key(&id));
     examples.reverse();
     let (rebuilt, relearned) = Learning::fit(&base(), BTreeSet::new(), score, &examples).unwrap();
     assert_eq!(learning, relearned);
     assert_eq!(vocabulary.concepts(), rebuilt.concepts());
-    let engine = AutoTagEngine::new(vocabulary, score).with_classifier(learning);
-    for embedding in [positive_a.embedding, positive_b.embedding] {
-        assert!(
-            engine
-                .tag_photo(&photo(embedding, &[], &[]))
-                .unwrap()
-                .iter()
-                .any(|t| t.concept == id)
-        );
-        assert!(
-            engine
-                .tag_photo(&photo(embedding, &[], &rejected))
-                .unwrap()
-                .is_empty()
-        );
-    }
-    assert!(
-        engine
-            .tag_photo(&photo(negative.embedding, &[], &[]))
-            .unwrap()
-            .is_empty()
-    );
 }
 
 #[test]
 fn uncalibrated_builtin_activates_from_owner_positives_alone() {
     let ids = (0..6).map(|i| i.to_string()).collect::<Vec<_>>();
-    let tagged = photo(&[0.0, 1.0, 0.0], &["cat"], &[]);
+    let embeddings = [-0.2, -0.1, 0.0, 0.1, 0.2].map(at);
+    let tagged = embeddings
+        .iter()
+        .map(|embedding| photo(embedding, &["cat"], &[]))
+        .collect::<Vec<_>>();
     let score = ScoreModel::new(10.0, -5.0).unwrap();
-    let similar = [0.0, 0.98, 0.198_997_5];
-    let different = [0.0, 0.0, 1.0];
-    let fires = |engine: &AutoTagEngine, embedding: &[f32], rejections: &[&str]| {
-        engine
-            .tag_photo(&photo(embedding, &[], rejections))
-            .unwrap()
-            .iter()
-            .any(|tag| tag.concept == "cat")
-    };
+    // Within the examples' own 0.1 rad spacing of one of them, and well outside it.
+    let similar = at(0.25);
+    let different = at(0.6);
     for count in [4, 5] {
         let examples = ids[..count]
             .iter()
-            .map(|id| (id.as_str(), tagged))
+            .zip(&tagged)
+            .map(|(id, photo)| (id.as_str(), *photo))
             .collect::<Vec<_>>();
         // Uncalibrated (not active): never a zero-shot guess, so no Rejection can ever exist.
         let (vocabulary, learning) =
@@ -208,19 +205,24 @@ fn uncalibrated_builtin_activates_from_owner_positives_alone() {
         );
         assert!(learning.classifiers.is_empty());
         let engine = AutoTagEngine::new(vocabulary, score).with_classifier(learning);
-        assert_eq!(fires(&engine, &similar, &[]), count == 5);
-        assert!(!fires(&engine, &different, &[]));
+        assert_eq!(fires(&engine, "cat", &similar, &[]), count == 5);
+        assert!(!fires(&engine, "cat", &different, &[]));
         assert!(
-            !fires(&engine, &similar, &["cat"]),
+            !fires(&engine, "cat", &[1.0, 0.0, 0.0], &[]),
+            "the prompt is ignored"
+        );
+        assert!(
+            !fires(&engine, "cat", &similar, &["cat"]),
             "a Rejection always wins"
         );
         // A tagged photo shows its User tag, not a duplicate Auto tag.
-        assert!(engine.tag_photo(&tagged).unwrap().is_empty());
+        assert!(engine.tag_photo(&tagged[0]).unwrap().is_empty());
     }
     // A calibrated built-in keeps its prompt; owner positives alone do not replace it.
     let examples = ids[..5]
         .iter()
-        .map(|id| (id.as_str(), tagged))
+        .zip(&tagged)
+        .map(|(id, photo)| (id.as_str(), *photo))
         .collect::<Vec<_>>();
     let (_, learning) =
         Learning::fit(&base(), BTreeSet::from(["cat".into()]), score, &examples).unwrap();
@@ -228,28 +230,55 @@ fn uncalibrated_builtin_activates_from_owner_positives_alone() {
 }
 
 #[test]
-fn activated_builtin_learns_finer_distinctions_from_rejections() {
-    let ids = (0..10).map(|i| i.to_string()).collect::<Vec<_>>();
-    let positive = photo(&[0.0, 1.0, 0.0], &["cat"], &[]);
-    let negative = photo(&[0.0, 0.6, 0.8], &[], &["cat"]);
-    let examples = ids
-        .iter()
-        .enumerate()
-        .map(|(i, id)| (id.as_str(), if i < 5 { positive } else { negative }))
-        .collect::<Vec<_>>();
+fn every_rejection_tightens_example_matching() {
+    let ids = (0..7).map(|i| i.to_string()).collect::<Vec<_>>();
+    // Spread examples: a loose 0.3 rad gap at the edge, 0.1 rad elsewhere.
+    let positives = [-0.6, -0.3, -0.2, -0.1, 0.0].map(at);
     let score = ScoreModel::new(10.0, -5.0).unwrap();
-    let (vocabulary, learning) = Learning::fit(&base(), BTreeSet::new(), score, &examples).unwrap();
-    assert_eq!(learning.method("cat"), "learned");
-    let engine = AutoTagEngine::new(vocabulary, score).with_classifier(learning);
-    let fires = |embedding: &[f32]| {
-        engine
-            .tag_photo(&photo(embedding, &[], &[]))
-            .unwrap()
+    let fit = |rejections: &[[f32; 3]]| {
+        let mut examples = positives
             .iter()
-            .any(|tag| tag.concept == "cat")
+            .map(|embedding| photo(embedding, &["cat"], &[]))
+            .collect::<Vec<_>>();
+        examples.extend(
+            rejections
+                .iter()
+                .map(|embedding| photo(embedding, &[], &["cat"])),
+        );
+        let examples = ids
+            .iter()
+            .map(String::as_str)
+            .zip(examples)
+            .collect::<Vec<_>>();
+        let (vocabulary, learning) =
+            Learning::fit(&base(), BTreeSet::new(), score, &examples).unwrap();
+        assert_eq!(learning.method("cat"), "similarity");
+        AutoTagEngine::new(vocabulary, score).with_classifier(learning)
     };
-    // The prompt vector (axis 0) is irrelevant: only the owner's examples decide.
-    assert!(fires(positive.embedding));
-    assert!(!fires(negative.embedding));
-    assert!(!fires(&[1.0, 0.0, 0.0]));
+    let near = at(0.05);
+    let looser = at(0.2);
+    let opposite = at(-0.8);
+    // No Rejection: the loosest example's 0.3 rad gap is the 10% spread quantile.
+    let engine = fit(&[]);
+    assert!(fires(&engine, "cat", &near, &[]));
+    assert!(fires(&engine, "cat", &looser, &[]));
+    assert!(fires(&engine, "cat", &opposite, &[]));
+    // Rejecting a photo 0.15 rad from the examples raises the bar everywhere to that distance,
+    // and vetoes anything closer to it than to an example.
+    let engine = fit(&[at(0.15)]);
+    assert!(fires(&engine, "cat", &near, &[]));
+    assert!(
+        !fires(&engine, "cat", &looser, &[]),
+        "closer to the Rejection"
+    );
+    assert!(
+        !fires(&engine, "cat", &opposite, &[]),
+        "below the raised bar"
+    );
+    assert!(!fires(&engine, "cat", &at(0.15), &[]));
+    // Two Rejections tighten it further, deterministically.
+    let engine = fit(&[at(0.15), at(-0.65)]);
+    assert!(fires(&engine, "cat", &at(0.02), &[]));
+    assert!(!fires(&engine, "cat", &at(0.08), &[]));
+    assert!(!fires(&engine, "cat", &at(0.12), &[]));
 }

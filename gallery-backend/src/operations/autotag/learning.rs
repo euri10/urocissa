@@ -10,7 +10,10 @@ use super::{
 };
 
 const MIN_EXAMPLES: usize = 5;
-const PERSONAL_SIMILARITY: f32 = 0.8;
+/// Share of the owner's examples allowed to sit farther from the rest than the match cutoff.
+const EXAMPLE_QUANTILE: f32 = 0.1;
+/// Confidence slope per unit of cosine margin; only orders matches, 0.5 is the cutoff.
+const MARGIN_SLOPE: f32 = 50.0;
 
 /// The ID depends on the normalized authored name, never the model or vocabulary release.
 pub fn personal_id(tag: &str) -> String {
@@ -87,12 +90,71 @@ impl Logistic {
     }
 }
 
-/// Derived coefficients/prototypes. Persist only alongside their exact model/vocabulary.
+/// Matching by the owner's own examples, for personal and uncalibrated built-in Concepts.
+///
+/// A photo matches when its nearest positive example is (a) at least as close as the
+/// [`EXAMPLE_QUANTILE`] of the examples' leave-one-out nearest-example similarity, (b) at
+/// least as close as any rejected photo is to the examples, and (c) closer to a positive
+/// than to any rejected photo. Measured on a 6,372-photo `SigLIP2` library, a fixed cosine
+/// cutoff to the examples' mean matched 461–1,659 photos for one Concept and 28 for another,
+/// while this rule kept 20–125 and re-suggested almost no held-out Rejections
+/// (`infra-urocissa-autotag-sjfz.22`). Every Rejection tightens it immediately.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Examples {
+    positives: Vec<Vec<f32>>,
+    rejections: Vec<Vec<f32>>,
+    cutoff: f32,
+}
+
+impl Examples {
+    fn fit(positives: &[&[f32]], rejections: &[&[f32]]) -> Option<Self> {
+        if positives.len() < MIN_EXAMPLES {
+            return None;
+        }
+        let mut spread = (0..positives.len())
+            .map(|i| nearest(positives, positives[i], Some(i)))
+            .collect::<Vec<_>>();
+        spread.sort_by(f32::total_cmp);
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_precision_loss,
+            clippy::cast_sign_loss,
+            reason = "bounded photo counts"
+        )]
+        let quantile = spread[((spread.len() - 1) as f32 * EXAMPLE_QUANTILE) as usize];
+        let cutoff = rejections
+            .iter()
+            .map(|rejection| nearest(positives, rejection, None))
+            .fold(quantile, f32::max);
+        cutoff.is_finite().then(|| Self {
+            positives: positives.iter().map(|v| v.to_vec()).collect(),
+            rejections: rejections.iter().map(|v| v.to_vec()).collect(),
+            cutoff,
+        })
+    }
+
+    fn probability(&self, embedding: &[f32]) -> f32 {
+        let positive = nearest(&self.positives, embedding, None);
+        let rejection = nearest(&self.rejections, embedding, None);
+        sigmoid(MARGIN_SLOPE * (positive - self.cutoff).min(positive - rejection))
+    }
+}
+
+/// Highest cosine to any vector in `set` except `skip`; `-inf` for an empty set.
+fn nearest<V: AsRef<[f32]>>(set: &[V], embedding: &[f32], skip: Option<usize>) -> f32 {
+    set.iter()
+        .enumerate()
+        .filter(|&(index, _)| Some(index) != skip)
+        .map(|(_, vector)| dot(vector.as_ref(), embedding))
+        .fold(f32::NEG_INFINITY, f32::max)
+}
+
+/// Derived coefficients/examples. Persist only alongside their exact model/vocabulary.
 /// On restart we retrain from authored decisions and current embeddings, never stale weights.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Learning {
     active: BTreeSet<String>,
-    prototypes: BTreeMap<String, Vec<f32>>,
+    examples: BTreeMap<String, Examples>,
     pub classifiers: BTreeMap<String, Logistic>,
 }
 
@@ -101,7 +163,7 @@ impl Learning {
     pub fn method(&self, concept: &str) -> &'static str {
         if self.classifiers.contains_key(concept) {
             "learned"
-        } else if self.prototypes.contains_key(concept) {
+        } else if self.examples.contains_key(concept) {
             "similarity"
         } else if self.active.contains(concept) {
             "builtin"
@@ -148,10 +210,10 @@ impl Learning {
             }
             let norm = dot(&prototype, &prototype).sqrt();
             if count >= MIN_EXAMPLES && norm > 1e-6 {
+                // Display/search vector only; matching uses the examples themselves.
                 for value in &mut prototype {
                     *value /= norm;
                 }
-                learning.prototypes.insert(id.clone(), prototype.clone());
             } else {
                 // Inactive placeholder still permits stable aliases and Rejections.
                 prototype.fill(0.0);
@@ -181,24 +243,28 @@ impl Learning {
                     (positive || rejected).then_some((photo.embedding, positive && !rejected))
                 })
                 .collect::<Vec<_>>();
-            let positives = labelled.iter().filter(|e| e.1).count();
-            // An uncalibrated built-in never fires zero-shot, so it can never be shown and
-            // rejected: owner positives alone must activate it, exactly like a personal tag.
-            if !concept.id.starts_with("personal:")
-                && !learning.active.contains(&concept.id)
-                && positives >= MIN_EXAMPLES
-                && let Some(prototype) =
-                    normalized_mean(labelled.iter().filter(|e| e.1).map(|e| e.0), base.dim())
-            {
-                learning.prototypes.insert(concept.id.clone(), prototype);
-            }
-            if positives >= MIN_EXAMPLES && labelled.len() - positives >= MIN_EXAMPLES {
+            let examples_where = |positive: bool| {
+                labelled
+                    .iter()
+                    .filter(|example| example.1 == positive)
+                    .map(|example| example.0)
+                    .collect::<Vec<&[f32]>>()
+            };
+            let (positives, rejections) = (examples_where(true), examples_where(false));
+            // Personal and uncalibrated built-in Concepts have no usable prompt: their examples
+            // decide, and Rejections tighten the match directly (an uncalibrated built-in never
+            // fires zero-shot, so it could otherwise never be shown and rejected).
+            if concept.id.starts_with("personal:") || !learning.active.contains(&concept.id) {
+                if let Some(examples) = Examples::fit(&positives, &rejections) {
+                    learning.examples.insert(concept.id.clone(), examples);
+                }
+            } else if positives.len() >= MIN_EXAMPLES && rejections.len() >= MIN_EXAMPLES {
                 let examples = labelled
                     .iter()
                     .map(|&(embedding, positive)| {
                         (
                             embedding,
-                            learning.zero_shot(concept, embedding, score),
+                            score.probability(dot(&concept.vector, embedding)),
                             positive,
                         )
                     })
@@ -210,32 +276,11 @@ impl Learning {
         }
         Ok((vocabulary, learning))
     }
-
-    /// The prior score a classifier refines. Training and prediction must use the same one:
-    /// similarity to the owner's examples once a Concept matches by them, otherwise the
-    /// built-in prompt's calibrated probability.
-    fn zero_shot(&self, concept: &Concept, embedding: &[f32], score: ScoreModel) -> f32 {
-        match self.similarity_prototype(concept) {
-            Some(prototype) => similarity(prototype, embedding),
-            None => score.probability(dot(&concept.vector, embedding)),
-        }
-    }
-
-    /// Personal Concepts always match by example; calibrated built-ins never do.
-    fn similarity_prototype<'a>(&'a self, concept: &'a Concept) -> Option<&'a [f32]> {
-        if concept.id.starts_with("personal:") {
-            Some(&concept.vector)
-        } else if self.active.contains(&concept.id) {
-            None
-        } else {
-            self.prototypes.get(&concept.id).map(Vec::as_slice)
-        }
-    }
 }
 
 impl ConceptClassifier for Learning {
     fn mode(&self, concept: &Concept) -> ConceptMode {
-        if self.classifiers.contains_key(&concept.id) || self.prototypes.contains_key(&concept.id) {
+        if self.classifiers.contains_key(&concept.id) || self.examples.contains_key(&concept.id) {
             ConceptMode::Classifier
         } else if self.active.contains(&concept.id) {
             ConceptMode::ZeroShot
@@ -245,9 +290,12 @@ impl ConceptClassifier for Learning {
     }
 
     fn classify(&self, concept: &Concept, embedding: &[f32], zero_shot: f32) -> Classification {
-        let zero_shot = self
-            .similarity_prototype(concept)
-            .map_or(zero_shot, |prototype| similarity(prototype, embedding));
+        if let Some(examples) = self.examples.get(&concept.id) {
+            return Classification {
+                probability: examples.probability(embedding),
+                threshold: 0.5,
+            };
+        }
         self.classifiers.get(&concept.id).map_or(
             Classification {
                 probability: zero_shot,
@@ -259,22 +307,6 @@ impl ConceptClassifier for Learning {
             },
         )
     }
-}
-
-/// Probability-like similarity to the owner's examples; 0.5 at cosine [`PERSONAL_SIMILARITY`].
-fn similarity(prototype: &[f32], embedding: &[f32]) -> f32 {
-    sigmoid(12.0 * (dot(prototype, embedding) - PERSONAL_SIMILARITY))
-}
-
-fn normalized_mean<'a>(vectors: impl Iterator<Item = &'a [f32]>, dim: usize) -> Option<Vec<f32>> {
-    let mut mean = vec![0.0; dim];
-    for vector in vectors {
-        for (sum, value) in mean.iter_mut().zip(vector) {
-            *sum += value;
-        }
-    }
-    let norm = dot(&mean, &mean).sqrt();
-    (norm > 1e-6).then(|| mean.into_iter().map(|value| value / norm).collect())
 }
 
 fn dot(left: &[f32], right: &[f32]) -> f32 {
