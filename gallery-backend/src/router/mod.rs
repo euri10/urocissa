@@ -18,6 +18,8 @@ pub use builder::build_rocket;
 
 #[cfg(test)]
 mod anonymous_route_tests;
+#[cfg(all(test, not(feature = "embed-frontend")))]
+mod page_route_tests;
 #[cfg(test)]
 mod public_metadata_http_tests;
 #[cfg(test)]
