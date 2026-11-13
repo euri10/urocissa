@@ -104,18 +104,51 @@ describe('Concept review', () => {
     expect(html).toContain('Confirm selected')
     expect(html).toContain('Reject selected')
   })
+  it.each([28, 2])('explains available matches for inactive building with %i positive examples', async (positiveExamples) => {
+    const app = createSSRApp(ReviewToolbar, {
+      summary: { concept: 'building', label: 'bâtiment', learningMode: 'inactive', positiveExamples, negativeExamples: 2 },
+      total: 286, selected: 0, selecting: false, ready: true, failed: false, canWrite: true
+    })
+    for (const name of ['VSheet', 'VCardItem', 'VCardTitle', 'VCardSubtitle', 'VChip', 'VBtn']) app.component(name, stub)
+    const html = await renderToString(app)
+    expect(html).toContain('bâtiment')
+    expect(html).toContain('286 Auto-tagged photos across the library, including Trash. Least confident first.')
+    expect(html).toContain(`${positiveExamples < 5 ? `${positiveExamples}/5` : positiveExamples} positive examples`)
+    expect(html).toContain('2/5 negative examples')
+    expect(html).not.toContain('No automatic matches available')
+    expect(html).not.toContain('to start suggesting similar matches')
+    expect(html).toContain('Direct learning is not active yet. Matches may come from more specific tags.')
+    expect(html).toContain('Learning finer distinctions needs at least 5 positive and 5 negative examples.')
+    expect(html).toContain('Counts use photos with current embeddings.')
+  })
   it.each([
     ['personal:fixture', 'inactive', 4, 0, 'Tag 1 more photo to start suggesting similar matches.'],
+    ['personal:fixture', 'inactive', 0, 0, 'Tag 5 more photos to start suggesting similar matches.'],
+    ['personal:fixture', 'inactive', 5, 2, 'No automatic matches available for this Concept yet.'],
+    ['building', 'inactive', 28, 2, 'No automatic matches available for this Concept yet.'],
     // An uncalibrated built-in learns from tagged examples the same way.
     ['sunset', 'inactive', 2, 0, 'Tag 3 more photos to start suggesting similar matches.'],
+    ['cat', 'builtin', 4, 3, 'Using built-in visual detection.'],
     ['sunset', 'similarity', 11, 0, 'Matching photos close to your tagged examples. Each rejection tightens the match.'],
     // Example matching uses every Rejection immediately: no 5-negative gate to count towards.
     ['personal:fixture', 'similarity', 43, 2, '2 negative examples'],
-    ['food', 'learned', 5, 5, 'Learning from your confirmations and rejections.']
+    ['food', 'learned', 5, 5, 'Learning from your confirmations and rejections.'],
+    ['building', 'pending', 28, 2, 'Waiting for learning to update.'],
+    ['building', undefined, 28, 2, 'Waiting for learning to update.']
   ] as const)('explains the actual %s %s learning state', async (concept, learningMode, positiveExamples, negativeExamples, text) => {
     const app = createSSRApp(ReviewToolbar, { summary: { ...summary, concept, learningMode, positiveExamples, negativeExamples }, total: 0, selected: 0, selecting: false, ready: true, failed: false, canWrite: true })
     for (const name of ['VSheet', 'VCardItem', 'VCardTitle', 'VCardSubtitle', 'VChip', 'VBtn']) app.component(name, stub)
-    expect(await renderToString(app)).toContain(text)
+    const html = await renderToString(app)
+    expect(html).toContain(text)
+    expect(html).toContain('0 Auto-tagged photos')
+    expect(html).not.toContain('Matches may come from more specific tags.')
+    if (learningMode === 'similarity') {
+      expect(html).not.toContain('5 negative examples')
+    } else if (learningMode === 'learned') {
+      expect(html).toContain('Enough examples for a learned classifier.')
+    } else {
+      expect(html).toContain('Learning finer distinctions needs at least 5 positive and 5 negative examples.')
+    }
   })
   it('never renders the gallery for a visitor', async () => {
     useConfigStore('mainId').config = { isAdmin: false, readOnlyMode: false } as AppConfig
