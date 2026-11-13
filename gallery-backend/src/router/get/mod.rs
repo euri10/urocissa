@@ -32,6 +32,8 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_page::home,
         get_page::upload,
         get_page::home_view,
+        get_page::review,
+        get_page::review_view,
         get_page::tags,
         get_page::favorite,
         get_page::favorite_view,

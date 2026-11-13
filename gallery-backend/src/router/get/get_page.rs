@@ -133,6 +133,16 @@ pub async fn home_view(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+#[get("/review")]
+pub async fn review() -> AppResult<FrontendResponse> {
+    serve_file("index.html").await
+}
+
+#[get("/review/view/<_path..>")]
+pub async fn review_view(_path: PathBuf) -> AppResult<FrontendResponse> {
+    serve_file("index.html").await
+}
+
 #[get("/favorite")]
 pub async fn favorite() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
