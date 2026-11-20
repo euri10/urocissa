@@ -137,6 +137,30 @@ materialized Auto tags and learning. A one-time startup migration
 (`storage/english_tags.rs`) rewrites stored User tags spelled with a former French
 label (`coucher de soleil` → `sunset`); personal tags are untouched.
 
+### Fish and mushroom calibration (2026-11-20)
+
+Vocabulary **2026-11-20.2** adds `fish` as an `animal` child and `mushroom`
+without a parent (mushrooms are fungi, not plants). A full calibration with
+the same locally source-built pinned sidecar selected 6,862 public validation
+images for 75 Concepts. The 73 previous thresholds and the Flower quarantine
+are unchanged; 23 Concepts now have active zero-shot thresholds. Four reviewed
+cat/neutral fixtures also check that neither new Concept fires.
+
+On the selection partition, `fish` detected 34 of 50 verified positives and
+fired on three of 42 verified negatives. On evaluation it detected 22 of 30
+positives and fired on one of 38 negatives. For `mushroom`, selection detected
+37 of 38 positives and none of 17 negatives; evaluation detected 33 of 34
+positives and fired on one of 16 negatives.
+
+A preregistered, disjoint Open Images V7 test used the fixed validation
+thresholds and SHA-256-ranked explicit human annotations (at most 80 positives
+and 80 negatives per Concept, no refill). `fish` detected 48 of 80 positives
+and fired on three of 80 negatives; `mushroom` detected 74 of 80 positives and
+fired on six of 72 negatives. These class-enriched public samples are not
+representative of the owner's library, nor do they demonstrate the broader
+goal of roughly six to eight useful tags per photo. The independent owner
+review and separately approved release remain required.
+
 ### Snail calibration (2026-11-20)
 
 Vocabulary **2026-11-20.1** adds `snail` as an `animal` child. The full

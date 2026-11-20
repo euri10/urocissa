@@ -1,5 +1,5 @@
 {
-  "catalog_definition_sha256": "bbfd28ccbe56a9c75e3c7fcfd144561560cff8ad0ce531b4775fd4e4033df9c9",
+  "catalog_definition_sha256": "c8e5fdfa0e8fa9d155e7df7c9a2962afa002fe70ee315df3a3116466751b5df2",
   "concepts": {
     "airplane": {
       "evaluation": {
@@ -970,6 +970,34 @@
       "status": "dropped",
       "threshold": null
     },
+    "fish": {
+      "evaluation": {
+        "balanced_precision": 0.9653579676674365,
+        "false_positive_rate": 0.02631578947368421,
+        "negative": 38,
+        "positive": 30,
+        "precision": 0.9565217391304348,
+        "predicted": 23,
+        "recall": 0.7333333333333333,
+        "true_positive": 22
+      },
+      "open_images_mid": "/m/0ch_cf",
+      "reason": null,
+      "sample_sha256": "1f4802ab2414a33265a9a12508718ab0f2a8ba490f1e6683e2e2247f90bc9545",
+      "selected_threshold": 0.010498994961380959,
+      "selection": {
+        "balanced_precision": 0.9049429657794678,
+        "false_positive_rate": 0.07142857142857142,
+        "negative": 42,
+        "positive": 50,
+        "precision": 0.918918918918919,
+        "predicted": 37,
+        "recall": 0.68,
+        "true_positive": 34
+      },
+      "status": "calibrated",
+      "threshold": 0.010498994961380959
+    },
     "flag": {
       "evaluation": {
         "balanced_precision": 0.7857142857142857,
@@ -1302,6 +1330,34 @@
       },
       "status": "dropped",
       "threshold": null
+    },
+    "mushroom": {
+      "evaluation": {
+        "balanced_precision": 0.9395017793594305,
+        "false_positive_rate": 0.0625,
+        "negative": 16,
+        "positive": 34,
+        "precision": 0.9705882352941176,
+        "predicted": 34,
+        "recall": 0.9705882352941176,
+        "true_positive": 33
+      },
+      "open_images_mid": "/m/052sf",
+      "reason": null,
+      "sample_sha256": "784f17965273d42b6723bc456a30a3d6637ac830fb1d1a39a6be50799d26dcfb",
+      "selected_threshold": 0.012674135155975819,
+      "selection": {
+        "balanced_precision": 1.0,
+        "false_positive_rate": 0.0,
+        "negative": 17,
+        "positive": 38,
+        "precision": 1.0,
+        "predicted": 37,
+        "recall": 0.9736842105263158,
+        "true_positive": 37
+      },
+      "status": "calibrated",
+      "threshold": 0.012674135155975819
     },
     "park": {
       "evaluation": {
@@ -2039,8 +2095,8 @@
     "split": "validation"
   },
   "images": {
-    "count": 6647,
-    "sha256": "2051a846706ef936110816dd988c99cb77793b248aae6a375917b4f912774dd9"
+    "count": 6862,
+    "sha256": "88cca45f53983f55d291bd1fb2e06b48c5abd8f41177ab1d67197e7d863a234e"
   },
   "method": {
     "equal_prior_precision": "TPR / (TPR + FPR); 0 without both classes or predictions",
@@ -2084,10 +2140,10 @@
       }
     },
     "model_id": "siglip2-base-patch16-224@75de2d55ec2d/fp16-text-int8",
-    "observations_sha256": "fede04da7469e33f6f414f514405ca078cd680c8270c6a1666a0fcf48f574f6e",
+    "observations_sha256": "a2557e20ab251129fec219679dd58537dd2c8cbbc6aa3d76909682d2f622fe3f",
     "schema_version": 1
   },
   "schema_version": 3,
   "tool_sha256": "b21dedda6b378a8dabd3db293e45c986158a328cd596d382cd0bf5634cc83e54",
-  "vocabulary_version": "2026-11-20.1"
+  "vocabulary_version": "2026-11-20.2"
 }
