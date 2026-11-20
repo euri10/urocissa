@@ -168,6 +168,15 @@
       "threshold": 0.026115912944078445
     },
     {
+      "id": "snail",
+      "label_en": "snail",
+      "open_images": "Snail",
+      "parents": [
+        "animal"
+      ],
+      "threshold": 0.1758446842432022
+    },
+    {
       "id": "tree",
       "label_en": "tree",
       "open_images": "Tree",
@@ -557,5 +566,5 @@
   "model_id": "siglip2-base-patch16-224@75de2d55ec2d/fp16-text-int8",
   "prompt_template": "a photo of {label}",
   "schema_version": 2,
-  "version": "2026-11-12.1"
+  "version": "2026-11-20.1"
 }

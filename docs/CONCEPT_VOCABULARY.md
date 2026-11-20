@@ -137,6 +137,23 @@ materialized Auto tags and learning. A one-time startup migration
 (`storage/english_tags.rs`) rewrites stored User tags spelled with a former French
 label (`coucher de soleil` → `sunset`); personal tags are untouched.
 
+### Snail calibration (2026-11-20)
+
+Vocabulary **2026-11-20.1** adds `snail` as an `animal` child. The full
+calibration was rerun against the same pinned SigLIP 2 model, with a
+source-built local sidecar using OpenVINO CPU f32 and two threads. It selected
+6,647 public photos for 73 Concepts. The 72 existing thresholds and the Flower
+quarantine are unchanged; 21 Concepts now have active zero-shot thresholds.
+
+For `snail`, selection detected 14 of 16 verified positives and none of six
+verified negatives. The separate evaluation detected 12 of 18 positives and
+none of 12 negatives. The nine independent release fixtures also test that
+`snail` does not fire. A further preselected Open Images V7 **test** split,
+disjoint from calibration, detected 57 of 80 verified positives and one of 58
+verified negatives at the fixed threshold. These small, label-enriched public
+samples do not establish precision or recall in the owner's library; they do
+not replace the independent owner review or authorize a production rollout.
+
 ### Recorded calibration (2026-11-08)
 
 Vocabulary **2026-11-08.3** processes the same **6,601 public photos** for 72 candidate
@@ -218,7 +235,7 @@ is not required for this work.
 
 ## Sources and licences
 
-The 72 Concept choices, stable IDs and hierarchy were
+The original 72 Concept choices, stable IDs and hierarchy were
 authored for this epic under the repository's licence, using the owner's
 confirmed scope and common photo subjects. English mapping names come from
 Open Images' class descriptions; no third-party vocabulary package was copied.

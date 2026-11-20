@@ -13,15 +13,15 @@ import calibrate as tool
 
 IMAGES = tool.ROOT / "gallery-tagger/tests/fixtures/images"
 ABSENT = {
-    "cat.jpg": ["cloud", "snow", "flower"],
-    "stork_pair.jpg": ["snow"],
-    "stork_fledglings.jpg": ["snow"],
-    "bicycles.jpg": ["snow"],
-    "sunset.jpg": ["snow"],
-    "screenshot.jpg": ["cat", "bird"],
-    "synthetic_gray.jpg": ["cat", "bird", "cloud", "snow"],
-    "synthetic_rgba.png": ["cat", "bird", "cloud", "snow"],
-    "synthetic_tiny.png": ["cat", "bird", "cloud", "snow"],
+    "cat.jpg": ["cloud", "snow", "flower", "snail"],
+    "stork_pair.jpg": ["snow", "snail"],
+    "stork_fledglings.jpg": ["snow", "snail"],
+    "bicycles.jpg": ["snow", "snail"],
+    "sunset.jpg": ["snow", "snail"],
+    "screenshot.jpg": ["cat", "bird", "snail"],
+    "synthetic_gray.jpg": ["cat", "bird", "cloud", "snow", "snail"],
+    "synthetic_rgba.png": ["cat", "bird", "cloud", "snow", "snail"],
+    "synthetic_tiny.png": ["cat", "bird", "cloud", "snow", "snail"],
 }
 PRESENT = {"cat.jpg": ["cat"], "stork_pair.jpg": ["bird"], "stork_fledglings.jpg": ["bird"]}
 

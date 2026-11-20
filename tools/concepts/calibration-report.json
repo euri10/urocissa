@@ -1,5 +1,5 @@
 {
-  "catalog_definition_sha256": "66054af300c60a1c466ba69352fa2590732dfc335572c67d6f20a22f96a846a8",
+  "catalog_definition_sha256": "bbfd28ccbe56a9c75e3c7fcfd144561560cff8ad0ce531b4775fd4e4033df9c9",
   "concepts": {
     "airplane": {
       "evaluation": {
@@ -1663,6 +1663,34 @@
       "status": "calibrated",
       "threshold": 0.04444097727537155
     },
+    "snail": {
+      "evaluation": {
+        "balanced_precision": 1.0,
+        "false_positive_rate": 0.0,
+        "negative": 12,
+        "positive": 18,
+        "precision": 1.0,
+        "predicted": 12,
+        "recall": 0.6666666666666666,
+        "true_positive": 12
+      },
+      "open_images_mid": "/m/0f9_l",
+      "reason": null,
+      "sample_sha256": "bba00c5dc7d225aafb49edff6885e0dca0ac274642c275dce339e5e71f487d4b",
+      "selected_threshold": 0.1758446842432022,
+      "selection": {
+        "balanced_precision": 1.0,
+        "false_positive_rate": 0.0,
+        "negative": 6,
+        "positive": 16,
+        "precision": 1.0,
+        "predicted": 14,
+        "recall": 0.875,
+        "true_positive": 14
+      },
+      "status": "calibrated",
+      "threshold": 0.1758446842432022
+    },
     "snow": {
       "evaluation": {
         "balanced_precision": 0.815165876777251,
@@ -2011,8 +2039,8 @@
     "split": "validation"
   },
   "images": {
-    "count": 6601,
-    "sha256": "b0e6f9437321a245f4aa554f7a40851ac4fe0ffd7d4096e5f67bab0e2c0a048a"
+    "count": 6647,
+    "sha256": "2051a846706ef936110816dd988c99cb77793b248aae6a375917b4f912774dd9"
   },
   "method": {
     "equal_prior_precision": "TPR / (TPR + FPR); 0 without both classes or predictions",
@@ -2056,10 +2084,10 @@
       }
     },
     "model_id": "siglip2-base-patch16-224@75de2d55ec2d/fp16-text-int8",
-    "observations_sha256": "d63e52962ce4ec25229536bafc40f7280729129a9a3b4ac6d18aaefbcd7798db",
+    "observations_sha256": "fede04da7469e33f6f414f514405ca078cd680c8270c6a1666a0fcf48f574f6e",
     "schema_version": 1
   },
   "schema_version": 3,
   "tool_sha256": "b21dedda6b378a8dabd3db293e45c986158a328cd596d382cd0bf5634cc83e54",
-  "vocabulary_version": "2026-11-08.3"
+  "vocabulary_version": "2026-11-20.1"
 }

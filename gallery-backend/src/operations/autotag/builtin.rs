@@ -11,7 +11,7 @@ use super::{AutoTagEngine, Concept, ConceptClassifier, ConceptMode, ScoreModel, 
 // Open Images class from introducing inferred personal attributes. Neutral people,
 // scenes, objects, animals, activities and events are the only built-in Concepts.
 const REVIEWED_IDS: &str = "person crowd portrait selfie baby child animal bird stork duck swan \
-    cat dog horse cow sheep deer butterfly bee tree flower forest mountain beach sea lake river \
+    cat dog horse cow sheep deer butterfly bee snail tree flower forest mountain beach sea lake river \
     waterfall snow sunset rainbow cloud garden park building house castle bridge street bicycle \
     car bus train boat airplane food cake bread pizza fruit coffee beer wine tent campfire hiking \
     swimming skiing cycling concert festival birthday wedding fireworks protest banner police flag \

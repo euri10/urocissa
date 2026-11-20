@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "model_id": "siglip2-base-patch16-224@75de2d55ec2d/fp16-text-int8",
-  "observations_sha256": "d63e52962ce4ec25229536bafc40f7280729129a9a3b4ac6d18aaefbcd7798db",
+  "observations_sha256": "fede04da7469e33f6f414f514405ca078cd680c8270c6a1666a0fcf48f574f6e",
   "concepts": {
     "flower": {
       "issue": "infra-urocissa-autotag-sjfz.17",
