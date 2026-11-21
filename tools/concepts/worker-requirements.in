@@ -1,0 +1,6 @@
+# Public CPU runtime for the optional, network-isolated concept worker.
+torch==2.7.1+cpu
+torchvision==0.22.1+cpu
+transformers==4.53.3
+safetensors==0.5.3
+pillow==13.0.0

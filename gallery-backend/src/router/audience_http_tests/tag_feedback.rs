@@ -70,6 +70,31 @@ async fn source_count(client: &Client, concept: &str, source: TagSource) -> usiz
     reason = "Sequential owner/visitor HTTP acceptance scenario"
 )]
 pub(super) async fn checks(client: &Client) {
+    candidate_decisions(client).await;
+    assert_eq!(
+        owner(
+            client.put("/put/concept_candidate_decision").json(&json!({
+                "hash": ALBUM, "label": "rhubarb", "action": "confirm"
+            })),
+            true,
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::BadRequest
+    );
+    assert_eq!(
+        owner(
+            client.put("/put/concept_candidate_decision").json(&json!({
+                "hash": PUBLIC_VIDEO, "label": "rhubarb", "action": "confirm"
+            })),
+            true,
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::BadRequest
+    );
     for action in ["confirm", "reject"] {
         let body = json!({"hash": PUBLIC, "concept": "cat", "action": action});
         for request in [
@@ -435,6 +460,192 @@ async fn bulk(client: &Client) {
     );
     personal_learning(client).await;
     super::recalculation::checks(client, &records, &store, &model, &vector).await;
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "Sequential owner/visitor candidate feedback scenario"
+)]
+async fn candidate_decisions(client: &Client) {
+    let candidate = |hash: &str, label: &str, action: &str| json!({"hash": hash, "label": label, "action": action});
+    let path = "/put/concept_candidate_decision";
+    let reject = candidate(PUBLIC, "rhubarb", "reject");
+    for request in [
+        client.put(path).json(&reject),
+        client
+            .put(path)
+            .json(&reject)
+            .header(Header::new("x-album-id", ALBUM))
+            .header(Header::new("x-share-id", "fixture-share")),
+    ] {
+        assert_eq!(request.dispatch().await.status(), Status::Unauthorized);
+    }
+    APP_CONFIG
+        .get()
+        .unwrap()
+        .write()
+        .unwrap()
+        .public
+        .read_only_mode = true;
+    assert_eq!(
+        owner(client.put(path).json(&reject), true)
+            .dispatch()
+            .await
+            .status(),
+        Status::MethodNotAllowed
+    );
+    APP_CONFIG
+        .get()
+        .unwrap()
+        .write()
+        .unwrap()
+        .public
+        .read_only_mode = false;
+    for body in [
+        candidate(PUBLIC, " ", "confirm"),
+        candidate(PUBLIC, &"x".repeat(81), "confirm"),
+        candidate(PUBLIC, "bad\nlabel", "reject"),
+        candidate("bad", "rhubarb", "reject"),
+    ] {
+        assert_eq!(
+            owner(client.put(path).json(&body), true)
+                .dispatch()
+                .await
+                .status(),
+            Status::BadRequest,
+            "body: {body}"
+        );
+    }
+    assert_eq!(
+        owner(
+            client.put(path).json(&candidate(PUBLIC, "rhubarb", "skip")),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::UnprocessableEntity
+    );
+    let concept = crate::operations::autotag::learning::personal_id("rhubarb");
+    assert_eq!(
+        owner(client.put(path).json(&reject), true)
+            .dispatch()
+            .await
+            .status(),
+        Status::Ok
+    );
+    assert!(
+        TREE.store
+            .auto_tag_rejections_for(PUBLIC)
+            .unwrap()
+            .contains(&concept)
+    );
+    // A rejected label becomes a personal Concept when positively authored elsewhere.
+    let accept = candidate(PRIVATE, " rhubarb ", "confirm");
+    assert_eq!(
+        owner(client.put(path).json(&accept), true)
+            .dispatch()
+            .await
+            .status(),
+        Status::Ok
+    );
+    assert!(
+        TREE.store
+            .reader()
+            .unwrap()
+            .get(PRIVATE)
+            .unwrap()
+            .unwrap()
+            .into_value()
+            .tag()
+            .contains("rhubarb")
+    );
+    assert!(
+        TREE.store
+            .auto_tag_rejections_for(PUBLIC)
+            .unwrap()
+            .contains(&concept)
+    );
+    // Explicit conflicts never erase existing User tags or permanent Rejections.
+    assert_eq!(
+        owner(
+            client
+                .put(path)
+                .json(&candidate(PRIVATE, "RHUBARB", "reject")),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Conflict
+    );
+    assert_eq!(
+        owner(
+            client
+                .put(path)
+                .json(&candidate(PUBLIC, "rhubarb", "confirm")),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Conflict
+    );
+    assert!(
+        TREE.store
+            .reader()
+            .unwrap()
+            .get(PRIVATE)
+            .unwrap()
+            .unwrap()
+            .into_value()
+            .tag()
+            .contains("rhubarb")
+    );
+    assert!(
+        TREE.store
+            .auto_tag_rejections_for(PUBLIC)
+            .unwrap()
+            .contains(&concept)
+    );
+    let other = crate::operations::tag_feedback::concept_id("stone");
+    assert_eq!(
+        owner(
+            client.put(path).json(&candidate(PUBLIC, "stone", "reject")),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Ok
+    );
+    assert_eq!(
+        owner(
+            client
+                .put(path)
+                .json(&candidate(PUBLIC, "rhubarb", "clearRejection")),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Ok
+    );
+    let rejections = TREE.store.auto_tag_rejections_for(PUBLIC).unwrap();
+    assert!(!rejections.contains(&concept));
+    assert!(rejections.contains(&other));
+    assert_eq!(
+        owner(
+            client
+                .put(path)
+                .json(&candidate(PUBLIC, "rhubarb", "confirm")),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Ok
+    );
 }
 
 async fn personal_learning(client: &Client) {

@@ -367,6 +367,17 @@ impl RecordValuesIter<'_> {
 }
 
 impl RecordWriter<'_> {
+    /// Check an authored rejection inside the same transaction as a candidate decision.
+    pub fn auto_tag_rejected(&self, photo: &str, concept: &str) -> Result<bool> {
+        Ok(self.rejections.get((photo, concept))?.is_some())
+    }
+
+    /// Only an explicit owner action may revoke a prior rejection.
+    pub fn clear_auto_tag_rejection(&mut self, photo: &str, concept: &str) -> Result<()> {
+        self.rejections.remove((photo, concept))?;
+        Ok(())
+    }
+
     /// Written in the same immediate transaction as any accompanying User tag edit.
     pub fn reject_auto_tag(&mut self, photo: &str, concept: &str) -> Result<()> {
         self.rejections.insert((photo, concept), 1)?;
