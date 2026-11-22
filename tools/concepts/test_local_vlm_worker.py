@@ -1,12 +1,76 @@
 import socket
 import tempfile
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 
+import local_vlm_worker
 from local_vlm_worker import candidates, receive, socket_lease
 
 
 class LocalVlmWorkerTests(unittest.TestCase):
+    def test_inference_guard_stops_at_deadline_or_client_disconnect(self):
+        left, right = socket.socketpair()
+        try:
+            guard = local_vlm_worker.InferenceGuard(left, seconds=30)
+            self.assertFalse(guard(None, None))
+            self.assertTrue(local_vlm_worker.InferenceGuard(left, seconds=0)(None, None))
+            right.close()
+            self.assertTrue(guard(None, None))
+        finally:
+            left.close()
+            right.close()
+
+    def test_cancelled_inference_returns_no_partial_output(self):
+        left, right = socket.socketpair()
+        try:
+            guard = local_vlm_worker.InferenceGuard(left, seconds=30)
+            class FakeModel:
+                def generate(self, **kwargs):
+                    right.close()
+                    self.stopped = kwargs["stopping_criteria"][0](None, None)
+                    return "partial"
+            model = FakeModel()
+            with self.assertRaises(TimeoutError):
+                local_vlm_worker.generate_checked(model, {}, guard, nullcontext)
+            self.assertTrue(model.stopped)
+        finally:
+            left.close()
+            right.close()
+
+    def test_abandoned_queued_request_never_starts_generation(self):
+        left, right = socket.socketpair()
+        try:
+            right.close()
+            guard = local_vlm_worker.InferenceGuard(left, seconds=30)
+            class FakeModel:
+                def generate(self, **_kwargs):
+                    raise AssertionError("abandoned request must not generate")
+            with self.assertRaises(TimeoutError):
+                local_vlm_worker.generate_checked(FakeModel(), {}, guard, nullcontext)
+        finally:
+            left.close()
+
+    def test_expired_generation_does_not_return_partial_output(self):
+        left, right = socket.socketpair()
+        try:
+            guard = local_vlm_worker.InferenceGuard(left, seconds=30)
+            class FakeModel:
+                def generate(self, **_kwargs):
+                    guard.deadline = 0
+                    return "partial"
+            with self.assertRaises(TimeoutError):
+                local_vlm_worker.generate_checked(FakeModel(), {}, guard, nullcontext)
+        finally:
+            left.close()
+            right.close()
+
+    def test_processor_uses_a_single_image_patch(self):
+        processor = SimpleNamespace(image_processor=SimpleNamespace(do_image_splitting=True))
+        self.assertIs(local_vlm_worker.configure_processor(processor), processor)
+        self.assertFalse(processor.image_processor.do_image_splitting)
+
     def test_candidates_are_bounded_deduplicated_and_filter_attributes(self):
         self.assertEqual(
             candidates("Tree, tree, rhubarb, elderly woman, 42, garden, black cat."),

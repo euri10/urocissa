@@ -80,6 +80,17 @@ it('keeps uncertain failures unconfirmed and does not mutate when read-only', as
   app.unmount()
 })
 
+it('explains that a failed request may be busy or timed out without saving feedback', async () => {
+  const { app, state } = mount()
+  vi.mocked(requestConceptCandidates).mockRejectedValueOnce(new Error('offline or timeout'))
+  await state.generate()
+  expect(state.error).toContain('busy, or the request took too long')
+  expect(state.error).toContain('try again')
+  expect(state.candidates).toEqual([])
+  expect(decideConceptCandidate).not.toHaveBeenCalled()
+  app.unmount()
+})
+
 it('undoes only an explicitly rejected candidate', async () => {
   const { app, state } = mount()
   await state.generate()

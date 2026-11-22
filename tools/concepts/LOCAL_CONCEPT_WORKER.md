@@ -54,6 +54,13 @@ owner-entered tags are not restricted. The owner must review every candidate.
 Do not log photos, suggestions, or personal data. No automated labeling or
 feedback is performed.
 
+The processor uses one overview image patch to reduce CPU latency; small
+details may be missed. Generation checks for a disconnected caller and a
+90-second deadline between generated tokens, and never returns partial results
+after cancellation. A single in-progress PyTorch operation cannot be
+interrupted by this cooperative guard. See `benchmarks/concept-timeout/LEDGER.md`
+for public-fixture measurements and their limits.
+
 One development workstation test used SmolVLM-500M-Instruct revision
 `753c1752602b5e739af7a7fa6947a635051897a3` and a 973 MiB weights file with
 SHA-256 `d05b567eeaf534e83d375551f068ed57b5f52d37c657197f644af5ef9db091a2`.
