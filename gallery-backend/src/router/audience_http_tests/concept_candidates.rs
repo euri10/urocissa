@@ -39,25 +39,26 @@ pub(super) async fn checks(client: &Client) {
     let socket = std::env::var_os("UROCISSA_CONCEPT_SOCKET").unwrap();
     let listener = UnixListener::bind(socket).unwrap();
     let worker = std::thread::spawn(move || {
-        let (mut stream, _) = listener.accept().unwrap();
-        let mut header = [0; 4];
-        stream.read_exact(&mut header).unwrap();
-        let mut image = vec![0; u32::from_be_bytes(header) as usize];
-        stream.read_exact(&mut image).unwrap();
-        assert_eq!(image, b"fixture-media");
-        let reply = br#"{"candidates":["tree","rhubarb"]}"#;
-        stream
-            .write_all(&u32::try_from(reply.len()).unwrap().to_be_bytes())
-            .unwrap();
-        stream.write_all(reply).unwrap();
+        for _ in 0..3 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut header = [0; 4];
+            stream.read_exact(&mut header).unwrap();
+            let mut image = vec![0; u32::from_be_bytes(header) as usize];
+            stream.read_exact(&mut image).unwrap();
+            assert_eq!(image, b"fixture-media");
+            let reply = br#"{"candidates":["bicycle","rhubarb"]}"#;
+            stream
+                .write_all(&u32::try_from(reply.len()).unwrap().to_be_bytes())
+                .unwrap();
+            stream.write_all(reply).unwrap();
+        }
     });
     let response = owner(client.post(path).json(&body), true).dispatch().await;
     assert_eq!(response.status(), Status::Ok);
     assert_eq!(
         response.into_json::<Value>().await.unwrap(),
-        json!({"candidates":["tree","rhubarb"]})
+        json!({"candidates":["bicycle","rhubarb"], "decisions": {}})
     );
-    worker.join().unwrap();
     assert!(
         TREE.store
             .auto_tag_rejections_for(PUBLIC)
@@ -76,6 +77,44 @@ pub(super) async fn checks(client: &Client) {
             .tag()
             .contains("rhubarb")
     );
+    for (label, action) in [("Bike", "confirm"), ("rhubarb", "reject")] {
+        assert_eq!(
+            owner(
+                client
+                    .put("/put/concept_candidate_decision")
+                    .json(&json!({"hash": PUBLIC, "label": label, "action": action})),
+                true
+            )
+            .dispatch()
+            .await
+            .status(),
+            Status::Ok
+        );
+    }
+    let response = owner(client.post(path).json(&body), true).dispatch().await;
+    assert_eq!(response.status(), Status::Ok);
+    assert_eq!(
+        response.into_json::<Value>().await.unwrap(),
+        json!({"candidates":["bicycle","rhubarb"], "decisions":{"bicycle":"confirmed","rhubarb":"rejected"}})
+    );
+    assert_eq!(
+        owner(
+            client
+                .put("/put/concept_candidate_decision")
+                .json(&json!({"hash": PUBLIC, "label": "rhubarb", "action": "clearRejection"})),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Ok
+    );
+    let response = owner(client.post(path).json(&body), true).dispatch().await;
+    assert_eq!(
+        response.into_json::<Value>().await.unwrap(),
+        json!({"candidates":["bicycle","rhubarb"], "decisions":{"bicycle":"confirmed"}})
+    );
+    worker.join().unwrap();
 }
 
 pub(super) async fn real_worker_checks(client: &Client, records: &[AbstractData]) {

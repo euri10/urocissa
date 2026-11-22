@@ -1,5 +1,10 @@
 //! Durable owner decisions. Fold pending edits into one transaction before publishing indexes.
-use std::{collections::BTreeSet, sync::atomic::Ordering};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::atomic::Ordering,
+};
+
+use anyhow::Context;
 
 use crate::{
     public::{
@@ -38,6 +43,46 @@ pub fn concept_id(tag: &str) -> String {
     VOCABULARY
         .concept_named(tag)
         .map_or_else(|| personal_id(tag), |c| c.id.clone())
+}
+
+/// Read authored feedback without creating decisions for unreviewed proposals.
+pub fn candidate_review_states(
+    hash: &str,
+    labels: &[String],
+) -> anyhow::Result<BTreeMap<String, &'static str>> {
+    let _persistence = TREE
+        .persistence_lock
+        .lock()
+        .map_err(|_| anyhow::anyhow!("tree persistence lock poisoned"))?;
+    let state = TREE
+        .state
+        .read()
+        .map_err(|_| anyhow::anyhow!("tree state lock poisoned"))?;
+    let slot = state.find(hash).context("photo unavailable")?;
+    let durable = TREE
+        .store
+        .reader()?
+        .get(hash)?
+        .map(crate::storage::store::RecordValue::into_value);
+    let record = WRITE_BEHIND
+        .logical_record_for_slot(Some(slot), hash, durable)
+        .context("photo unavailable")?;
+    let confirmed: BTreeSet<_> = record.tag().iter().map(|tag| concept_id(tag)).collect();
+    let rejected = TREE.store.auto_tag_rejections_for(hash)?;
+    Ok(labels
+        .iter()
+        .filter_map(|label| {
+            let id = concept_id(label);
+            let decision = if confirmed.contains(&id) {
+                "confirmed"
+            } else if rejected.contains(&id) {
+                "rejected"
+            } else {
+                return None;
+            };
+            Some((label.clone(), decision))
+        })
+        .collect())
 }
 
 /// Choices come from authored vocabulary, so feedback works while the tagger is offline.
