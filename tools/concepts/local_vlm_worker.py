@@ -19,7 +19,7 @@ import time
 MAX_IMAGE = 8 * 1024 * 1024
 MAX_REPLY = 8192
 INFERENCE_SECONDS = 90
-PROMPT = "What objects and surroundings are visible in this photo? Answer with a short comma-separated list."
+PROMPT = "List visible objects as individual words separated by commas. Do not write sentences."
 # Only reviewed labels and exact aliases can be model suggestions. User-entered
 # tags use a different path and are not restricted by this vocabulary.
 VOCABULARY = Path(__file__).resolve().parents[2] / "gallery-backend/src/operations/concept_candidates/allowed_labels.txt"
