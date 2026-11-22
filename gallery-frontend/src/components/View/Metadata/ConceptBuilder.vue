@@ -41,7 +41,7 @@ async function generate() {
       loaded.value = true
     }
   } catch {
-    if (!request.signal.aborted) error.value = 'Local suggestions are unavailable. Check the local worker and try again.'
+    if (!request.signal.aborted) error.value = 'Could not finish local suggestions. The worker may be unavailable or busy, or the request took too long; try again in a moment.'
   } finally {
     busy.value = false
   }
