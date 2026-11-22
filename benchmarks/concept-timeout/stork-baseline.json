@@ -1,0 +1,22 @@
+{
+  "fixture": "stork_pair.jpg",
+  "single_patch": false,
+  "records": [
+    {
+      "sample": 0,
+      "warmup": false,
+      "prepare_seconds": 0.255,
+      "generate_seconds": 30.316,
+      "total_seconds": 30.571,
+      "image_patches": 17,
+      "input_tokens": 1155,
+      "output_tokens": 8,
+      "labels": [
+        "bird nest",
+        "tree",
+        "sky"
+      ],
+      "peak_rss_kib": 3336304
+    }
+  ]
+}

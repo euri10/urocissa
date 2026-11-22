@@ -1,0 +1,20 @@
+{
+  "single_patch": false,
+  "records": [
+    {
+      "sample": 0,
+      "warmup": false,
+      "prepare_seconds": 0.227,
+      "generate_seconds": 31.157,
+      "total_seconds": 31.384,
+      "image_patches": 17,
+      "input_tokens": 1155,
+      "output_tokens": 12,
+      "labels": [
+        "cat",
+        "window"
+      ],
+      "peak_rss_kib": 3403192
+    }
+  ]
+}
