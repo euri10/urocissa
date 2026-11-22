@@ -1,68 +1,68 @@
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from 'vue'
+import { inject, onUnmounted, toRefs, watch } from 'vue'
 import { decideConceptCandidate, requestConceptCandidates, type CandidateAction } from '@/api/autoTags'
 import type { GalleryImage, IsolationId } from '@/type/types'
 import { useConfigStore } from '@/store/configStore'
+import { conceptReviewKey, createConceptReviewState, type Candidate } from './conceptReviewState'
 
 const props = defineProps<{ photo: GalleryImage, isolationId: IsolationId }>()
 const config = useConfigStore('mainId')
-type Decision = 'pending' | 'confirmed' | 'rejected' | 'skipped'
-interface Candidate { label: string, decision: Decision }
-const candidates = ref<Candidate[]>([])
-const loaded = ref(false)
-const busy = ref(false)
-const error = ref('')
-const uncertain = ref(false)
-const custom = ref('')
+const review = inject(conceptReviewKey, undefined) ?? createConceptReviewState()
+const { candidates, loaded, busy, error, uncertain, custom } = toRefs(review)
 let controller: AbortController | undefined
 
-function reset() {
+function reset(id: string) {
   controller?.abort()
+  review.photoId = id
+  review.revision += 1
   candidates.value = []
   loaded.value = false
+  busy.value = false
   custom.value = ''
   error.value = ''
   uncertain.value = false
 }
-watch(() => props.photo.id, reset)
-onUnmounted(reset)
+watch(() => props.photo.id, id => { if (review.photoId !== id) reset(id) }, { immediate: true })
+onUnmounted(() => controller?.abort())
 
 async function generate() {
   if (busy.value || uncertain.value || !config.canWrite || props.photo.autoTagsEnabled === false) return
   const id = props.photo.id
+  const revision = review.revision
   const request = new AbortController()
   controller = request
   busy.value = true
   error.value = ''
   try {
     const labels = await requestConceptCandidates(id, props.isolationId, request.signal)
-    if (!request.signal.aborted && props.photo.id === id) {
-      candidates.value = labels.map(label => ({ label, decision: 'pending' }))
+    if (!request.signal.aborted && review.photoId === id && review.revision === revision) {
+      candidates.value = labels
       loaded.value = true
     }
   } catch {
-    if (!request.signal.aborted) error.value = 'Could not finish local suggestions. The worker may be unavailable or busy, or the request took too long; try again in a moment.'
+    if (!request.signal.aborted && review.photoId === id && review.revision === revision) error.value = 'Could not finish local suggestions. The worker may be unavailable or busy, or the request took too long; try again in a moment.'
   } finally {
-    busy.value = false
+    if (review.photoId === id && review.revision === revision) busy.value = false
   }
 }
 
 async function decide(candidate: Candidate, action: CandidateAction) {
   if (busy.value || uncertain.value || !config.canWrite) return
   const id = props.photo.id
+  const revision = review.revision
   busy.value = true
   error.value = ''
   try {
-    if (await decideConceptCandidate(id, candidate.label, action, props.isolationId) && props.photo.id === id) {
+    if (await decideConceptCandidate(id, candidate.label, action, props.isolationId) && review.photoId === id && review.revision === revision) {
       candidate.decision = action === 'confirm' ? 'confirmed' : action === 'reject' ? 'rejected' : 'pending'
     }
   } catch {
-    if (props.photo.id === id) {
+    if (review.photoId === id && review.revision === revision) {
       uncertain.value = true
       error.value = 'The decision could not be confirmed. It may have been saved or may conflict with an earlier choice; refresh the page before retrying.'
     }
   } finally {
-    busy.value = false
+    if (review.photoId === id && review.revision === revision) busy.value = false
   }
 }
 

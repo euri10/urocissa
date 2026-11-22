@@ -39,11 +39,13 @@ describe('owner Auto tags', () => {
     await expect(getAutoTagStatus()).rejects.toThrow()
   })
   it('requests bounded local suggestions for one owner photo only', async () => {
-    const post = vi.spyOn(axios, 'post').mockResolvedValue({ data: { candidates: ['tree', 'rhubarb'] } })
+    const post = vi.spyOn(axios, 'post').mockResolvedValue({ data: { candidates: ['tree', 'rhubarb'], decisions: { tree: 'confirmed', rhubarb: 'rejected' } } })
     const signal = new AbortController().signal
-    expect(await requestConceptCandidates('photo', 'detailId', signal)).toEqual(['tree', 'rhubarb'])
+    expect(await requestConceptCandidates('photo', 'detailId', signal)).toEqual([
+      { label: 'tree', decision: 'confirmed' }, { label: 'rhubarb', decision: 'rejected' }
+    ])
     expect(post).toHaveBeenCalledWith('/post/concept_candidates', { hash: 'photo' }, { signal, timeout: 135000 })
-    post.mockResolvedValue({ data: { candidates: Array(9).fill('tree') as string[] } })
+    post.mockResolvedValue({ data: { candidates: Array(9).fill('tree') as string[], decisions: {} } })
     await expect(requestConceptCandidates('photo', 'detailId')).rejects.toThrow()
     post.mockClear()
     await expect(requestConceptCandidates('photo', 'shareId')).rejects.toThrow('Owner')

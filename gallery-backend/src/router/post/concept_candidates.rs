@@ -3,6 +3,7 @@ use crate::{
     router::{AppResult, GuardResult, fairing::guard_auth::GuardAuth},
 };
 use rocket::serde::{Deserialize, Serialize, json::Json};
+use std::collections::BTreeMap;
 
 #[derive(Deserialize)]
 pub struct CandidateRequest {
@@ -12,6 +13,7 @@ pub struct CandidateRequest {
 #[derive(Serialize)]
 pub struct CandidateResponse {
     candidates: Vec<String>,
+    decisions: BTreeMap<String, &'static str>,
 }
 
 #[post("/post/concept_candidates", format = "json", data = "<data>")]
@@ -28,7 +30,18 @@ pub async fn candidates(
                     "Local suggestions are unavailable for this photo.",
                 )
             })?;
-        Ok(Json(CandidateResponse { candidates }))
+        let decisions =
+            crate::operations::tag_feedback::candidate_review_states(&data.hash, &candidates)
+                .map_err(|_| {
+                    AppError::new(
+                        ErrorKind::Unavailable,
+                        "Local suggestions are unavailable for this photo.",
+                    )
+                })?;
+        Ok(Json(CandidateResponse {
+            candidates,
+            decisions,
+        }))
     })
     .await
     .map_err(|_| AppError::new(ErrorKind::Unavailable, "Local suggestions are unavailable."))?

@@ -16,10 +16,14 @@ export type AutoTagAction = 'confirm' | 'reject'
 export type CandidateAction = AutoTagAction | 'clearRejection'
 
 /** Analyze one selected photo with the configured local worker. */
-export async function requestConceptCandidates(hash: string, isolationId: IsolationId, signal?: AbortSignal): Promise<string[]> {
+export async function requestConceptCandidates(hash: string, isolationId: IsolationId, signal?: AbortSignal): Promise<{ label: string, decision: 'pending' | 'confirmed' | 'rejected' }[]> {
   if (!useConfigStore('mainId').isAdmin || isolationId === 'shareId') throw new Error('Owner access is required.')
   const response = await axios.post('/post/concept_candidates', { hash }, { signal, timeout: 135000 })
-  return z.object({ candidates: z.array(z.string().min(1).max(48)).max(8) }).parse(response.data).candidates
+  const result = z.object({
+    candidates: z.array(z.string().min(1).max(48)).max(8),
+    decisions: z.record(z.string(), z.enum(['confirmed', 'rejected']))
+  }).parse(response.data)
+  return result.candidates.map(label => ({ label, decision: result.decisions[label] ?? 'pending' }))
 }
 const recalculationSchema = z.object({
   running: z.boolean(),

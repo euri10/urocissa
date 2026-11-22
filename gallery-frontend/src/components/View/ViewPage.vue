@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, provide } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import ViewPageDisplay from '@/components/View/Display/Display.vue'
 import ViewPageMetadata from '@/components/View/Metadata/ViewPageMetadata.vue'
@@ -13,6 +13,7 @@ import type {
 } from '@type/types'
 import type { RouteResourceExpectedType } from '@/script/hook/useRouteResource'
 import { interceptMobileInfoBackNavigation } from './mobileInfoBackNavigation'
+import { conceptReviewKey, createConceptReviewState } from './Metadata/conceptReviewState'
 
 const props = defineProps<{
   collectionIsolationId: IsolationId
@@ -21,6 +22,8 @@ const props = defineProps<{
   expectedTypes?: readonly RouteResourceExpectedType[]
   collectionOnly?: boolean
 }>()
+
+provide(conceptReviewKey, createConceptReviewState())
 
 const route = useRoute()
 const router = useRouter()
