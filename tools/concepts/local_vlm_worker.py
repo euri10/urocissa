@@ -55,6 +55,12 @@ def receive(stream, size):
     return bytes(data)
 
 
+def configure_processor(processor):
+    # ponytail: one overview patch bounds CPU latency; fine detail may be missed.
+    processor.image_processor.do_image_splitting = False
+    return processor
+
+
 @contextmanager
 def socket_lease(socket_path):
     """Serialize workers and remove only a verified stale socket in a trusted directory."""
@@ -91,7 +97,7 @@ def serve(model_dir, socket_path):
 
     torch.set_num_threads(4)
     Image.MAX_IMAGE_PIXELS = 25_000_000
-    processor = AutoProcessor.from_pretrained(model_dir, local_files_only=True, trust_remote_code=False)
+    processor = configure_processor(AutoProcessor.from_pretrained(model_dir, local_files_only=True, trust_remote_code=False))
     model = AutoModelForVision2Seq.from_pretrained(model_dir, local_files_only=True, trust_remote_code=False).eval()
     messages = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": PROMPT}]}]
     prompt = processor.apply_chat_template(messages, add_generation_prompt=True)

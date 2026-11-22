@@ -2,11 +2,18 @@ import socket
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
+import local_vlm_worker
 from local_vlm_worker import candidates, receive, socket_lease
 
 
 class LocalVlmWorkerTests(unittest.TestCase):
+    def test_processor_uses_a_single_image_patch(self):
+        processor = SimpleNamespace(image_processor=SimpleNamespace(do_image_splitting=True))
+        self.assertIs(local_vlm_worker.configure_processor(processor), processor)
+        self.assertFalse(processor.image_processor.do_image_splitting)
+
     def test_candidates_are_bounded_deduplicated_and_filter_attributes(self):
         self.assertEqual(
             candidates("Tree, tree, rhubarb, elderly woman, 42, garden, black cat."),
