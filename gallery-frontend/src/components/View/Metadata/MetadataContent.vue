@@ -14,6 +14,7 @@ import ItemPath from './ItemPath.vue'
 import ItemDate from './ItemDate.vue'
 import ItemTag from './ItemTag.vue'
 import ItemAutoTags from './ItemAutoTags.vue'
+import ConceptBuilder from './ConceptBuilder.vue'
 import ItemAlbum from './ItemAlbum.vue'
 import ItemTitle from './ItemTitle.vue'
 import ItemCount from './ItemCount.vue'
@@ -147,6 +148,11 @@ watch(
             :albums="abstractData.albums"
           />
           <ItemAutoTags
+            v-if="configStore.isAdmin && !isShareMode && configStore.config?.embeddingEnabled && abstractData.type === 'image'"
+            :photo="abstractData"
+            :isolation-id="props.isolationId"
+          />
+          <ConceptBuilder
             v-if="configStore.isAdmin && !isShareMode && configStore.config?.embeddingEnabled && abstractData.type === 'image'"
             :photo="abstractData"
             :isolation-id="props.isolationId"

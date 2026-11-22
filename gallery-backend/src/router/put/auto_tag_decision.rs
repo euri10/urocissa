@@ -130,6 +130,73 @@ pub struct DecisionResult {
     label: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CandidateDecision {
+    hash: String,
+    label: String,
+    action: CandidateReviewAction,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub enum CandidateReviewAction {
+    Confirm,
+    Reject,
+    ClearRejection,
+}
+
+#[derive(Serialize)]
+pub struct CandidateDecisionResult {
+    photos: usize,
+    label: String,
+    concept: String,
+}
+
+/// Record an explicitly reviewed label, including one not yet in the Concept vocabulary.
+#[put("/put/concept_candidate_decision", format = "json", data = "<data>")]
+pub async fn decide_candidate(
+    auth: GuardResult<GuardAuth>,
+    writable: GuardResult<GuardReadOnlyMode>,
+    data: Json<CandidateDecision>,
+) -> AppResult<Json<CandidateDecisionResult>> {
+    let _ = auth?;
+    let _ = writable?;
+    tokio::task::spawn_blocking(move || {
+        let data = data.into_inner();
+        let label = data.label.trim();
+        if label.is_empty() || label.chars().count() > 80 || label.chars().any(char::is_control) {
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                "Invalid candidate label",
+            ));
+        }
+        let resolved = Target {
+            hash: Some(data.hash),
+            timestamp: None,
+            selection: None,
+        }
+        .resolve()?;
+        if resolved.len != 1 {
+            return Err(AppError::new(ErrorKind::InvalidInput, "Choose one photo"));
+        }
+        let action = match data.action {
+            CandidateReviewAction::Confirm => tag_feedback::CandidateAction::Confirm,
+            CandidateReviewAction::Reject => tag_feedback::CandidateAction::Reject,
+            CandidateReviewAction::ClearRejection => tag_feedback::CandidateAction::ClearRejection,
+        };
+        let count = tag_feedback::edit_candidate(&resolved, label, action)?;
+        auto_tags::rematerialize();
+        Ok(Json(CandidateDecisionResult {
+            photos: count,
+            label: label.to_owned(),
+            concept: tag_feedback::concept_id(label),
+        }))
+    })
+    .await
+    .map_err(|e| AppError::from_err(ErrorKind::Internal, e.into()))?
+}
+
 #[post("/post/auto_tag_selection", format = "json", data = "<data>")]
 pub async fn preview(
     auth: GuardResult<GuardAuth>,

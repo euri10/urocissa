@@ -1,5 +1,5 @@
 {
-  "catalog_definition_sha256": "66054af300c60a1c466ba69352fa2590732dfc335572c67d6f20a22f96a846a8",
+  "catalog_definition_sha256": "c8e5fdfa0e8fa9d155e7df7c9a2962afa002fe70ee315df3a3116466751b5df2",
   "concepts": {
     "airplane": {
       "evaluation": {
@@ -970,6 +970,34 @@
       "status": "dropped",
       "threshold": null
     },
+    "fish": {
+      "evaluation": {
+        "balanced_precision": 0.9653579676674365,
+        "false_positive_rate": 0.02631578947368421,
+        "negative": 38,
+        "positive": 30,
+        "precision": 0.9565217391304348,
+        "predicted": 23,
+        "recall": 0.7333333333333333,
+        "true_positive": 22
+      },
+      "open_images_mid": "/m/0ch_cf",
+      "reason": null,
+      "sample_sha256": "1f4802ab2414a33265a9a12508718ab0f2a8ba490f1e6683e2e2247f90bc9545",
+      "selected_threshold": 0.010498994961380959,
+      "selection": {
+        "balanced_precision": 0.9049429657794678,
+        "false_positive_rate": 0.07142857142857142,
+        "negative": 42,
+        "positive": 50,
+        "precision": 0.918918918918919,
+        "predicted": 37,
+        "recall": 0.68,
+        "true_positive": 34
+      },
+      "status": "calibrated",
+      "threshold": 0.010498994961380959
+    },
     "flag": {
       "evaluation": {
         "balanced_precision": 0.7857142857142857,
@@ -1302,6 +1330,34 @@
       },
       "status": "dropped",
       "threshold": null
+    },
+    "mushroom": {
+      "evaluation": {
+        "balanced_precision": 0.9395017793594305,
+        "false_positive_rate": 0.0625,
+        "negative": 16,
+        "positive": 34,
+        "precision": 0.9705882352941176,
+        "predicted": 34,
+        "recall": 0.9705882352941176,
+        "true_positive": 33
+      },
+      "open_images_mid": "/m/052sf",
+      "reason": null,
+      "sample_sha256": "784f17965273d42b6723bc456a30a3d6637ac830fb1d1a39a6be50799d26dcfb",
+      "selected_threshold": 0.012674135155975819,
+      "selection": {
+        "balanced_precision": 1.0,
+        "false_positive_rate": 0.0,
+        "negative": 17,
+        "positive": 38,
+        "precision": 1.0,
+        "predicted": 37,
+        "recall": 0.9736842105263158,
+        "true_positive": 37
+      },
+      "status": "calibrated",
+      "threshold": 0.012674135155975819
     },
     "park": {
       "evaluation": {
@@ -1663,6 +1719,34 @@
       "status": "calibrated",
       "threshold": 0.04444097727537155
     },
+    "snail": {
+      "evaluation": {
+        "balanced_precision": 1.0,
+        "false_positive_rate": 0.0,
+        "negative": 12,
+        "positive": 18,
+        "precision": 1.0,
+        "predicted": 12,
+        "recall": 0.6666666666666666,
+        "true_positive": 12
+      },
+      "open_images_mid": "/m/0f9_l",
+      "reason": null,
+      "sample_sha256": "bba00c5dc7d225aafb49edff6885e0dca0ac274642c275dce339e5e71f487d4b",
+      "selected_threshold": 0.1758446842432022,
+      "selection": {
+        "balanced_precision": 1.0,
+        "false_positive_rate": 0.0,
+        "negative": 6,
+        "positive": 16,
+        "precision": 1.0,
+        "predicted": 14,
+        "recall": 0.875,
+        "true_positive": 14
+      },
+      "status": "calibrated",
+      "threshold": 0.1758446842432022
+    },
     "snow": {
       "evaluation": {
         "balanced_precision": 0.815165876777251,
@@ -2011,8 +2095,8 @@
     "split": "validation"
   },
   "images": {
-    "count": 6601,
-    "sha256": "b0e6f9437321a245f4aa554f7a40851ac4fe0ffd7d4096e5f67bab0e2c0a048a"
+    "count": 6862,
+    "sha256": "88cca45f53983f55d291bd1fb2e06b48c5abd8f41177ab1d67197e7d863a234e"
   },
   "method": {
     "equal_prior_precision": "TPR / (TPR + FPR); 0 without both classes or predictions",
@@ -2056,10 +2140,10 @@
       }
     },
     "model_id": "siglip2-base-patch16-224@75de2d55ec2d/fp16-text-int8",
-    "observations_sha256": "d63e52962ce4ec25229536bafc40f7280729129a9a3b4ac6d18aaefbcd7798db",
+    "observations_sha256": "a2557e20ab251129fec219679dd58537dd2c8cbbc6aa3d76909682d2f622fe3f",
     "schema_version": 1
   },
   "schema_version": 3,
   "tool_sha256": "b21dedda6b378a8dabd3db293e45c986158a328cd596d382cd0bf5634cc83e54",
-  "vocabulary_version": "2026-11-08.3"
+  "vocabulary_version": "2026-11-20.2"
 }

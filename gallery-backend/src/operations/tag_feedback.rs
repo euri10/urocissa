@@ -76,6 +76,73 @@ pub fn edit(
     remove: &BTreeSet<String>,
     rejection: Option<&str>,
 ) -> AppResult<usize> {
+    edit_inner(resolved, add, remove, rejection, None)
+}
+
+#[derive(Clone, Copy)]
+pub enum CandidateAction {
+    Confirm,
+    Reject,
+    ClearRejection,
+}
+
+/// An explicit reviewed candidate can introduce a personal Concept without having been an Auto tag.
+pub fn edit_candidate(
+    resolved: &ResolvedSelection,
+    label: &str,
+    action: CandidateAction,
+) -> AppResult<usize> {
+    let concept = concept_id(label);
+    let add = match action {
+        CandidateAction::Confirm => BTreeSet::from([label.to_owned()]),
+        CandidateAction::Reject | CandidateAction::ClearRejection => BTreeSet::new(),
+    };
+    let rejection = matches!(action, CandidateAction::Reject).then_some(concept.as_str());
+    edit_inner(
+        resolved,
+        &add,
+        &BTreeSet::new(),
+        rejection,
+        Some((&concept, action)),
+    )
+}
+
+#[derive(Debug)]
+struct CandidateConflict;
+impl std::fmt::Display for CandidateConflict {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("This decision conflicts with an existing User tag or Rejection")
+    }
+}
+impl std::error::Error for CandidateConflict {}
+
+fn candidate_conflicts(
+    record: &AbstractData,
+    writer: &crate::storage::store::RecordWriter<'_>,
+    concept: &str,
+    action: CandidateAction,
+    add: &BTreeSet<String>,
+) -> anyhow::Result<bool> {
+    Ok(match action {
+        CandidateAction::Confirm => {
+            writer.auto_tag_rejected(record.hash().as_str(), concept)?
+                || record
+                    .tag()
+                    .iter()
+                    .any(|tag| concept_id(tag) == concept && !add.contains(tag))
+        }
+        CandidateAction::Reject => record.tag().iter().any(|tag| concept_id(tag) == concept),
+        CandidateAction::ClearRejection => false,
+    })
+}
+
+fn edit_inner(
+    resolved: &ResolvedSelection,
+    add: &BTreeSet<String>,
+    remove: &BTreeSet<String>,
+    rejection: Option<&str>,
+    candidate: Option<(&str, CandidateAction)>,
+) -> AppResult<usize> {
     let removals = remove
         .iter()
         .map(|tag| {
@@ -115,6 +182,14 @@ pub fn edit(
                     .logical_record_for_slot(Some(slot), id.as_str(), durable)
                     .ok_or_else(|| anyhow::anyhow!("selected record is missing"))?;
                 if record.is_image() {
+                    if let Some((concept, action)) = candidate
+                        && candidate_conflicts(&record, writer, concept, action, add)?
+                    {
+                        return Err(CandidateConflict.into());
+                    }
+                    if let Some((concept, CandidateAction::ClearRejection)) = candidate {
+                        writer.clear_auto_tag_rejection(id.as_str(), concept)?;
+                    }
                     // An intentional removal also suppresses future model/vocabulary guesses,
                     // including while tagging is disabled or its derived cache is unavailable.
                     for (tag, concepts) in &removals {
@@ -140,7 +215,16 @@ pub fn edit(
             }
             Ok::<_, anyhow::Error>(())
         })
-        .map_err(|error| AppError::from_err(ErrorKind::Database, error))?;
+        .map_err(|error| {
+            if error.is::<CandidateConflict>() {
+                AppError::new(
+                    ErrorKind::Conflict,
+                    "Decision conflicts with an existing User tag or Rejection",
+                )
+            } else {
+                AppError::from_err(ErrorKind::Database, error)
+            }
+        })?;
     WRITE_BEHIND.cancel_published_media(targets, &albums);
     let universe = state.arena.capacity();
     state

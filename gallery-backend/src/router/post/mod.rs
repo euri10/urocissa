@@ -1,6 +1,7 @@
 // src/router/post/mod.rs
 use rocket::Route;
 pub mod authenticate;
+pub mod concept_candidates;
 pub mod create_album;
 pub mod create_share;
 pub mod import_config;
@@ -10,6 +11,7 @@ pub mod post_upload;
 pub fn generate_post_routes() -> Vec<Route> {
     routes![
         authenticate::authenticate,
+        concept_candidates::candidates,
         create_album::create_non_empty_album,
         create_album::create_empty_album,
         post_upload::upload,

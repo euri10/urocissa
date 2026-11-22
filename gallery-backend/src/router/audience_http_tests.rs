@@ -15,6 +15,8 @@ use rocket::{
 use serde_json::Value;
 
 mod auto_tags;
+#[cfg(unix)]
+mod concept_candidates;
 mod concept_review;
 mod media;
 mod mutations;
@@ -694,7 +696,9 @@ async fn http_child() {
                 crate::router::put::edit_flags::edit_flags,
                 crate::router::put::edit_auto_tags::edit_auto_tags,
                 crate::router::put::auto_tag_decision::decide,
+                crate::router::put::auto_tag_decision::decide_candidate,
                 crate::router::put::auto_tag_decision::preview,
+                crate::router::post::concept_candidates::candidates,
                 crate::router::put::edit_tag::edit_tag,
                 crate::router::embeddings::get_auto_tags,
                 crate::router::embeddings::get_auto_tag_status,
@@ -707,6 +711,16 @@ async fn http_child() {
     .unwrap();
     if std::env::var_os("UROCISSA_DOWNLOAD_TEST").is_some() {
         media::download_revocation(&client, &records).await;
+        return;
+    }
+    #[cfg(unix)]
+    if std::env::var("UROCISSA_OWNER_CHECKS").as_deref() == Ok("candidates") {
+        concept_candidates::checks(&client).await;
+        return;
+    }
+    #[cfg(unix)]
+    if std::env::var("UROCISSA_OWNER_CHECKS").as_deref() == Ok("real-candidates") {
+        concept_candidates::real_worker_checks(&client, &records).await;
         return;
     }
     search::checks(&client).await;
@@ -740,6 +754,18 @@ fn isolated_mode(public: bool, download: bool, owner_checks: Option<&str>) {
     }
     if owner_checks == Some("feedback") {
         command.env("UROCISSA_FEEDBACK_TEST", "1");
+    }
+    if owner_checks == Some("candidates") {
+        command.env(
+            "UROCISSA_CONCEPT_SOCKET",
+            root.path().join("candidate.sock"),
+        );
+    }
+    if owner_checks == Some("real-candidates") {
+        command.env(
+            "UROCISSA_CONCEPT_SOCKET",
+            std::env::var_os("UROCISSA_CONCEPT_SOCKET").unwrap(),
+        );
     }
     if let Some(checks) = owner_checks {
         command.env("UROCISSA_OWNER_CHECKS", checks);
@@ -780,6 +806,23 @@ fn isolated_mode(public: bool, download: bool, owner_checks: Option<&str>) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    if owner_checks == Some("real-candidates") {
+        let store = DataStore::open(&root.path().join("db/index_v6.redb")).unwrap();
+        let photo = store
+            .reader()
+            .unwrap()
+            .get(PUBLIC)
+            .unwrap()
+            .unwrap()
+            .into_value();
+        assert!(photo.tag().iter().any(|tag| tag.contains("cat")));
+        assert!(
+            store
+                .auto_tag_rejections_for(PUBLIC)
+                .unwrap()
+                .contains(&crate::operations::tag_feedback::concept_id("water"))
+        );
+    }
 }
 
 #[test]
@@ -797,6 +840,20 @@ fn authored_feedback_http() {
 fn concept_review_http() {
     isolated_mode(true, false, Some("review"));
     isolated_mode(false, false, Some("review"));
+}
+
+#[cfg(unix)]
+#[test]
+fn concept_candidates_http() {
+    isolated_mode(true, false, Some("candidates"));
+    isolated_mode(false, false, Some("candidates"));
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "explicit local model integration with public fixture"]
+fn concept_candidates_real_http() {
+    isolated_mode(true, false, Some("real-candidates"));
 }
 
 #[test]

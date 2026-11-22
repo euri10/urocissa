@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import axios from 'axios'
 import { createPinia, setActivePinia } from 'pinia'
-import { decideAutoTag, editAutoTags, fetchAutoTags, previewAutoTagSelection, getAutoTagStatus, recalculateAutoTags } from './autoTags'
+import { decideAutoTag, decideConceptCandidate, editAutoTags, fetchAutoTags, previewAutoTagSelection, getAutoTagStatus, recalculateAutoTags, requestConceptCandidates } from './autoTags'
 import { useConfigStore } from '@/store/configStore'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
@@ -37,6 +37,17 @@ describe('owner Auto tags', () => {
     expect(put).toHaveBeenCalledWith('/put/recalculate_auto_tags', null, { signal, timeout: 60000 })
     get.mockResolvedValue({ data: { ...status, changes: { added: -1, removed: 0 } } })
     await expect(getAutoTagStatus()).rejects.toThrow()
+  })
+  it('requests bounded local suggestions for one owner photo only', async () => {
+    const post = vi.spyOn(axios, 'post').mockResolvedValue({ data: { candidates: ['tree', 'rhubarb'] } })
+    const signal = new AbortController().signal
+    expect(await requestConceptCandidates('photo', 'detailId', signal)).toEqual(['tree', 'rhubarb'])
+    expect(post).toHaveBeenCalledWith('/post/concept_candidates', { hash: 'photo' }, { signal, timeout: 135000 })
+    post.mockResolvedValue({ data: { candidates: Array(9).fill('tree') as string[] } })
+    await expect(requestConceptCandidates('photo', 'detailId')).rejects.toThrow()
+    post.mockClear()
+    await expect(requestConceptCandidates('photo', 'shareId')).rejects.toThrow('Owner')
+    expect(post).not.toHaveBeenCalled()
   })
 
   it('turns cached photos off in place without editing User tags or share records', async () => {
@@ -119,5 +130,21 @@ describe('owner Auto tags', () => {
     vi.spyOn(axios, 'put').mockRejectedValue(new Error('offline'))
     await expect(decideAutoTag('photo', 'cat', 'confirm', 'detailId')).rejects.toThrow('offline')
     expect(useDataStore('mainId').data.get(0)?.tags).not.toContain('cat')
+  })
+  it('records only reviewed candidate decisions and preserves caches on conflict', async () => {
+    const put = vi.spyOn(axios, 'put').mockResolvedValue({ data: { photos: 1, label: 'rhubarb', concept: 'personal:rhubarb' } })
+    vi.spyOn(axios, 'get').mockResolvedValue({ status: 200, data: { tags: [], makes: [], models: [] } })
+    expect(await decideConceptCandidate('photo', 'rhubarb', 'confirm', 'detailId')).toBe(true)
+    expect(put).toHaveBeenCalledWith('/put/concept_candidate_decision', { hash: 'photo', label: 'rhubarb', action: 'confirm' })
+    expect(useDataStore('detailId').data.get(0)?.tags).toContain('rhubarb')
+    expect(useDataStore('shareId').data.get(0)?.tags).not.toContain('rhubarb')
+    put.mockRejectedValueOnce(new Error('conflict'))
+    await expect(decideConceptCandidate('photo', 'rhubarb', 'reject', 'detailId')).rejects.toThrow('conflict')
+    expect(useDataStore('detailId').data.get(0)?.tags).toContain('rhubarb')
+    put.mockClear()
+    expect(await decideConceptCandidate('photo', 'rhubarb', 'reject', 'shareId')).toBe(false)
+    useConfigStore('mainId').config = { isAdmin: false, readOnlyMode: false } as AppConfig
+    expect(await decideConceptCandidate('photo', 'rhubarb', 'confirm', 'mainId')).toBe(false)
+    expect(put).not.toHaveBeenCalled()
   })
 })

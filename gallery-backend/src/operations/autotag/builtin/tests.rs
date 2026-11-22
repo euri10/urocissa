@@ -17,9 +17,22 @@ fn embedded_catalog_is_english_only() {
         .map(|c: &BuiltinConcept| (c.id.as_str(), c.label_en.as_str()))
         .collect();
     assert_eq!(labels["birthday"], "birthday party");
+    assert_eq!(labels["snail"], "snail");
+    assert_eq!(labels["fish"], "fish");
+    assert_eq!(labels["mushroom"], "mushroom");
     assert_eq!(catalog.prompts()[0], "a photo of person");
     let vocabulary = catalog.alias_vocabulary().unwrap();
     assert_eq!(vocabulary.concept("sunset").unwrap().label, "sunset");
+    assert!(
+        vocabulary
+            .ancestors("snail")
+            .any(|concept| concept.id == "animal")
+    );
+    assert!(
+        vocabulary
+            .ancestors("fish")
+            .any(|concept| concept.id == "animal")
+    );
     assert_eq!(vocabulary.concept_named("Bike").unwrap().id, "bicycle");
     for french in [
         "coucher de soleil",
@@ -190,6 +203,110 @@ fn dropped_concepts_never_fire_but_still_expand_parents() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[test]
+fn snail_predictions_respect_hierarchy_and_owner_choices() {
+    let catalog = BuiltinCatalog::embedded().unwrap();
+    let model_id = catalog.model_id.clone();
+    let vectors = catalog
+        .concepts
+        .iter()
+        .map(|concept| {
+            let vector = if concept.id == "snail" {
+                vec![1.0, 0.0]
+            } else {
+                vec![-1.0, 0.0]
+            };
+            (concept.id.clone(), vector)
+        })
+        .collect();
+    let engine = catalog
+        .into_engine(&model_id, 2, vectors, ScoreModel::new(100.0, 0.0).unwrap())
+        .unwrap();
+    let photo = |user_tags, rejections, auto_tags_off| PhotoInput {
+        embedding: &[1.0, 0.0],
+        user_tags,
+        rejections,
+        auto_tags_off,
+    };
+    let tags = engine.tag_photo(&photo(&[], &[], false)).unwrap();
+    assert!(
+        tags.iter()
+            .any(|tag| tag.concept == "snail" && tag.placement == Placement::Displayed)
+    );
+    assert!(
+        tags.iter()
+            .any(|tag| tag.concept == "animal" && tag.placement == Placement::Implied)
+    );
+    assert!(
+        !engine
+            .tag_photo(&photo(&["snail"], &[], false))
+            .unwrap()
+            .iter()
+            .any(|tag| tag.concept == "snail")
+    );
+    assert!(
+        !engine
+            .tag_photo(&photo(&[], &["snail"], false))
+            .unwrap()
+            .iter()
+            .any(|tag| tag.concept == "snail")
+    );
+    assert!(engine.tag_photo(&photo(&[], &[], true)).unwrap().is_empty());
+}
+
+#[test]
+fn everyday_predictions_respect_owner_choices() {
+    for concept_name in ["fish", "mushroom"] {
+        let catalog = BuiltinCatalog::embedded().unwrap();
+        let model_id = catalog.model_id.clone();
+        let vectors = catalog
+            .concepts
+            .iter()
+            .map(|concept| {
+                let vector = if concept.id == concept_name {
+                    vec![1.0, 0.0]
+                } else {
+                    vec![-1.0, 0.0]
+                };
+                (concept.id.clone(), vector)
+            })
+            .collect();
+        let engine = catalog
+            .into_engine(&model_id, 2, vectors, ScoreModel::new(100.0, 0.0).unwrap())
+            .unwrap();
+        let photo = |user_tags, rejections, auto_tags_off| PhotoInput {
+            embedding: &[1.0, 0.0],
+            user_tags,
+            rejections,
+            auto_tags_off,
+        };
+        let owner_tag = [concept_name];
+        let rejection = [concept_name];
+        assert!(
+            engine
+                .tag_photo(&photo(&[], &[], false))
+                .unwrap()
+                .iter()
+                .any(|tag| tag.concept == concept_name)
+        );
+        assert!(
+            !engine
+                .tag_photo(&photo(&owner_tag, &[], false))
+                .unwrap()
+                .iter()
+                .any(|tag| tag.concept == concept_name)
+        );
+        assert!(
+            !engine
+                .tag_photo(&photo(&[], &rejection, false))
+                .unwrap()
+                .iter()
+                .any(|tag| tag.concept == concept_name)
+        );
+        assert!(engine.tag_photo(&photo(&[], &[], true)).unwrap().is_empty());
+    }
 }
 
 #[test]

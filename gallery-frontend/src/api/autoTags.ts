@@ -13,6 +13,14 @@ import { useSearchFacetStore } from '@/store/searchFacetStore'
 import { z } from 'zod'
 
 export type AutoTagAction = 'confirm' | 'reject'
+export type CandidateAction = AutoTagAction | 'clearRejection'
+
+/** Analyze one selected photo with the configured local worker. */
+export async function requestConceptCandidates(hash: string, isolationId: IsolationId, signal?: AbortSignal): Promise<string[]> {
+  if (!useConfigStore('mainId').isAdmin || isolationId === 'shareId') throw new Error('Owner access is required.')
+  const response = await axios.post('/post/concept_candidates', { hash }, { signal, timeout: 135000 })
+  return z.object({ candidates: z.array(z.string().min(1).max(48)).max(8) }).parse(response.data).candidates
+}
 const recalculationSchema = z.object({
   running: z.boolean(),
   upToDate: z.boolean(),
@@ -64,9 +72,26 @@ export async function decideAutoTag(
     : selectedCachedResourceIds(isolationId, normalizeSelection(target))
   const response = await axios.put('/put/auto_tag_decision', { ...payload, concept, action })
   const result = z.object({ photos: z.number().int().nonnegative(), label: z.string() }).parse(response.data)
+  await applyDecision(ids, concept, result.label, action, result.photos)
+  return true
+}
+
+/** Record one explicitly reviewed candidate, including a new personal Concept. */
+export async function decideConceptCandidate(
+  hash: string, label: string, action: CandidateAction, isolationId: IsolationId
+): Promise<boolean> {
+  const config = useConfigStore('mainId')
+  if (!config.isAdmin || !config.canWrite || isolationId === 'shareId') return false
+  const response = await axios.put('/put/concept_candidate_decision', { hash, label, action })
+  const result = z.object({ photos: z.literal(1), label: z.string(), concept: z.string() }).parse(response.data)
+  await applyDecision([hash], result.concept, result.label, action, result.photos)
+  return true
+}
+
+async function applyDecision(ids: string[], concept: string, label: string, action: CandidateAction, photos: number): Promise<void> {
   for (const id of ids) updateCachedResource(id, (data, isolation) => {
     if (data.type !== 'image' || isolation === 'shareId') return
-    if (action === 'confirm' && !data.tags.includes(result.label)) data.tags = [...data.tags, result.label]
+    if (action === 'confirm' && !data.tags.includes(label)) data.tags = [...data.tags, label]
     data.autoTags = (data.autoTags ?? []).filter(tag => tag.concept !== concept)
     data.autoTagsPending = data.autoTagsEnabled !== false
   })
@@ -75,9 +100,14 @@ export async function decideAutoTag(
   reload.requestSubCollectionReload()
   const facets = useSearchFacetStore()
   facets.fetched = false
-  await facets.fetchFacets()
-  useMessageStore('mainId').success(`${action === 'confirm' ? 'Confirmed' : 'Rejected'} ${result.label} for ${result.photos} photos.`)
-  return true
+  try {
+    await facets.fetchFacets()
+  } catch {
+    useMessageStore('mainId').error('Decision saved, but tag counts could not refresh.')
+    return
+  }
+  const verb = action === 'confirm' ? 'Confirmed' : action === 'reject' ? 'Rejected' : 'Allowed again'
+  useMessageStore('mainId').success(`${verb} ${label} for ${photos} photos.`)
 }
 
 export async function fetchAutoTags(id: string, signal: AbortSignal): Promise<boolean> {

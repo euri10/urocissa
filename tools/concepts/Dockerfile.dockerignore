@@ -1,0 +1,11 @@
+**
+!tools/
+!tools/concepts/
+!tools/concepts/worker-requirements.txt
+!tools/concepts/model.sha256
+!tools/concepts/local_vlm_worker.py
+!gallery-backend/
+!gallery-backend/src/
+!gallery-backend/src/operations/
+!gallery-backend/src/operations/concept_candidates/
+!gallery-backend/src/operations/concept_candidates/allowed_labels.txt
