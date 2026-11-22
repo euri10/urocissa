@@ -1,3 +1,4 @@
+import os
 import socket
 import tempfile
 import unittest
@@ -81,6 +82,32 @@ class LocalVlmWorkerTests(unittest.TestCase):
         self.assertEqual(len(candidates("tree, plant, water, flower, garden, cat, dog, house, sky")), 8)
         self.assertEqual(candidates("woman, black person, old man, person, snails, plant, rhubarb"), ["person", "snail", "plant", "rhubarb"])
         self.assertEqual(candidates("there is a cat, cat wearing a hat, famous person"), [])
+        self.assertEqual(candidates("no bicycle, without a person, elderly woman"), [])
+
+    @unittest.skipUnless(os.getenv("UROCISSA_CONCEPT_MODEL_DIR"), "requires local concept model")
+    def test_real_model_returns_useful_labels_for_public_bicycle_photo(self):
+        import torch
+        from PIL import Image
+        from transformers import AutoModelForVision2Seq, AutoProcessor
+
+        model_dir = os.environ["UROCISSA_CONCEPT_MODEL_DIR"]
+        torch.set_num_threads(4)
+        processor = local_vlm_worker.configure_processor(
+            AutoProcessor.from_pretrained(model_dir, local_files_only=True, trust_remote_code=False)
+        )
+        model = AutoModelForVision2Seq.from_pretrained(
+            model_dir, local_files_only=True, trust_remote_code=False
+        ).eval()
+        prompt = processor.apply_chat_template([{"role": "user", "content": [
+            {"type": "image"}, {"type": "text", "text": local_vlm_worker.PROMPT},
+        ]}], add_generation_prompt=True)
+        fixture = Path(__file__).resolve().parents[2] / "gallery-tagger/tests/fixtures/images/bicycles.jpg"
+        with Image.open(fixture) as image:
+            inputs = processor(text=prompt, images=[image.convert("RGB")], return_tensors="pt")
+        with torch.inference_mode():
+            generated = model.generate(**inputs, max_new_tokens=96, do_sample=False)
+        output = processor.decode(generated[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True)
+        self.assertTrue({"bicycle", "person"}.issubset(candidates(output)))
 
     def test_receive_requires_the_complete_frame(self):
         left, right = socket.socketpair()
