@@ -15,6 +15,7 @@ import local_vlm_worker as worker
 
 FIXTURES = ("bicycles.jpg", "cat.jpg", "stork_pair.jpg", "stork_fledglings.jpg", "sunset.jpg")
 BASELINE = "What objects and surroundings are visible in this photo? Answer with a short comma-separated list."
+LIST_PROMPT_20261122 = "List visible objects as individual words separated by commas. Do not write sentences."
 
 
 def main():
@@ -28,7 +29,7 @@ def main():
     for fixture in FIXTURES:
         with Image.open(ROOT / "gallery-tagger/tests/fixtures/images" / fixture) as source:
             image = source.convert("RGB")
-        for name, text in (("baseline", BASELINE), ("candidate", worker.PROMPT)):
+        for name, text in (("baseline", BASELINE), ("candidate", LIST_PROMPT_20261122)):
             prompt = processor.apply_chat_template([{"role": "user", "content": [
                 {"type": "image"}, {"type": "text", "text": text},
             ]}], add_generation_prompt=True)
