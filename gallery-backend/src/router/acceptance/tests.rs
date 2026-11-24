@@ -45,6 +45,50 @@ fn incomplete_stale_and_after_decisions_are_refused() {
 }
 
 #[test]
+fn snapshot_gathering_allows_other_writers_and_preserves_their_judgments() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let store = std::sync::Arc::new(crate::storage::DataStore::initialize_empty(
+        &root.path().join("db.redb"),
+    )?);
+    let mut initial = sample();
+    initial.kind = "garden".into();
+    initial.photos[0].role = "heldOut".into();
+    initial.photos[0].seen_before = true;
+    store.update_acceptance("garden", |_| Ok(initial))?;
+    let mut writer = None;
+    let result = capture_and_save(&store, "round", |mut captured| {
+        let sibling = store.clone();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        writer = Some(std::thread::spawn(move || {
+            let saved = sibling.update_acceptance("garden", |round| {
+                let mut round = round.unwrap();
+                round.feedback = "concurrent owner review".into();
+                round.photos[0].before[0].judgment = Some(Judgment::Yes);
+                Ok(round)
+            });
+            let _ = sender.send(saved.is_ok());
+        }));
+        ensure!(
+            receiver.recv_timeout(std::time::Duration::from_secs(2)) == Ok(true),
+            "Writer blocked while gathering snapshot"
+        );
+        captured.photos[0].after = Some(Vec::new());
+        captured.after_captured_at = Some(2);
+        Ok(captured)
+    });
+    writer.unwrap().join().unwrap();
+    let saved = result?;
+    assert_eq!(saved.feedback, "concurrent owner review");
+    assert_eq!(saved.photos[0].before[0].judgment, Some(Judgment::Yes));
+    assert!(saved.photos[0].after.is_some());
+    assert!(
+        capture_and_save(&store, "round", Ok).is_err(),
+        "After snapshot is immutable"
+    );
+    Ok(())
+}
+
+#[test]
 fn acceptance_http_guards() {
     let status = std::process::Command::new(std::env::current_exe().unwrap())
         .args(["--exact", "router::acceptance::tests::guard_child"])

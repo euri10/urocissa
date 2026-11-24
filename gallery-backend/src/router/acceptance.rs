@@ -295,12 +295,52 @@ pub fn decide(
         .map_err(failure)
 }
 
+fn capture_and_save(
+    store: &crate::storage::DataStore,
+    round_id: &str,
+    capture: impl FnOnce(ReviewRound) -> Result<ReviewRound>,
+) -> Result<ReviewRound> {
+    let original = store
+        .acceptance_round("garden")?
+        .ok_or_else(|| anyhow::anyhow!("No garden round"))?;
+    ensure!(
+        original.id == round_id && original.after_captured_at.is_none(),
+        "Round changed"
+    );
+    // Gallery reads take TREE state locks. Finish them before the main write
+    // transaction so concurrent tag edits keep their existing lock order.
+    let captured = capture(original)?;
+    store.update_acceptance("garden", |previous| {
+        let mut round = previous.ok_or_else(|| anyhow::anyhow!("No garden round"))?;
+        ensure!(
+            round.id == round_id
+                && round.after_captured_at.is_none()
+                && round.photos.len() == captured.photos.len(),
+            "Round changed"
+        );
+        for (current, snapshot) in round.photos.iter_mut().zip(captured.photos) {
+            ensure!(
+                current.hash == snapshot.hash && current.version == snapshot.version,
+                "Sample changed"
+            );
+            current.after = snapshot.after;
+        }
+        // Preserve baseline judgments, progress and UX notes saved during capture.
+        round.after_captured_at = captured.after_captured_at;
+        Ok(round)
+    })
+}
+
 #[put("/put/acceptance-review/after/<round_id>")]
 pub fn capture_after(
     _auth: GuardAuth,
     _writable: GuardReadOnlyMode,
     round_id: &str,
 ) -> AppResult<Json<ReviewRound>> {
+    let _persistence = TREE
+        .persistence_lock
+        .lock()
+        .map_err(|_| AppError::new(ErrorKind::Internal, "Library unavailable"))?;
     let tags = embedding::service()
         .and_then(|service| service.auto_tags.get())
         .ok_or_else(|| AppError::new(ErrorKind::Unavailable, "Auto tags not ready"))?;
@@ -310,64 +350,67 @@ pub fn capture_after(
             "Wait for learning to complete",
         ));
     }
-    TREE.store
-        .update_acceptance("garden", |previous| {
-            let mut round = previous.ok_or_else(|| anyhow::anyhow!("No garden round"))?;
-            ensure!(
-                round.id == round_id && round.after_captured_at.is_none(),
-                "After sample already frozen"
-            );
-            ensure!(
-                BuiltinCatalog::embedded()?.version == round.vocabulary
-                    && embedding::service().unwrap().status().model_id.as_deref()
-                        == Some(round.model.as_str()),
-                "Model changed"
-            );
-            let concept = tag_feedback::concept_id(&round.plant);
-            for item in &round.photos {
-                let record = TREE
-                    .store
-                    .reader()?
-                    .get(&item.hash)?
-                    .ok_or_else(|| anyhow::anyhow!("Photo missing"))?
-                    .into_value();
-                let positive = record
-                    .tag()
-                    .iter()
-                    .any(|tag| tag_feedback::concept_id(tag) == concept);
-                if item.role == "teaching" {
-                    ensure!(
-                        positive,
-                        "Teach the identified plant on every teaching photo first"
-                    );
-                } else {
-                    ensure!(
-                        !positive
-                            && !TREE
-                                .store
-                                .auto_tag_rejections_for(&item.hash)?
-                                .contains(&concept),
-                        "Held-out target was taught"
-                    );
-                }
+    capture_and_save(TREE.store, round_id, |mut round| {
+        ensure!(
+            round.id == round_id && round.after_captured_at.is_none(),
+            "After sample already frozen"
+        );
+        ensure!(
+            BuiltinCatalog::embedded()?.version == round.vocabulary
+                && embedding::service().unwrap().status().model_id.as_deref()
+                    == Some(round.model.as_str()),
+            "Model changed"
+        );
+        let concept = tag_feedback::concept_id(&round.plant);
+        for item in &round.photos {
+            let record = TREE
+                .store
+                .reader()?
+                .get(&item.hash)?
+                .ok_or_else(|| anyhow::anyhow!("Photo missing"))?
+                .into_value();
+            let positive = record
+                .tag()
+                .iter()
+                .any(|tag| tag_feedback::concept_id(tag) == concept);
+            if item.role == "teaching" {
+                ensure!(
+                    positive,
+                    "Teach the identified plant on every teaching photo first"
+                );
+            } else {
+                ensure!(
+                    !positive
+                        && !TREE
+                            .store
+                            .auto_tag_rejections_for(&item.hash)?
+                            .contains(&concept),
+                    "Held-out target was taught"
+                );
             }
-            ensure!(
-                tags.recalculation_status()
-                    .last_completed_at
-                    .is_some_and(|time| time > round.materialized_at),
-                "Learning has not completed since baseline"
-            );
-            for item in &mut round.photos {
-                if item.role == "heldOut" {
-                    ensure!(item.seen_before, "Review baseline first");
-                    item.after = Some(photo(&item.hash, "heldOut")?.before);
-                }
+        }
+        ensure!(
+            tags.recalculation_status()
+                .last_completed_at
+                .is_some_and(|time| time > round.materialized_at),
+            "Learning has not completed since baseline"
+        );
+        for item in &mut round.photos {
+            if item.role == "heldOut" {
+                ensure!(item.seen_before, "Review baseline first");
+                let current = photo(&item.hash, "heldOut")?;
+                ensure!(
+                    current.version == item.version && !current.pending,
+                    "Held-out photo changed or not ready"
+                );
+                item.after = Some(current.before);
             }
-            round.after_captured_at = Some(chrono::Utc::now().timestamp_millis());
-            Ok(round)
-        })
-        .map(Json)
-        .map_err(failure)
+        }
+        round.after_captured_at = Some(chrono::Utc::now().timestamp_millis());
+        Ok(round)
+    })
+    .map(Json)
+    .map_err(failure)
 }
 
 #[cfg(test)]
