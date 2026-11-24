@@ -1,5 +1,5 @@
 //! Completion metadata is disposable and starts unknown after a restart.
-use std::{collections::HashSet, sync::TryLockError, sync::atomic::Ordering};
+use std::{collections::HashSet, sync::TryLockError, sync::atomic::Ordering, time::Instant};
 
 use anyhow::Result;
 use serde::Serialize;
@@ -42,6 +42,9 @@ pub struct RecalculationStatus {
     pub running: bool,
     pub up_to_date: bool,
     pub last_completed_at: Option<i64>,
+    pub duration_ms: Option<u64>,
+    pub full_duration_ms: Option<u64>,
+    pub full_completed_at: Option<i64>,
     pub changes: Changes,
     pub last_error: Option<String>,
     #[serde(skip)]
@@ -77,6 +80,7 @@ impl AutoTags {
     }
 
     pub(super) fn reconcile_locked(&self, force: bool) -> Result<()> {
+        let started = Instant::now();
         self.recalculation.lock().unwrap().running = true;
         let result = (|| {
             // Authored decisions and derived commits keep the existing lock order.
@@ -104,6 +108,12 @@ impl AutoTags {
             Ok((revision, changes)) => {
                 if let Some(changes) = changes {
                     status.last_completed_at = Some(chrono::Utc::now().timestamp_millis());
+                    status.duration_ms =
+                        Some(u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX));
+                    if force {
+                        status.full_duration_ms = status.duration_ms;
+                        status.full_completed_at = status.last_completed_at;
+                    }
                     status.changes = changes;
                 }
                 status.revision = Some(revision);

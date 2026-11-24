@@ -33,6 +33,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_page::upload,
         get_page::home_view,
         get_page::review,
+        get_page::acceptance,
         get_page::review_view,
         get_page::tags,
         get_page::favorite,
@@ -68,6 +69,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         crate::router::embeddings::get_auto_tags,
         crate::router::embeddings::get_auto_tag_explanation,
         crate::router::embeddings::get_auto_tag_status,
+        crate::router::acceptance::get,
         crate::router::strip_video_metadata::get_video_metadata_strip,
         crate::router::saved_searches::get_saved_searches
     ]

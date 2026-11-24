@@ -29,6 +29,7 @@ declare module 'vue-router' {
 }
 
 type BaseName =
+  | 'acceptance'
   | 'review'
   | 'home'
   | 'all'

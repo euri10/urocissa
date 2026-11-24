@@ -1,3 +1,4 @@
+pub mod acceptance;
 pub mod audience;
 pub mod auto_tags;
 #[cfg(test)]

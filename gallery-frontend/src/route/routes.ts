@@ -17,6 +17,7 @@ import TrashedPage from '@/components/Page/TrashedPage.vue'
 import AlbumsPage from '@/components/Page/AlbumsPage.vue'
 import VideosPage from '@/components/Page/VideosPage.vue'
 import ConceptReviewPage from '@/components/Page/ConceptReviewPage.vue'
+import AcceptancePage from '@/components/Page/AcceptancePage.vue'
 import { createRoute } from './createRoute'
 import { tagsRoute } from './tagsRoute'
 import { linksRoute } from './linksRoute'
@@ -37,6 +38,10 @@ import { useConfigStore } from '@/store/configStore'
 
 const simpleRoutes: RouteRecordRaw[] = [
   { path: '/', redirect: '/home' },
+  { path: '/acceptance', name: 'acceptance', component: AcceptancePage,
+    meta: { level: 1, baseName: 'acceptance', basicString: null,
+      getParentPage: (route) => ({ name: 'home', params: { hash: undefined, subhash: undefined }, query: route.query }),
+      getChildPage: (route) => ({ name: 'acceptance', params: { hash: undefined, subhash: undefined }, query: route.query }) } },
   tagsRoute,
   linksRoute,
   loginRoute,
@@ -89,7 +94,7 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  if (['upload', 'config', 'links', 'trashed', 'review'].includes(to.path.split('/')[1] ?? '')) {
+  if (['upload', 'config', 'links', 'trashed', 'review', 'acceptance'].includes(to.path.split('/')[1] ?? '')) {
     const configStore = useConfigStore('mainId')
     await configStore.fetchConfig()
     if (!configStore.isAdmin) return { name: 'login' }
@@ -120,7 +125,8 @@ router.afterEach((to) => {
     share: 'Share',
     config: 'Configuration',
     upload: 'Upload',
-    review: 'Concept review'
+    review: 'Concept review',
+    acceptance: 'Acceptance review'
   }
 
   let baseTitle: string

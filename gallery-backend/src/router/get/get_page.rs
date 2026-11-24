@@ -138,6 +138,11 @@ pub async fn review() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+#[get("/acceptance")]
+pub async fn acceptance() -> AppResult<FrontendResponse> {
+    serve_file("index.html").await
+}
+
 #[get("/review/view/<_path..>")]
 pub async fn review_view(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await

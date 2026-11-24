@@ -11,6 +11,7 @@ pub mod post_upload;
 pub fn generate_post_routes() -> Vec<Route> {
     routes![
         authenticate::authenticate,
+        crate::router::acceptance::start,
         concept_candidates::candidates,
         create_album::create_non_empty_album,
         create_album::create_empty_album,

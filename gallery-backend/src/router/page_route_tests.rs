@@ -49,6 +49,8 @@ async fn page_route_child() {
     for path in [
         "/login", // Known-good control: the HTML fixture must actually be served.
         "/review",
+        "/acceptance",
+        "/acceptance?kind=garden",
         "/review?concept=pierre",
         "/review?concept=personal%3Apierre",
         "/review/view/photo?concept=pierre",

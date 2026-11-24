@@ -20,6 +20,8 @@ pub fn generate_put_routes() -> Vec<Route> {
     routes![
         album_audience::set_album_audience,
         auto_tag_decision::decide,
+        crate::router::acceptance::decide,
+        crate::router::acceptance::capture_after,
         auto_tag_decision::decide_candidate,
         auto_tag_decision::preview,
         edit_album::edit_album,
