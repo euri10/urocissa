@@ -59,6 +59,7 @@ mod builtin;
 mod classifier;
 mod engine;
 mod error;
+mod explanation;
 pub mod learning;
 mod scoring;
 mod vocabulary;
@@ -68,6 +69,7 @@ pub use builtin::{BuiltinCatalog, BuiltinConcept};
 pub use classifier::{Classification, ConceptClassifier, ConceptMode, ZeroShot};
 pub use engine::{AutoTag, AutoTagEngine, MAX_DISPLAYED, PhotoInput, PhotoResult, Placement};
 pub use error::{AutoTagError, VectorProblem};
+pub use explanation::ConceptExplanation;
 pub use scoring::{NORM_TOLERANCE, ScoreModel, check_vector};
 pub use vocabulary::{Concept, Vocabulary, normalize_name};
 

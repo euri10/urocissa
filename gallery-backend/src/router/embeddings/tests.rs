@@ -54,7 +54,11 @@ fn http_child() {
     APP_CONFIG.set(RwLock::new(config)).unwrap();
     let client = Client::tracked(rocket::build().mount(
         "/",
-        routes![super::get_embedding_status, super::pause_embedding_backfill,],
+        routes![
+            super::get_embedding_status,
+            super::pause_embedding_backfill,
+            super::get_auto_tag_explanation
+        ],
     ))
     .unwrap();
 
@@ -76,17 +80,20 @@ fn http_child() {
             .encode(),
         ),
     ] {
+        let mut explanation = client.get("/get/auto-tags/missing/explanation?concept=bridge");
         let mut get = client.get("/get/embedding-status");
         let mut put = client
             .put("/put/embedding-backfill")
             .header(Header::new("Content-Type", "application/json"))
             .body(r#"{"paused":true}"#);
         if let Some(token) = token {
+            explanation = explanation.cookie(Cookie::new("jwt", token.clone()));
             get = get.cookie(Cookie::new("jwt", token.clone()));
             put = put.cookie(Cookie::new("jwt", token));
         }
         assert_eq!(get.dispatch().status(), Status::Unauthorized);
         assert_eq!(put.dispatch().status(), Status::Unauthorized);
+        assert_eq!(explanation.dispatch().status(), Status::Unauthorized);
     }
     // Share headers confer no owner access, including on the status endpoint.
     assert_eq!(
@@ -94,6 +101,13 @@ fn http_child() {
             .get("/get/embedding-status")
             .header(Header::new("x-album-id", "album"))
             .header(Header::new("x-share-id", "share"))
+            .dispatch()
+            .status(),
+        Status::Unauthorized
+    );
+    assert_eq!(
+        client
+            .get("/get/auto-tags/missing/explanation")
             .dispatch()
             .status(),
         Status::Unauthorized

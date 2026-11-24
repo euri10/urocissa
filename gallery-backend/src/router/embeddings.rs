@@ -6,6 +6,41 @@ use crate::operations::embedding::{self, EmbeddingStatus};
 use crate::router::fairing::{guard_auth::GuardAuth, guard_read_only_mode::GuardReadOnlyMode};
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
+#[get("/get/auto-tags/<hash>/explanation?<concept>")]
+pub fn get_auto_tag_explanation(
+    auth: GuardResult<GuardAuth>,
+    hash: &str,
+    concept: Option<&str>,
+) -> AppResult<Json<crate::operations::auto_tags::explanation::PhotoExplanation>> {
+    let _ = auth?;
+    let concept =
+        concept.ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Concept is required"))?;
+    let state = crate::public::db::tree::TREE
+        .state
+        .read()
+        .map_err(|_| AppError::new(ErrorKind::Internal, "tree state lock poisoned"))?;
+    let record = state
+        .find(hash)
+        .and_then(|slot| state.get(slot))
+        .filter(|record| record.object_type == crate::public::structure::object::ObjectType::Image)
+        .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Photo not found"))?;
+    let version = record.cache_version;
+    drop(state);
+    let tags = embedding::service()
+        .and_then(|service| service.auto_tags.get())
+        .ok_or_else(|| AppError::new(ErrorKind::Unavailable, "Auto tags are not ready"))?;
+    let concept = crate::operations::tag_feedback::concept_id(concept);
+    tags.explanation(hash, version, &concept)
+        .map_err(|error| AppError::from_err(ErrorKind::Database, error))?
+        .map(Json)
+        .ok_or_else(|| {
+            AppError::new(
+                ErrorKind::NotFound,
+                "Concept or current photo embedding not found",
+            )
+        })
+}
+
 #[get("/get/auto-tags/<hash>")]
 pub fn get_auto_tags(
     auth: GuardResult<GuardAuth>,

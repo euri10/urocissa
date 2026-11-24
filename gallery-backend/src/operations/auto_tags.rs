@@ -10,6 +10,8 @@ use std::{
 use anyhow::{Context, Result, ensure};
 use serde::Serialize;
 
+pub mod explanation;
+
 use super::{
     autotag::{AliasIndex, AutoTagEngine, BuiltinCatalog, PhotoInput, Placement, ScoreModel},
     embedding::client::{Embedder, ModelInfo},

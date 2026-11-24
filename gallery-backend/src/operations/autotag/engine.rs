@@ -119,6 +119,40 @@ impl AutoTagEngine {
         &self.vocabulary
     }
 
+    pub(super) fn explain_mode(&self, concept: &super::Concept) -> ConceptMode {
+        self.classifier.mode(concept)
+    }
+
+    pub(super) fn explain_score(
+        &self,
+        concept: &super::Concept,
+        embedding: &[f32],
+    ) -> (f32, Option<super::Classification>) {
+        let index = self
+            .vocabulary
+            .index_of(&concept.id)
+            .expect("known Concept");
+        let dots = dot_products(
+            embedding,
+            1,
+            self.vocabulary.matrix(),
+            self.cuts.len(),
+            self.vocabulary.dim(),
+        );
+        let zero_shot = self.model.probability(dots[index]);
+        let decision = match self.classifier.mode(concept) {
+            ConceptMode::Inactive => None,
+            ConceptMode::ZeroShot => Some(super::Classification {
+                probability: zero_shot,
+                threshold: concept.threshold,
+            }),
+            ConceptMode::Classifier => {
+                Some(self.classifier.classify(concept, embedding, zero_shot))
+            }
+        };
+        (zero_shot, decision)
+    }
+
     /// Auto tags for one photo (incremental updates). Runs the same code as
     /// [`Self::tag_library`], so the result is identical to that photo's library result.
     pub fn tag_photo(&self, photo: &PhotoInput<'_>) -> PhotoResult<'_> {
