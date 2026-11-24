@@ -2,6 +2,26 @@ use super::*;
 use crate::storage::DataStore;
 
 #[test]
+fn retained_single_key_undo_requires_read_only_rollback() -> anyhow::Result<()> {
+    let root = tempfile::tempdir()?;
+    let store = DataStore::initialize_empty(&root.path().join("index_v6.redb"))?;
+    store.write(|writer| {
+        write_rejection(writer, "photo", "snow", false)?;
+        // Exact retained afebc3e7 ClearRejection behavior; it lacks alias deletion.
+        writer.clear_auto_tag_rejection("photo", "snow")?;
+        Ok::<_, anyhow::Error>(())
+    })?;
+    assert_eq!(
+        canonical_rejections(store.auto_tag_rejections_for("photo")?),
+        ["snow"],
+        "old writer Undo is not forward-safe: recovery must prevent these writes"
+    );
+    store.write(|writer| write_rejection(writer, "photo", "snow", true))?;
+    assert!(store.auto_tag_rejections_for("photo")?.is_empty());
+    Ok(())
+}
+
+#[test]
 fn legacy_rejections_conflict_and_undo_without_changing_unknown_decisions() -> anyhow::Result<()> {
     let root = tempfile::tempdir()?;
     let store = DataStore::initialize_empty(&root.path().join("index_v6.redb"))?;

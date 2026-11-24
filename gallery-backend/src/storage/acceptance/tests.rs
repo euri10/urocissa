@@ -88,11 +88,20 @@ fn judgments_survive_reopen_without_touching_records_or_feedback() -> Result<()>
 
 /// Opt-in actual previous executable, on generated disposable data only.
 #[test]
+fn previous_binary_ignores_additive_review_table() -> Result<()> {
+    previous_binary_review_fixture(false)
+}
+
+#[test]
+fn previous_binary_read_only_recovery_preserves_decisions() -> Result<()> {
+    previous_binary_review_fixture(true)
+}
+
 #[expect(
     clippy::too_many_lines,
-    reason = "One end-to-end fixture owns its generated data and exact container cleanup"
+    reason = "One fixture owns generated data, exact old executable and cleanup"
 )]
-fn previous_binary_ignores_additive_review_table() -> Result<()> {
+fn previous_binary_review_fixture(read_only: bool) -> Result<()> {
     let Ok(image_id) = std::env::var("UROCISSA_ROLLBACK_IMAGE") else {
         return Ok(());
     };
@@ -133,6 +142,10 @@ fn previous_binary_ignores_additive_review_table() -> Result<()> {
         })?;
         store.migrate_photo_audience()?;
         store.migrate_album_audience()?;
+        if read_only {
+            store
+                .set_photo_audience(&hash, crate::public::structure::audience::Audience::Public)?;
+        }
         store.update_acceptance("random", |_| Ok(round()))?;
         let write = store.db.begin_write()?;
         {
@@ -150,7 +163,7 @@ fn previous_binary_ignores_additive_review_table() -> Result<()> {
     std::fs::write(
         data.join("config.json"),
         serde_json::to_vec(&serde_json::json!({
-        "public":{"address":"0.0.0.0","port":5673,"syncPaths":[],"readOnlyMode":false,
+        "public":{"address":"0.0.0.0","port":5673,"syncPaths":[],"readOnlyMode":read_only,
             "disableImg":false,"limits":{"file":"512MiB","json":"10MiB","data-form":"1GiB"}},
         "private":{"password":password,"authKey":null,"discordHookUrl":null} // betterleaks:allow -- same generated disposable password
         }))?,
@@ -234,16 +247,35 @@ fn previous_binary_ignores_additive_review_table() -> Result<()> {
         .send()?
         .error_for_status()?
         .json()?;
-    for label in ["bench", "snow"] {
+    if read_only {
+        assert_eq!(
+            client
+                .get(format!("{url}/get/resource/{hash}"))
+                .send()?
+                .status()
+                .as_u16(),
+            200,
+            "read-only recovery must retain public reads"
+        );
+    }
+    for (label, action) in if read_only {
+        vec![
+            ("bench", "confirm"),
+            ("snow", "reject"),
+            ("snow", "clearRejection"),
+        ]
+    } else {
+        vec![("bench", "confirm"), ("snow", "confirm")]
+    } {
         let response = client
             .put(format!("{url}/put/concept_candidate_decision"))
             .header("Cookie", format!("jwt={owner}"))
-            .json(&serde_json::json!({"hash": hash, "label": label, "action": "confirm"}))
+            .json(&serde_json::json!({"hash": hash, "label": label, "action": action}))
             .send()?;
         assert_eq!(
             response.status().as_u16(),
-            409,
-            "Previous binary must honor newly dual-written rejection for {label}"
+            if read_only { 405 } else { 409 },
+            "Previous binary must preserve rejection for {label}/{action}"
         );
     }
     let resource: serde_json::Value = client
