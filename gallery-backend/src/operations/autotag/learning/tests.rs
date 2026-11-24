@@ -65,6 +65,40 @@ fn personal_gate_counts_distinct_photos_and_builtin_aliases_never_make_personal_
 }
 
 #[test]
+fn promoted_personal_negatives_count_once_and_win_over_contradictory_tags() {
+    let legacy = personal_id("CAT");
+    let rejects = [legacy.as_str(), "cat"];
+    let positive = photo(&[1.0, 0.0, 0.0], &["cat"], &[]);
+    let negative = photo(&[0.0, 0.0, 1.0], &["cat"], &rejects);
+    let ids = (0..10).map(|i| i.to_string()).collect::<Vec<_>>();
+    let photos = ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.as_str(), if i < 5 { positive } else { negative }))
+        .collect::<Vec<_>>();
+    let (_, learning) = Learning::fit(
+        &base(),
+        BTreeSet::from(["cat".into()]),
+        ScoreModel::new(10.0, -5.0).unwrap(),
+        &photos,
+    )
+    .unwrap();
+    assert_eq!(learning.method("cat"), "learned");
+    let (_, learning) = Learning::fit(
+        &base(),
+        BTreeSet::from(["cat".into()]),
+        ScoreModel::new(10.0, -5.0).unwrap(),
+        &photos[..9],
+    )
+    .unwrap();
+    assert_eq!(
+        learning.method("cat"),
+        "builtin",
+        "equivalent rejection keys are one negative photo"
+    );
+}
+
+#[test]
 fn classifier_gate_requires_five_explicit_positives_and_negatives() {
     let ids = (0..10).map(|i| i.to_string()).collect::<Vec<_>>();
     let positive = photo(&[1.0, 0.0, 0.0], &["Cat", "cat"], &[]);
@@ -166,7 +200,10 @@ fn only_validated_snow_uses_feedback_only_classifier_after_five_by_five_gate() {
             }
         );
         if expected == "learned" {
-            assert_eq!(learning.classifiers["snow"].zero_shot_weight, 0.0);
+            assert_eq!(
+                learning.classifiers["snow"].zero_shot_weight.to_bits(),
+                0.0_f32.to_bits()
+            );
             let engine = AutoTagEngine::new(vocabulary, ScoreModel::new(10.0, -5.0).unwrap())
                 .with_classifier(learning);
             let result = engine

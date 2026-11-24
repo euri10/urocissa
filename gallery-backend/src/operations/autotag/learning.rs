@@ -18,10 +18,7 @@ const EXAMPLE_QUANTILE: f32 = 0.1;
 /// Confidence slope per unit of cosine margin; only orders matches, 0.5 is the cutoff.
 const MARGIN_SLOPE: f32 = 50.0;
 
-/// The ID depends on the normalized authored name, never the model or vocabulary release.
-pub fn personal_id(tag: &str) -> String {
-    format!("personal:{}", blake3::hash(normalize_name(tag).as_bytes()))
-}
+pub use super::vocabulary::personal_id;
 
 /// One deterministic spelling per personal Concept. Built-in aliases remain built-in.
 pub fn personal_names<'a>(
@@ -200,7 +197,7 @@ impl Learning {
         };
         for (id, label) in names {
             let positives = photos.iter().filter(|(_, photo)| {
-                !photo.rejections.contains(&id.as_str())
+                !base.is_rejected(&id, photo.rejections)
                     && photo.user_tags.iter().any(|tag| personal_id(tag) == id)
             });
             let mut prototype = vec![0.0; base.dim()];
@@ -237,7 +234,7 @@ impl Learning {
             let labelled = photos
                 .iter()
                 .filter_map(|(_, photo)| {
-                    let rejected = photo.rejections.contains(&concept.id.as_str());
+                    let rejected = vocabulary.is_rejected(&concept.id, photo.rejections);
                     let positive = photo.user_tags.iter().any(|tag| {
                         vocabulary
                             .concept_named(tag)

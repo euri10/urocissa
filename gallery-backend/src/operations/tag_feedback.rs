@@ -45,6 +45,60 @@ pub fn concept_id(tag: &str) -> String {
         .map_or_else(|| personal_id(tag), |c| c.id.clone())
 }
 
+fn canonical_rejections(ids: Vec<String>) -> Vec<String> {
+    let mut ids = ids
+        .into_iter()
+        .map(|id| VOCABULARY.canonical_rejection(&id).to_owned())
+        .collect::<Vec<_>>();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+pub fn rejections_for(photo: &str) -> anyhow::Result<Vec<String>> {
+    Ok(canonical_rejections(
+        TREE.store.auto_tag_rejections_for(photo)?,
+    ))
+}
+
+pub fn all_rejections() -> anyhow::Result<std::collections::HashMap<String, Vec<String>>> {
+    Ok(TREE
+        .store
+        .auto_tag_rejections()?
+        .into_iter()
+        .map(|(photo, ids)| (photo, canonical_rejections(ids)))
+        .collect())
+}
+
+fn rejected_by(
+    writer: &crate::storage::store::RecordWriter<'_>,
+    photo: &str,
+    concept: &str,
+) -> anyhow::Result<bool> {
+    for key in VOCABULARY.rejection_keys(concept) {
+        if writer.auto_tag_rejected(photo, &key)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn write_rejection(
+    writer: &mut crate::storage::store::RecordWriter<'_>,
+    photo: &str,
+    concept: &str,
+    clear: bool,
+) -> anyhow::Result<()> {
+    for key in VOCABULARY.rejection_keys(concept) {
+        if clear {
+            writer.clear_auto_tag_rejection(photo, &key)?;
+        } else {
+            writer.reject_auto_tag(photo, &key)?;
+        }
+    }
+    Ok(())
+}
+
 /// Read authored feedback without creating decisions for unreviewed proposals.
 pub fn candidate_review_states(
     hash: &str,
@@ -68,7 +122,7 @@ pub fn candidate_review_states(
         .logical_record_for_slot(Some(slot), hash, durable)
         .context("photo unavailable")?;
     let confirmed: BTreeSet<_> = record.tag().iter().map(|tag| concept_id(tag)).collect();
-    let rejected = TREE.store.auto_tag_rejections_for(hash)?;
+    let rejected = rejections_for(hash)?;
     Ok(labels
         .iter()
         .filter_map(|label| {
@@ -170,7 +224,7 @@ fn candidate_conflicts(
 ) -> anyhow::Result<bool> {
     Ok(match action {
         CandidateAction::Confirm => {
-            writer.auto_tag_rejected(record.hash().as_str(), concept)?
+            rejected_by(writer, record.hash().as_str(), concept)?
                 || record
                     .tag()
                     .iter()
@@ -233,19 +287,19 @@ fn edit_inner(
                         return Err(CandidateConflict.into());
                     }
                     if let Some((concept, CandidateAction::ClearRejection)) = candidate {
-                        writer.clear_auto_tag_rejection(id.as_str(), concept)?;
+                        write_rejection(writer, id.as_str(), concept, true)?;
                     }
                     // An intentional removal also suppresses future model/vocabulary guesses,
                     // including while tagging is disabled or its derived cache is unavailable.
                     for (tag, concepts) in &removals {
                         if record.tag().contains(tag) {
                             for concept in concepts {
-                                writer.reject_auto_tag(id.as_str(), concept)?;
+                                write_rejection(writer, id.as_str(), concept, false)?;
                             }
                         }
                     }
                     if let Some(concept) = rejection {
-                        writer.reject_auto_tag(id.as_str(), concept)?;
+                        write_rejection(writer, id.as_str(), concept, false)?;
                     }
                 }
                 record.tag_mut().extend(add.iter().cloned());
@@ -284,3 +338,6 @@ fn edit_inner(
     VERSION_COUNT_TIMESTAMP.fetch_add(1, Ordering::Relaxed);
     Ok(resolved.len)
 }
+
+#[cfg(test)]
+mod rejection_tests;

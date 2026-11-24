@@ -161,7 +161,7 @@ fn create(request: &Start) -> Result<ReviewRound> {
                     .tag()
                     .iter()
                     .any(|tag| tag_feedback::concept_id(tag) == concept)
-                    && !TREE.store.auto_tag_rejections_for(id)?.contains(&concept),
+                    && !tag_feedback::rejections_for(id)?.contains(&concept),
                 "Held-out target already taught"
             );
         }
@@ -380,11 +380,7 @@ pub fn capture_after(
                 );
             } else {
                 ensure!(
-                    !positive
-                        && !TREE
-                            .store
-                            .auto_tag_rejections_for(&item.hash)?
-                            .contains(&concept),
+                    !positive && !tag_feedback::rejections_for(&item.hash)?.contains(&concept),
                     "Held-out target was taught"
                 );
             }

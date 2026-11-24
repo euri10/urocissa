@@ -76,7 +76,7 @@ impl AutoTags {
     /// Search consumes every placement, never just the displayed chips.
     pub fn search_rows(&self) -> Result<Vec<(String, MaterializedTags)>> {
         let model = self.store.model()?;
-        let rejected = TREE.store.auto_tag_rejections()?;
+        let rejected = super::tag_feedback::all_rejections()?;
         Ok(self
             .store
             .all_auto_tags()?
@@ -337,7 +337,7 @@ fn tag_batch(
 
 fn gallery_inputs() -> Result<(PhotoInputs, TagCounts)> {
     let settings = TREE.store.auto_tag_settings()?;
-    let mut rejections = TREE.store.auto_tag_rejections()?;
+    let mut rejections = super::tag_feedback::all_rejections()?;
     let state = TREE
         .state
         .read()
@@ -408,7 +408,7 @@ pub fn owner_status(id: &str, version: u32) -> Result<Option<AutoTagStatus>> {
     )?;
     // Authored decisions win even if derived storage is stale or the worker is offline.
     if let Some(status) = &mut status {
-        let rejected = TREE.store.auto_tag_rejections_for(id)?;
+        let rejected = super::tag_feedback::rejections_for(id)?;
         let tags = TREE.store.read(|reader| {
             Ok::<_, anyhow::Error>(
                 reader

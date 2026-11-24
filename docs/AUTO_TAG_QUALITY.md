@@ -70,6 +70,15 @@ The unsafe global switch rejected for building/boat remains excluded.
 
 ## Wider vocabulary and diagnosis
 
+Vocabulary promotion also preserves Rejections authored before a name became
+built-in. The exact normalized label and declared synonyms resolve their old
+`personal:` identities to the current Concept. Readback, negative-example counts,
+prediction and conflict checks use one canonical decision. New rejection writes
+retain current and historical keys in the existing table so the previous binary
+can honor them; explicit Undo clears those equivalent keys only. Unrelated
+personal decisions and V6 records remain intact, with no startup migration.
+Tracking: `infra-urocissa-autotag-sjfz.28.3`.
+
 `tools/concepts/heldout.py` evaluates frozen new thresholds against the pinned
 independent test annotations and measures both baseline and candidate chip-count
 distributions on 100 fixed hash-ranked public test photos. Missing annotations

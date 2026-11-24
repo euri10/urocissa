@@ -41,7 +41,8 @@ impl AutoTagEngine {
         let mut via_user_tags = authored
             .iter()
             .filter(|child| {
-                !photo.rejections.contains(&child.id.as_str()) && ancestor_of(&child.id)
+                !self.vocabulary().is_rejected(&child.id, photo.rejections)
+                    && ancestor_of(&child.id)
             })
             .map(|child| child.id.clone())
             .collect::<Vec<_>>();
@@ -54,7 +55,7 @@ impl AutoTagEngine {
             .collect();
         let decision = if photo.auto_tags_off {
             "off"
-        } else if photo.rejections.contains(&requested) {
+        } else if self.vocabulary().is_rejected(requested, photo.rejections) {
             "rejected"
         } else if authored.iter().any(|tag| tag.id == requested) {
             "authored"

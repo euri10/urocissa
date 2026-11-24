@@ -1,6 +1,75 @@
 //! Table-driven tests for each engine rule on a small hand-made vocabulary.
 use super::*;
 
+#[test]
+fn personal_rejection_survives_promotion_to_builtin() {
+    let old = learning::personal_id(" PLANT ");
+    let vocabulary = Vocabulary::new(
+        2,
+        vec![Concept {
+            id: "plant".into(),
+            label: "plant".into(),
+            synonyms: vec!["vegetation".into()],
+            parents: vec![],
+            threshold: 0.8,
+            vector: vec![1.0, 0.0],
+        }],
+    )
+    .unwrap();
+    let engine = AutoTagEngine::new(vocabulary, ScoreModel::new(10.0, -5.0).unwrap());
+    let input = PhotoInput {
+        embedding: &[1.0, 0.0],
+        user_tags: &[],
+        rejections: &[old.as_str()],
+        auto_tags_off: false,
+    };
+    assert!(
+        engine.tag_photo(&input).unwrap().is_empty(),
+        "old personal rejection must veto promoted builtin"
+    );
+    assert_eq!(
+        engine.explain(&input, "plant").unwrap().unwrap().decision,
+        "rejected"
+    );
+    let alias = learning::personal_id("vegetation");
+    assert!(
+        engine
+            .tag_photo(&PhotoInput {
+                rejections: &[alias.as_str()],
+                ..input
+            })
+            .unwrap()
+            .is_empty()
+    );
+    let unrelated = learning::personal_id("unrelated plant nickname");
+    assert_eq!(
+        engine
+            .tag_photo(&PhotoInput {
+                rejections: &[unrelated.as_str()],
+                ..input
+            })
+            .unwrap()
+            .len(),
+        1
+    );
+    let mut concepts = engine.vocabulary().concepts().to_vec();
+    concepts.push(Concept {
+        id: "leaf".into(),
+        label: "leaf".into(),
+        synonyms: vec![],
+        parents: vec!["plant".into()],
+        threshold: 0.8,
+        vector: vec![1.0, 0.0],
+    });
+    let engine = AutoTagEngine::new(
+        Vocabulary::new(2, concepts).unwrap(),
+        ScoreModel::new(10.0, -5.0).unwrap(),
+    );
+    let tags = engine.tag_photo(&input).unwrap();
+    assert!(tags.iter().all(|tag| tag.concept != "plant"));
+    assert!(tags.iter().any(|tag| tag.concept == "leaf"));
+}
+
 /// Six Concept axes plus a padding axis that keeps embeddings normalized.
 const DIM: usize = 7;
 const PAD: usize = 6;

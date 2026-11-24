@@ -30,7 +30,7 @@ impl AutoTags {
             return Ok(None);
         };
         let enabled = TREE.store.auto_tag_settings()?.enabled(id)?;
-        let rejected = TREE.store.auto_tag_rejections_for(id)?;
+        let rejected = crate::operations::tag_feedback::rejections_for(id)?;
         let authored = TREE.store.read(|reader| {
             Ok::<_, anyhow::Error>(
                 reader

@@ -30,6 +30,11 @@ pub fn normalize_name(name: &str) -> String {
     name.trim().to_lowercase()
 }
 
+/// Stable authored-name identity, including before that name becomes built-in.
+pub fn personal_id(tag: &str) -> String {
+    format!("personal:{}", blake3::hash(normalize_name(tag).as_bytes()))
+}
+
 /// A validated set of Concepts: unique IDs, unambiguous names, valid thresholds, vectors of one
 /// dimension, existing parents and an acyclic hierarchy.
 #[derive(Debug, Clone)]
@@ -43,6 +48,7 @@ pub struct Vocabulary {
     ancestors: Vec<Vec<usize>>,
     by_id: HashMap<String, usize>,
     by_name: HashMap<String, usize>,
+    by_rejection: HashMap<String, usize>,
 }
 
 impl Vocabulary {
@@ -53,6 +59,7 @@ impl Vocabulary {
         concepts.sort_by(|left, right| left.id.cmp(&right.id));
         let mut by_id: HashMap<String, usize> = HashMap::with_capacity(concepts.len());
         let mut by_name: HashMap<String, usize> = HashMap::with_capacity(concepts.len() * 2);
+        let mut by_rejection = HashMap::with_capacity(concepts.len() * 2);
         let mut matrix = Vec::with_capacity(concepts.len() * dim);
         for (index, concept) in concepts.iter().enumerate() {
             validate_concept(concept, dim)?;
@@ -64,6 +71,7 @@ impl Vocabulary {
             let names = std::iter::once(&concept.label).chain(&concept.synonyms);
             for name in names {
                 let name = normalize_name(name);
+                let rejection = personal_id(&name);
                 if let Some(&other) = by_name.get(&name) {
                     if other != index {
                         return Err(AutoTagError::AmbiguousName {
@@ -75,6 +83,7 @@ impl Vocabulary {
                 } else {
                     by_name.insert(name, index);
                 }
+                by_rejection.insert(rejection, index);
             }
             matrix.extend_from_slice(&concept.vector);
         }
@@ -86,6 +95,7 @@ impl Vocabulary {
             ancestors,
             by_id,
             by_name,
+            by_rejection,
         })
     }
 
@@ -108,6 +118,35 @@ impl Vocabulary {
         self.index_named(name).map(|index| &self.concepts[index])
     }
 
+    /// Historical personal IDs remain effective when an exact label/alias is promoted.
+    pub fn canonical_rejection<'a>(&'a self, id: &'a str) -> &'a str {
+        self.rejection_index(id)
+            .map_or(id, |index| self.concepts[index].id.as_str())
+    }
+
+    pub fn is_rejected(&self, id: &str, rejections: &[&str]) -> bool {
+        let id = self.canonical_rejection(id);
+        rejections
+            .iter()
+            .any(|rejection| self.canonical_rejection(rejection) == id)
+    }
+
+    /// Keep both current and historical keys so the previous binary honors new decisions.
+    pub fn rejection_keys(&self, id: &str) -> Vec<String> {
+        let id = self.canonical_rejection(id);
+        let mut keys = vec![id.to_owned()];
+        if let Some(concept) = self.concept(id) {
+            keys.extend(
+                std::iter::once(&concept.label)
+                    .chain(&concept.synonyms)
+                    .map(|name| personal_id(name)),
+            );
+        }
+        keys.sort();
+        keys.dedup();
+        keys
+    }
+
     /// Every transitive ancestor of a Concept, sorted by ID; empty for an unknown ID.
     pub fn ancestors(&self, id: &str) -> impl Iterator<Item = &Concept> {
         self.index_of(id)
@@ -118,6 +157,11 @@ impl Vocabulary {
 
     pub(super) fn index_of(&self, id: &str) -> Option<usize> {
         self.by_id.get(id).copied()
+    }
+
+    pub(super) fn rejection_index(&self, id: &str) -> Option<usize> {
+        self.index_of(id)
+            .or_else(|| self.by_rejection.get(id).copied())
     }
 
     pub(super) fn index_named(&self, name: &str) -> Option<usize> {

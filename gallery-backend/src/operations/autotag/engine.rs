@@ -225,7 +225,7 @@ impl AutoTagEngine {
         let mut rejected: Vec<usize> = photo
             .rejections
             .iter()
-            .filter_map(|id| vocabulary.index_of(id))
+            .filter_map(|id| vocabulary.rejection_index(id))
             .collect();
         rejected.sort_unstable();
         rejected.dedup();

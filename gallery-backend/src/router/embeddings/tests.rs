@@ -44,6 +44,10 @@ fn embedding_status_and_pause_are_owner_only() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one isolated owner/public/share HTTP fixture"
+)]
 fn http_child() {
     if std::env::var_os("UROCISSA_EMBEDDING_HTTP_TEST").is_none() {
         return;

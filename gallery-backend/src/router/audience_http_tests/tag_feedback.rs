@@ -260,7 +260,7 @@ pub(super) async fn checks(client: &Client) {
     decision(client, PRIVATE, "bird", "reject").await;
     decision(client, PRIVATE, "bird", "reject").await;
     assert_eq!(
-        TREE.store.auto_tag_rejections_for(PRIVATE).unwrap(),
+        crate::operations::tag_feedback::rejections_for(PRIVATE).unwrap(),
         vec!["bird"]
     );
     assert_eq!(source_count(client, "bird", TagSource::Auto).await, 0);
@@ -646,6 +646,71 @@ async fn candidate_decisions(client: &Client) {
         .status(),
         Status::Ok
     );
+    Box::pin(promoted_rejection_compatibility(client)).await;
+}
+
+async fn promoted_rejection_compatibility(client: &Client) {
+    let candidate = |hash: &str, label: &str, action: &str| json!({"hash": hash, "label": label, "action": action});
+    let path = "/put/concept_candidate_decision";
+    let other = crate::operations::tag_feedback::concept_id("stone");
+    // Simulate a rejection saved before this exact name became built-in.
+    let legacy_dog = crate::operations::autotag::learning::personal_id("dog");
+    TREE.store
+        .write(|writer| writer.reject_auto_tag(PUBLIC, &legacy_dog))
+        .unwrap();
+    assert_eq!(
+        owner(
+            client.put(path).json(&candidate(PUBLIC, "dog", "confirm")),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Conflict
+    );
+    assert_eq!(
+        crate::operations::tag_feedback::candidate_review_states(PUBLIC, &["dog".into()])
+            .unwrap()
+            .get("dog"),
+        Some(&"rejected")
+    );
+    assert_eq!(
+        owner(
+            client
+                .put(path)
+                .json(&candidate(PUBLIC, "dog", "clearRejection")),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Ok
+    );
+    assert!(
+        !TREE
+            .store
+            .auto_tag_rejections_for(PUBLIC)
+            .unwrap()
+            .contains(&legacy_dog)
+    );
+    assert!(
+        TREE.store
+            .auto_tag_rejections_for(PUBLIC)
+            .unwrap()
+            .contains(&other)
+    );
+    assert_eq!(
+        owner(
+            client.put(path).json(&candidate(PUBLIC, "dog", "reject")),
+            true
+        )
+        .dispatch()
+        .await
+        .status(),
+        Status::Ok
+    );
+    let stored = TREE.store.auto_tag_rejections_for(PUBLIC).unwrap();
+    assert!(stored.contains(&legacy_dog) && stored.contains(&"dog".into()));
 }
 
 async fn personal_learning(client: &Client) {
