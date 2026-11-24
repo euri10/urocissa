@@ -32,8 +32,9 @@ let generation = 0
 let controller: AbortController | null = null
 const current = computed(() => round.value?.photos[index.value])
 const predictions = computed(() => after.value ? current.value?.after ?? [] : current.value?.before ?? [])
-const stats = computed(() => summary(round.value?.photos ?? [], after.value))
 const held = computed(() => round.value?.photos.filter(photo => photo.role === 'heldOut') ?? [])
+const evaluatedPhotos = computed(() => kind.value === 'garden' && after.value ? held.value : round.value?.photos ?? [])
+const stats = computed(() => summary(evaluatedPhotos.value, after.value))
 const baseline = computed(() => summary(held.value))
 const learned = computed(() => summary(held.value, true))
 const canSave = computed(() => !busy.value && imageReady.value && config.canWrite && choices.value.every(value => value !== null))
@@ -182,7 +183,7 @@ onBeforeUnmount(() => { generation++; controller?.abort() })
           </template>
           <template v-if="round">
             <v-alert type="info" variant="tonal" class="mb-3">
-              {{ stats.seen }}/{{ round.photos.length }} photos reviewed · {{ stats.covered }} with suggestions · {{ stats.labels }} labels ·
+              {{ stats.seen }}/{{ evaluatedPhotos.length }} photos reviewed · {{ stats.covered }} with suggestions · {{ stats.labels }} labels ·
               {{ stats.yes }} correct / {{ stats.no }} incorrect / {{ stats.uncertain }} uncertain.
               Judged-label precision: {{ percent(stats.precision) }}. Conservative precision (uncertain and unreviewed labels count against it): {{ percent(stats.lowerBound) }}.
               {{ stats.off }} off / {{ stats.pending }} pending. {{ stats.pass && kind === 'random' ? '100-photo ≥85% precision criterion met for this frozen round.' : 'Acceptance remains pending.' }}
