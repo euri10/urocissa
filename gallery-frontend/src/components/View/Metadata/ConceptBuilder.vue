@@ -66,7 +66,7 @@ async function decide(candidate: Candidate, action: CandidateAction) {
   }
 }
 
-async function addCustom() {
+async function addCustom(action: 'confirm' | 'reject' = 'confirm') {
   const label = custom.value.trim()
   if (label === '') { error.value = 'Enter a tag first.'; return }
   if (candidates.value.some(candidate => candidate.label.toLocaleLowerCase() === label.toLocaleLowerCase())) {
@@ -74,8 +74,8 @@ async function addCustom() {
     return
   }
   const candidate: Candidate = { label, decision: 'pending' }
-  await decide(candidate, 'confirm')
-  if (candidate.decision === 'confirmed') {
+  await decide(candidate, action)
+  if (candidate.decision === 'confirmed' || candidate.decision === 'rejected') {
     candidates.value.push(candidate)
     custom.value = ''
     loaded.value = true
@@ -110,9 +110,11 @@ async function addCustom() {
         <v-card-subtitle class="pa-0 text-wrap">To correct a confirmed tag, use Edit tags. Undoing a rejection allows this suggestion to appear again.</v-card-subtitle>
       </v-sheet>
       <v-sheet color="transparent" class="d-flex flex-wrap align-center ga-2 mt-3">
-        <v-text-field v-model="custom" label="Add your own tag" maxlength="80" hide-details density="compact" :disabled="busy || uncertain || !config.canWrite" @keyup.enter="addCustom" />
-        <v-btn :disabled="busy || uncertain || !config.canWrite" @click="addCustom">Add tag</v-btn>
+        <v-text-field v-model="custom" label="Add your own tag" maxlength="80" hide-details density="compact" :disabled="busy || uncertain || !config.canWrite" @keyup.enter="addCustom()" />
+        <v-btn :disabled="busy || uncertain || !config.canWrite" @click="addCustom()">Add tag</v-btn>
+        <v-btn color="error" variant="outlined" :disabled="busy || uncertain || !config.canWrite || custom.trim() === ''" @click="addCustom('reject')">Not in this photo</v-btn>
       </v-sheet>
+      <v-card-subtitle class="pa-0 mt-2 text-wrap">Enter a concept you know is absent, then choose Not in this photo to teach a negative. No suggestion is required; Undo rejection reverses it.</v-card-subtitle>
       <v-card-subtitle class="pa-0 mt-2 text-wrap">A new concept needs multiple examples before it can suggest similar photos.</v-card-subtitle>
     </v-sheet>
   </v-list-item>

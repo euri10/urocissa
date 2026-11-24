@@ -32,3 +32,22 @@ an unprepared Auto tag service returns 503. Pending results must be rechecked
 after normal learning completes. The endpoint does not alter authored V6
 records or derived formats and needs no data migration. Ordinary image/config
 rollback retains the existing volume and feedback.
+
+## Teach a missing Concept a genuine negative
+
+An empty Concept review need not prevent explicit teaching. In the authenticated
+application at <https://photos.sslc.rocks>, open a photo you know does **not**
+contain the Concept, then **Info -> Build concepts**. In **Add your own tag**,
+enter `bridge` and click **Not in this photo**. No generated suggestion is needed.
+The saved row reads `bridge · rejected`; **Undo rejection** reverses this decision.
+This records a Rejection, not a User tag. **Add tag** and Enter remain positive
+confirmation actions. Existing authored positives cannot be silently overwritten;
+after an uncertain/conflicting response refresh before trying again.
+
+For the consolidated owner round, use only already-selected teaching photos that
+genuinely lack a bridge, and only after the initial frozen review has been saved.
+Never teach from the garden held-outs or the random precision sample. Five distinct
+genuine negatives plus the existing positives permit the unchanged learned gate;
+they do not guarantee precision or justify weakening quality acceptance. Do not
+manufacture negative examples merely to reach five. Keep the entire first sitting
+within the single acceptance lane's 20-photo limit.

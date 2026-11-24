@@ -23,7 +23,7 @@ interface State {
   error: string
   generate: () => Promise<void>
   decide: (candidate: Candidate, action: 'confirm' | 'reject' | 'clearRejection') => Promise<void>
-  addCustom: () => Promise<void>
+  addCustom: (action?: 'confirm' | 'reject') => Promise<void>
 }
 const photo = { id: 'fixture-photo', type: 'image', autoTagsEnabled: true }
 const renderer = createRenderer<Record<string, unknown>, Record<string, unknown>>({
@@ -189,6 +189,52 @@ it('requests suggestions only on demand and saves only explicit decisions', asyn
   app.unmount()
 })
 
+it('teaches an owner-entered negative without requiring model suggestions and allows Undo', async () => {
+  const { app, state } = mount()
+  state.custom = ' bridge '
+  await state.addCustom('reject')
+  expect(requestConceptCandidates).not.toHaveBeenCalled()
+  expect(decideConceptCandidate).toHaveBeenCalledExactlyOnceWith('fixture-photo', 'bridge', 'reject', 'detailId')
+  expect(state.candidates).toEqual([{ label: 'bridge', decision: 'rejected' }])
+  expect(state.loaded).toBe(true)
+  expect(state.custom).toBe('')
+  const candidate = state.candidates[0]
+  if (candidate === undefined) throw new Error('Missing explicit negative')
+  await state.decide(candidate, 'clearRejection')
+  expect(candidate.decision).toBe('pending')
+  expect(decideConceptCandidate).toHaveBeenLastCalledWith('fixture-photo', 'bridge', 'clearRejection', 'detailId')
+  app.unmount()
+})
+
+it('allows explicit negatives after empty suggestions but never retries uncertain failures', async () => {
+  const { app, state } = mount()
+  vi.mocked(requestConceptCandidates).mockResolvedValueOnce([])
+  await state.generate()
+  state.custom = 'bridge'
+  vi.mocked(decideConceptCandidate).mockRejectedValueOnce(new Error('conflict or disconnected'))
+  await state.addCustom('reject')
+  expect(decideConceptCandidate).toHaveBeenCalledExactlyOnceWith('fixture-photo', 'bridge', 'reject', 'detailId')
+  expect(state.candidates).toEqual([])
+  expect(state.custom).toBe('bridge')
+  expect(state.error).toContain('may have been saved')
+  await state.addCustom('reject')
+  expect(decideConceptCandidate).toHaveBeenCalledTimes(1)
+  app.unmount()
+})
+
+it('does not save an owner-entered negative when read-only or anonymous', async () => {
+  const { app, state } = mount()
+  state.custom = 'bridge'
+  for (const config of [{ isAdmin: true, readOnlyMode: true }, { isAdmin: false, readOnlyMode: false }]) {
+    useConfigStore('mainId').config = config as AppConfig
+    await nextTick()
+    await state.addCustom('reject')
+    expect(decideConceptCandidate).not.toHaveBeenCalled()
+    expect(state.candidates).toEqual([])
+  }
+  app.unmount()
+})
+
 it('keeps uncertain failures unconfirmed and does not mutate when read-only', async () => {
   const { app, state } = mount()
   await state.generate()
@@ -239,4 +285,6 @@ it('explains locality, uncertainty and published User-tag visibility', async () 
   expect(html).toContain('local AI worker, are limited to a small vocabulary, and may be wrong')
   expect(html).toContain('may be visible on published photos')
   expect(html).toContain('Skipping does not save feedback')
+  expect(html).toContain('Not in this photo')
+  expect(html).toContain('No suggestion is required')
 })
