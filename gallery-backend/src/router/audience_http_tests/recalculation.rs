@@ -86,6 +86,9 @@ pub(super) async fn checks(
         .await;
     assert_eq!(response.status(), Status::Ok);
     let unchanged = response.into_json::<Value>().await.unwrap();
+    assert!(unchanged["fullPhotos"].as_u64().unwrap() > 0);
+    assert!(unchanged["fullDurationMs"].is_number());
+    assert_eq!(unchanged["fullModel"], model.model_id);
     assert_eq!(
         unchanged["changes"],
         serde_json::json!({"added": 0, "removed": 0})

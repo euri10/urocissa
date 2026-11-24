@@ -15,6 +15,12 @@ use crate::{
 pub struct Changes {
     pub added: usize,
     pub removed: usize,
+    #[serde(skip)]
+    pub(super) considered_photos: usize,
+    #[serde(skip)]
+    pub(super) scored_photos: usize,
+    #[serde(skip)]
+    pub(super) model: String,
 }
 
 impl Changes {
@@ -45,6 +51,8 @@ pub struct RecalculationStatus {
     pub duration_ms: Option<u64>,
     pub full_duration_ms: Option<u64>,
     pub full_completed_at: Option<i64>,
+    pub full_photos: usize,
+    pub full_model: Option<String>,
     pub changes: Changes,
     pub last_error: Option<String>,
     #[serde(skip)]
@@ -100,19 +108,24 @@ impl AutoTags {
                 prepared.seen.clear();
             }
             let changes = self.materialize(&inputs, &counts)?;
-            Ok::<_, anyhow::Error>((revision, changes))
+            Ok::<_, anyhow::Error>((revision, changes, inputs.len()))
         })();
         let mut status = self.recalculation.lock().unwrap();
         status.running = false;
         match result {
-            Ok((revision, changes)) => {
+            Ok((revision, changes, population)) => {
                 if let Some(changes) = changes {
                     status.last_completed_at = Some(chrono::Utc::now().timestamp_millis());
                     status.duration_ms =
                         Some(u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX));
-                    if force {
+                    if population > 0
+                        && changes.considered_photos == population
+                        && changes.scored_photos == population
+                    {
                         status.full_duration_ms = status.duration_ms;
                         status.full_completed_at = status.last_completed_at;
+                        status.full_photos = population;
+                        status.full_model = Some(changes.model.clone());
                     }
                     status.changes = changes;
                 }

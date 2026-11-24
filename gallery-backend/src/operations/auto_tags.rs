@@ -230,6 +230,8 @@ impl AutoTags {
             .iter()
             .filter(|(id, input)| prepared.seen.get(*id) != Some(*input))
             .collect();
+        changes.considered_photos = pending.len();
+        changes.model.clone_from(&prepared.model);
         // Read a bounded batch before scoring. Interleaving database page reads
         // with one GEMM scratch allocation per photo fragments worker heaps.
         for chunk in pending.chunks(256) {
@@ -245,6 +247,7 @@ impl AutoTags {
                 }
                 completed.push((id.clone(), input.clone()));
             }
+            changes.scored_photos += embedded.len();
             for ((id, input, _), tags) in embedded.iter().zip(tag_batch(prepared, &embedded)) {
                 let tags = tags?;
                 changes.compare(self.store.auto_tags(id)?.as_ref(), &tags);
