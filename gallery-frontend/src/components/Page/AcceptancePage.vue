@@ -193,7 +193,7 @@ onBeforeUnmount(() => { generation++; controller?.abort() })
             </v-card-subtitle>
             <template v-if="kind === 'garden'">
               <v-alert type="warning" variant="tonal" class="mb-3">
-                First judge baseline suggestions on every held-out photo. Then open only teaching photos in the gallery, use Info → Concept builder, and explicitly accept correct generic labels and your plant name.
+                First judge baseline suggestions on every held-out photo. Then open only teaching photos in the gallery, use Info → Build concepts → Suggest concepts for this photo, and Confirm correct generic labels. Use Add your own tag → Add tag for the same exact plant name on every teaching photo.
                 Accepted User tags may be visible on public photos. Return here when learning is up to date. A single example is insufficient for a classifier.
               </v-alert>
               <v-sheet class="d-flex flex-wrap ga-2 mb-3">
