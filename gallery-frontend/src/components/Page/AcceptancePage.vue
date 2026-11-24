@@ -124,6 +124,9 @@ async function captureAfter() {
     round.value = data
     after.value = true
     index.value = data.photos.findIndex(photo => photo.role === 'heldOut')
+    paused.value = false
+    reviewedThisSitting.value = 0
+    started.value = Date.now()
   } catch { error.value = 'Could not freeze the after sample. Review the held-out baseline first and wait for learning to finish.' }
   finally { busy.value = false }
 }
