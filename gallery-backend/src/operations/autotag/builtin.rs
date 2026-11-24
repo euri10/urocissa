@@ -1,10 +1,11 @@
 //! Versioned built-in definitions. Loading is pure; the caller caches prompt vectors
 //! by (model ID, vocabulary version) and supplies them here, without HTTP or storage.
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
 
+use super::reference::{ReferenceDefaults, ReferenceFallback, ReferenceHead};
 use super::{AutoTagEngine, Concept, ConceptClassifier, ConceptMode, ScoreModel, Vocabulary};
 
 // Explicit review is required to extend this allow-list. It prevents an imported
@@ -15,7 +16,7 @@ const REVIEWED_IDS: &str = "person crowd portrait selfie baby child animal bird 
     waterfall snow sunset rainbow cloud garden park building house castle bridge street bicycle \
     car bus train boat airplane food cake bread pizza fruit coffee beer wine tent campfire hiking \
     swimming skiing cycling concert festival birthday wedding fireworks protest banner police flag \
-    book computer guitar sculpture";
+    book computer guitar sculpture bench bookcase fence insect road rose spider";
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -54,6 +55,9 @@ pub struct BuiltinCatalog {
     pub model_id: String,
     prompt_template: String,
     pub concepts: Vec<BuiltinConcept>,
+    // Only the separately validated public supplement may populate these.
+    #[serde(skip)]
+    pub(crate) references: BTreeMap<String, ReferenceHead>,
 }
 
 impl BuiltinCatalog {
@@ -70,11 +74,22 @@ impl BuiltinCatalog {
     }
 
     pub fn embedded() -> Result<Self> {
-        Self::from_json(include_str!("../../../assets/concepts.json"))
+        let mut catalog = Self::from_json(include_str!("../../../assets/concepts.json"))?;
+        let defaults: ReferenceDefaults =
+            serde_json::from_str(include_str!("../../../assets/concept-defaults.json"))?;
+        defaults.apply(&mut catalog)?;
+        catalog.validate()?;
+        Ok(catalog)
     }
 
     pub fn from_json(source: &str) -> Result<Self> {
         let catalog: Self = serde_json::from_str(source).context("invalid built-in vocabulary")?;
+        catalog.validate()?;
+        Ok(catalog)
+    }
+
+    fn validate(&self) -> Result<()> {
+        let catalog = self;
         ensure!(catalog.schema_version == 2, "unsupported vocabulary schema");
         ensure!(
             !catalog.version.trim().is_empty(),
@@ -115,7 +130,11 @@ impl BuiltinCatalog {
                 .map(|c| c.with_vector(vec![1.0]))
                 .collect(),
         )?;
-        Ok(catalog)
+        Ok(())
+    }
+
+    pub fn with_references<C: ConceptClassifier>(&self, classifier: C) -> ReferenceFallback<C> {
+        ReferenceFallback::new(classifier, self.references.clone())
     }
 
     /// Prompts in definition order. The text tower embeds these once per cache key.
@@ -143,6 +162,12 @@ impl BuiltinCatalog {
             vectors.len() == self.concepts.len(),
             "wrong Concept vector count"
         );
+        ensure!(
+            self.references
+                .values()
+                .all(|head| head.weights.len() == dim),
+            "public reference embedding dimension mismatch"
+        );
         let concepts = self
             .concepts
             .iter()
@@ -159,9 +184,10 @@ impl BuiltinCatalog {
             .filter(|c| c.threshold.is_some())
             .map(|c| c.id.clone())
             .collect();
+        let classifier = self.with_references(CalibratedOnly(active));
         Ok(
             AutoTagEngine::new(Vocabulary::new(dim, concepts)?, score_model)
-                .with_classifier(CalibratedOnly(active)),
+                .with_classifier(classifier),
         )
     }
 }

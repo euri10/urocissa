@@ -61,6 +61,7 @@ mod engine;
 mod error;
 mod explanation;
 pub mod learning;
+mod reference;
 mod scoring;
 mod vocabulary;
 

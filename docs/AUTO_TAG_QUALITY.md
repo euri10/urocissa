@@ -90,3 +90,97 @@ and the eight-chip cap apply. The pre-registered screen uses the existing
 feedback and inherited parent placements without inference, feedback changes or
 database copies. They provide evidence for the open building and bridge findings;
 diagnosis alone does not resolve those quality findings.
+
+## Frozen public defaults, 2026-11-24
+
+`assets/concept-defaults.json` is an additive, exact-model supplement to the
+original 75-Concept catalog. The original catalog, calibration report, fixture
+scores and Flower quarantine remain unchanged. Seven neutral names are added:
+bench, bookcase, fence, insect, road, rose and spider. Bee/butterfly now refine
+insect; rose refines flower. A parent implied by a valid descendant remains
+searchable, not an extra displayed chip. Flower itself stays quarantined.
+
+Three additions use independently qualified zero-shot thresholds: bench, insect,
+spider. Five use frozen public-reference linear heads: bookcase, fence, road,
+rose, snow. The latter reuse the current SigLIP2 image vector; there is no extra
+pixel model or inference service. A reference head runs **only** while the existing
+per-Concept matcher is inactive. Existing calibrated zero-shot, owner similarity
+and owner learned classifiers take precedence. Rejections, historical personal
+Rejections, authored aliases, hierarchy, opt-out and the eight-chip cap still apply.
+The UI correctly calls these defaults built-in visual detection.
+
+The screen considered 60 additional neutral Open Images names plus inactive
+original Concepts. Public reference heads used the unchanged Rust 160-step,
+class-balanced Logistic learner (learning rate 2, L2 .002), with the prompt-score
+feature fixed to zero. Original selection photos whose
+SHA256(`reference-train:ImageID`) first byte is below 128 train the direction;
+the remaining selection photos choose its threshold. Original evaluation photos
+remain untouched. Every training class needs five positives **and** five genuine
+negatives. No missing annotation is a negative.
+
+Six new zero-shot candidates and thirteen public-reference heads passed original
+selection/evaluation. Their thresholds were then frozen. A separate official test
+split, up to 80 verified positives and 80 negatives per Concept, rejected eleven
+of nineteen candidates. No failed threshold was retuned or replaced. The remaining
+eight also passed the existing reviewed fixture absences and a veto requiring
+them absent on the three pre-existing neutral synthetic images.
+
+| Concept | Independent TP / positives | FP / negatives | Equal-prior precision |
+| --- | --- | --- | --- |
+| bench | 9 / 80 | 0 / 80 | 100% |
+| bookcase | 39 / 80 | 0 / 80 | 100% |
+| fence | 50 / 80 | 0 / 80 | 100% |
+| insect | 64 / 80 | 4 / 80 | 94.1% |
+| road | 60 / 80 | 1 / 80 | 98.4% |
+| rose | 23 / 80 | 0 / 80 | 100% |
+| snow | 58 / 80 | 1 / 80 | 98.3% |
+| spider | 63 / 80 | 1 / 51 | 97.6% |
+
+All pass the unchanged >=90% observed/equal-prior precision, >=10% recall,
+five examples per class and five predictions gates in each partition. These are
+point-estimate gates, not lower confidence bounds. The actual Rust engine replay
+produced exactly the same decisions as the public evaluator for all eight classes.
+The aggregate provenance and both passing/failed independent results are in
+`tools/concepts/public-defaults-report.json`. Public pixels/vectors remain in the
+explicit local scratch; no owner examples informed these defaults.
+
+On the fixed, disjoint 100-photo public sample, the qualified release changes:
+
+| Displayed Auto tags | Original photos | Qualified release photos |
+| --- | --- | --- |
+| 0 | 79 | 33 |
+| 1 | 21 | 35 |
+| 2 | 0 | 27 |
+| 3 | 0 | 5 |
+| 4–8 | 0 | 0 |
+
+Mean rises 0.21 -> 1.04, median 0 -> 1. This is **not** the owner's 6–8 goal.
+Of 104 candidate chips, sparse official annotations verify 19 positive, 0 negative
+and leave 85 unknown; this cannot establish overall precision. Do not use the
+earlier all-19 prototype's 2.57 mean: eleven of those candidates failed and are not
+released. Owner-library counts and subjective precision remain separate acceptance
+checks; `.28` remains open. Building and bridge matchers are unchanged because the
+tested alternatives failed frozen quality gates.
+
+Reproduce packaging from the retained explicit public scratch (no network or
+threshold selection), and run the opt-in native replay:
+
+```sh
+python3 -B tools/concepts/package_defaults.py --scratch /ABSOLUTE/PUBLIC-SCRATCH
+cd gallery-backend
+UROCISSA_PUBLIC_DEFAULTS_FIXTURE=/ABSOLUTE/PUBLIC-SCRATCH/public-defaults-inputs.json \
+  cargo test --locked --offline public_default_heldout_quality -- --ignored --nocapture
+```
+
+Native public fixture SHA256:
+`28a7d2266642b0502c6abbd2ba7ee855a13e4798a73cbe715699dfda40894699`.
+The learner source-body SHA remains the one recorded above. The public held-out
+tool verifies annotation hashes, model identity and image/cache hashes; bounded
+transport retries reuse the exact URL and never substitute failed images.
+
+Startup prepares the seven additional text vectors once, reuses cached photo
+embeddings and rematerializes under vocabulary `2026-11-24.1`. This changes no
+authored or derived storage schema. Deployment still requires the fresh checked
+backup and tested retained-image rollback. Rollback rematerializes the prior
+vocabulary from unchanged authored decisions; no production data restoration is
+needed for an ordinary binary rollback.

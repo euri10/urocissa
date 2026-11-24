@@ -47,7 +47,10 @@ fn embedded_catalog_is_english_only() {
 
 #[test]
 fn committed_report_and_calibrated_thresholds_match() {
-    let catalog = BuiltinCatalog::embedded().unwrap();
+    // The additive public supplement is checked separately; this original calibration
+    // and its exact thresholds/provenance remain frozen, not rescreened.
+    let catalog =
+        BuiltinCatalog::from_json(include_str!("../../../../assets/concepts.json")).unwrap();
     let report: serde_json::Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../tools/concepts/calibration-report.json"
@@ -207,7 +210,8 @@ fn dropped_concepts_never_fire_but_still_expand_parents() {
 
 #[test]
 fn snail_predictions_respect_hierarchy_and_owner_choices() {
-    let catalog = BuiltinCatalog::embedded().unwrap();
+    let mut catalog = BuiltinCatalog::embedded().unwrap();
+    catalog.references.clear(); // This test deliberately supplies 2-D prompt vectors.
     let model_id = catalog.model_id.clone();
     let vectors = catalog
         .concepts
@@ -259,7 +263,8 @@ fn snail_predictions_respect_hierarchy_and_owner_choices() {
 #[test]
 fn everyday_predictions_respect_owner_choices() {
     for concept_name in ["fish", "mushroom"] {
-        let catalog = BuiltinCatalog::embedded().unwrap();
+        let mut catalog = BuiltinCatalog::embedded().unwrap();
+        catalog.references.clear(); // This test deliberately supplies 2-D prompt vectors.
         let model_id = catalog.model_id.clone();
         let vectors = catalog
             .concepts

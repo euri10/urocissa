@@ -75,9 +75,19 @@ impl AutoTags {
         prepared.learning_methods = vocabulary
             .concepts()
             .iter()
-            .map(|concept| (concept.id.clone(), learning.method(&concept.id).to_owned()))
+            .map(|concept| {
+                let method = learning.method(&concept.id);
+                let method =
+                    if method == "inactive" && self.catalog.references.contains_key(&concept.id) {
+                        "builtin"
+                    } else {
+                        method
+                    };
+                (concept.id.clone(), method.to_owned())
+            })
             .collect();
-        prepared.engine = AutoTagEngine::new(vocabulary, prepared.score).with_classifier(learning);
+        prepared.engine = AutoTagEngine::new(vocabulary, prepared.score)
+            .with_classifier(self.catalog.with_references(learning));
         prepared.feedback = feedback;
         prepared.learning_dirty = false;
         prepared.aliases = AliasIndex::default();

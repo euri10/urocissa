@@ -45,7 +45,7 @@ pub(super) async fn checks(client: &Client) {
         embedding::service()
             .unwrap()
             .auto_tags
-            .set(AutoTags::new(store.clone()).unwrap())
+            .set(AutoTags::test_without_references(store.clone()).unwrap())
             .is_ok()
     );
     super::recalculation::boundaries(client).await;

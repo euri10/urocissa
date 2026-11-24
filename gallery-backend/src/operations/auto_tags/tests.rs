@@ -24,7 +24,7 @@ impl Embedder for Fake {
 fn cached_concepts_rematerialize_without_photo_or_text_inference() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let store = EmbeddingStore::open(&dir.path().join("derived.redb"))?;
-    let tags = AutoTags::new(store.clone())?;
+    let tags = AutoTags::test_without_references(store.clone())?;
     let model = ModelInfo {
         model_id: tags.catalog.model_id.clone(),
         embedding_dim: 2,
@@ -88,11 +88,11 @@ fn cached_concepts_rematerialize_without_photo_or_text_inference() -> Result<()>
             .any(|t| t.concept == "cat")
     );
     tags.materialize(&input(true), &[])?;
-    let restarted = AutoTags::new(store.clone())?;
+    let restarted = AutoTags::test_without_references(store.clone())?;
     restarted.prepare(&model, &fake)?;
     assert_eq!(fake.0.load(Ordering::Relaxed), tags.catalog.concepts.len());
     // New vocabulary release reuses photo vectors, but prepares its Concepts once.
-    let mut next = AutoTags::new(store)?;
+    let mut next = AutoTags::test_without_references(store)?;
     next.catalog.version.push_str("-next");
     next.prepare(&model, &fake)?;
     assert!(next.status("photo", 3, true)?.auto_tags_pending);
@@ -147,7 +147,7 @@ fn rejection_survives_recompute_vocabulary_model_changes_and_derived_rebuild() -
         let main = DataStore::open(&main_path)?;
         input.get_mut("photo").unwrap().rejections = main.auto_tag_rejections_for("photo")?;
         let store = EmbeddingStore::open(&path)?;
-        let mut tags = AutoTags::new(store.clone())?;
+        let mut tags = AutoTags::test_without_references(store.clone())?;
         tags.catalog.version = format!("{}-{round}", tags.catalog.version);
         tags.catalog.model_id = format!("{}-{round}", tags.catalog.model_id);
         let model = ModelInfo {
@@ -232,7 +232,7 @@ fn slow_text_preparation_never_blocks_decision_rematerialization() -> Result<()>
     }
     let dir = tempfile::tempdir()?;
     let store = EmbeddingStore::open(&dir.path().join("derived.redb"))?;
-    let tags = Arc::new(AutoTags::new(store)?);
+    let tags = Arc::new(AutoTags::test_without_references(store)?);
     let (started_tx, started_rx) = mpsc::sync_channel(1);
     let (release_tx, release_rx) = mpsc::sync_channel(1);
     let worker_tags = tags.clone();
@@ -270,7 +270,7 @@ fn learning_fixture(
 ) -> Result<(tempfile::TempDir, AutoTags, PhotoInputs, ModelInfo)> {
     let dir = tempfile::tempdir()?;
     let store = EmbeddingStore::open(&dir.path().join("derived.redb"))?;
-    let tags = AutoTags::new(store.clone())?;
+    let tags = AutoTags::test_without_references(store.clone())?;
     let model = ModelInfo {
         model_id: tags.catalog.model_id.clone(),
         embedding_dim: dim,
@@ -480,7 +480,7 @@ fn feedback_retrains_all_photos_and_rebuilds_identical_derived_predictions() -> 
     for (id, embedding) in embeddings {
         store.put(&id, &model.model_id, 0, &embedding)?;
     }
-    let rebuilt = AutoTags::new(store)?;
+    let rebuilt = AutoTags::test_without_references(store)?;
     rebuilt.prepare(&model, &Fake(AtomicUsize::new(0)))?;
     rebuilt.materialize(&inputs, &[])?;
     assert_eq!(
@@ -497,7 +497,7 @@ fn feedback_retrains_all_photos_and_rebuilds_identical_derived_predictions() -> 
         .collect::<std::collections::BTreeMap<_, _>>();
     assert_eq!(results, original);
     // A restart also retrains rather than trusting persisted coefficients.
-    let restarted = AutoTags::new(rebuilt.store.clone())?;
+    let restarted = AutoTags::test_without_references(rebuilt.store.clone())?;
     restarted.prepare(&model, &Fake(AtomicUsize::new(0)))?;
     restarted.materialize(&inputs, &[])?;
     assert!(!fires(&restarted)?);

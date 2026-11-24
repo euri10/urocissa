@@ -68,6 +68,14 @@ pub struct AutoTagStatus {
 }
 
 impl AutoTags {
+    /// Small-vector test fixtures explicitly omit real 768-dimensional public heads.
+    #[cfg(test)]
+    pub(crate) fn test_without_references(store: EmbeddingStore) -> Result<Self> {
+        let mut tags = Self::new(store)?;
+        tags.catalog.references.clear();
+        Ok(tags)
+    }
+
     #[cfg(test)]
     pub(crate) fn test_store(&self) -> EmbeddingStore {
         self.store.clone()
