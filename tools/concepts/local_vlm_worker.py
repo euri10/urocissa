@@ -8,6 +8,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import select
 import signal
 import socket
@@ -20,7 +21,7 @@ MAX_IMAGE = 8 * 1024 * 1024
 MAX_REPLY = 8192
 INFERENCE_SECONDS = 90
 PROMPT = "List visible objects using simple generic nouns, not brand names or text. Answer with a comma-separated list of individual words."
-# Only reviewed labels and exact aliases can be model suggestions. User-entered
+# Only reviewed labels and aliases can be model suggestions. User-entered
 # tags use a different path and are not restricted by this vocabulary.
 VOCABULARY = Path(__file__).resolve().parents[2] / "gallery-backend/src/operations/concept_candidates/allowed_labels.txt"
 ALIASES = {}
@@ -31,20 +32,40 @@ for line in VOCABULARY.read_text(encoding="utf-8").splitlines():
             raise ValueError("duplicate concept vocabulary alias")
         ALIASES[alias] = canonical
 
+LABEL = re.compile(r"(?<![\w-])(?:" + "|".join(re.escape(alias) for alias in sorted(ALIASES, key=len, reverse=True)) + r")(?![\w-])")
+ASSERTION = re.compile(r"^(?:there (?:is|are)\b|(?:the|this) (?:image|photo|picture) (?:shows|contains|depicts)\b|(?:a|an|the|some|several|many|two|three)\b)")
+# Conservative clause suppression, not a visual truth or sensitive-content classifier.
+QUALIFIED = re.compile(r"\b(?:no|not|never|without|neither|nor|maybe|perhaps|possibly|possible|probably|might|may|could|seems?|appears?|looks? like)\b|n't\b|\?")
+DEPICTED = re.compile(r"\b(?:text|words?|says?|saying|reads?|reading|sign|logo|brand|drawing|painting|statue|toy)\b|\b\w+-shaped\b")
+
 
 def candidates(output):
-    """Return only exact reviewed labels; never extract words from model prose."""
-    if not isinstance(output, str) or len(output) > MAX_REPLY or "\n" in output:
+    """Normalize lists and affirmative descriptions to bounded reviewed guesses."""
+    if not isinstance(output, str) or len(output) > MAX_REPLY:
         return []
+    output = re.sub(r"^```(?:json)?\s*|\s*```$", "", output.strip())
+    if output.startswith("["):
+        try:
+            labels = json.loads(output)
+        except ValueError:
+            return []
+        if not isinstance(labels, list) or not all(isinstance(label, str) for label in labels):
+            return []
+        output = ",".join(labels)
     result = []
-    for raw in output.strip().rstrip(".").split(","):
-        label = ALIASES.get(" ".join(raw.strip().split()).lower())
-        if label is None:
+    for sentence in re.split(r"[.!;\n]+", output.lower()):
+        if QUALIFIED.search(sentence) or (ASSERTION.match(sentence.strip()) and DEPICTED.search(sentence)):
             continue
-        if label not in result:
-            result.append(label)
-        if len(result) == 8:
-            break
+        for raw in sentence.split(","):
+            phrase = " ".join(raw.strip().lstrip("-*").split())
+            aliases = [phrase] if phrase in ALIASES else (
+                [match.group() for match in LABEL.finditer(phrase)] if ASSERTION.match(phrase) else [])
+            for alias in aliases:
+                label = ALIASES[alias]
+                if label not in result:
+                    result.append(label)
+                if len(result) == 8:
+                    return result
     return result
 
 

@@ -1,5 +1,32 @@
 # Public-fixture prompt comparison
 
+## Parser regression, 2026-11-24
+
+The worker now accepts exact noun lists (commas, lines, bullets or JSON) and
+explicit affirmative descriptions such as "There are several bicycles" or
+"The image shows a bicycle". It still returns only canonical reviewed labels,
+deduplicated and capped at eight. It suppresses negated/uncertain sentences and
+prose describing written text, signs or depicted objects. Unsupported prose can
+still return nothing; this is a conservative normalizer, not a general language
+or visual-truth classifier. Sensitive labels are never added to the vocabulary.
+
+The real public bicycles caption recorded in `.29.2.3` returned no suggestions
+before this change and now returns bicycle, road, person, tree, water and sky.
+Water remains questionable: parsing cannot fix a model hallucination. Nothing
+becomes a User tag or learning example without an explicit owner decision.
+The model, generic-noun prompt, one-patch processor, 96-token cap and 90-second
+inference deadline are unchanged. Target responsiveness is at most 45 seconds
+per selected photo on beesslc; host observations are recorded in the service
+release evidence rather than inferred from workstation timing.
+
+All 128 captured public responses (64 images, two prompts) in the paired JSON
+files below retain their prior candidate lists exactly. They are format/coverage
+regressions, not new precision evidence. The test suite additionally covers
+negation, uncertainty, text-reading, list formats, alias boundaries and bounds;
+the actual offline model test still recovers bicycle/person from the public
+fixture. Run `python3 -B -m unittest discover -s tools/concepts` for the ordinary
+checks and the opt-in real-model test documented below for inference.
+
 These five attributed repository photos are a small diagnostic set, not a
 representative quality evaluation. Do not substitute private images. The
 comparison loads the pinned local worker model offline, uses the same reviewed

@@ -86,8 +86,42 @@ class LocalVlmWorkerTests(unittest.TestCase):
         self.assertEqual(candidates("a" * 8193), [])
         self.assertEqual(len(candidates("tree, plant, water, flower, garden, cat, dog, house, sky")), 8)
         self.assertEqual(candidates("woman, black person, old man, person, snails, plant, rhubarb"), ["person", "snail", "plant", "rhubarb"])
-        self.assertEqual(candidates("there is a cat, cat wearing a hat, famous person"), [])
+        self.assertEqual(candidates("cat wearing a hat, famous person"), [])
         self.assertEqual(candidates("no bicycle, without a person, elderly woman"), [])
+
+    def test_public_bicycles_caption_is_not_discarded_for_using_sentences(self):
+        # Actual local model output on the attributed public bicycles.jpg fixture,
+        # recorded in infra-urocissa-autotag-sjfz.29.2.3. Water may be hallucinated:
+        # these remain review-only candidates, never ground truth or feedback.
+        caption = ("There are several bicycles on a paved road. "
+                   "There are several people standing around the bicycles. "
+                   "There are bushes and trees behind the road. "
+                   "There is a large body of water behind the bushes and trees. "
+                   "There is a cloudy sky above.")
+        self.assertEqual(candidates(caption), ["bicycle", "road", "person", "tree", "water", "sky"])
+
+    def test_list_formats_and_assertions_keep_only_reviewed_labels(self):
+        for output in ['["bicycles", "person", "bicycle"]',
+                       '```json\n["bicycles", "person"]\n```',
+                       '- bicycles\n- person', '1. bicycles\n2. person',
+                       'The image shows bicycles and a person.']:
+            with self.subTest(output=output):
+                self.assertEqual(candidates(output), ["bicycle", "person"])
+        self.assertEqual(candidates('There is a bird nest in a tree.'), ["bird nest", "tree"])
+        self.assertEqual(candidates('The image shows a railway carriage.'), [])
+        self.assertEqual(candidates('Snow, car, sign.'), ["snow", "car"])
+
+    def test_negation_uncertainty_and_read_text_are_not_positive_examples(self):
+        for output in ['There is no bicycle.', 'The image does not show a person.',
+                       'There is a cat without a dog.', 'There might be a flower.',
+                       "The image shows a cat that isn't real.", 'There is probably a flower.',
+                       'The image shows what looks like a cat.', 'A possible rose.',
+                       'Is there a person?', 'There is a sign saying cat.',
+                       'The image shows a drawing of a cat.', 'The photo shows a cat-shaped rock.']:
+            with self.subTest(output=output):
+                self.assertEqual(candidates(output), [])
+        self.assertEqual(candidates('There is a tree. There is no cat.'), ["tree"])
+        self.assertEqual(candidates('race, ethnicity, gender, elderly woman, black person, person'), ["person"])
 
     @unittest.skipUnless(os.getenv("UROCISSA_CONCEPT_MODEL_DIR"), "requires local concept model")
     def test_real_model_returns_useful_labels_for_public_bicycle_photo(self):
