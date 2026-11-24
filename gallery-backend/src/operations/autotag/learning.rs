@@ -10,6 +10,9 @@ use super::{
 };
 
 const MIN_EXAMPLES: usize = 5;
+/// Bounded public held-out evidence, including genuine negative examples, is required
+/// before adding an uncalibrated Concept here. See `docs/AUTO_TAG_QUALITY.md`.
+const FEEDBACK_ONLY_CLASSIFIERS: &[&str] = &["snow"];
 /// Share of the owner's examples allowed to sit farther from the rest than the match cutoff.
 const EXAMPLE_QUANTILE: f32 = 0.1;
 /// Confidence slope per unit of cosine margin; only orders matches, 0.5 is the cutoff.
@@ -251,20 +254,31 @@ impl Learning {
                     .collect::<Vec<&[f32]>>()
             };
             let (positives, rejections) = (examples_where(true), examples_where(false));
+            let feedback_only = !learning.active.contains(&concept.id)
+                && FEEDBACK_ONLY_CLASSIFIERS.contains(&concept.id.as_str());
+            let fit_classifier = positives.len() >= MIN_EXAMPLES
+                && rejections.len() >= MIN_EXAMPLES
+                && (learning.active.contains(&concept.id) || feedback_only);
             // Personal and uncalibrated built-in Concepts have no usable prompt: their examples
             // decide, and Rejections tighten the match directly (an uncalibrated built-in never
             // fires zero-shot, so it could otherwise never be shown and rejected).
-            if concept.id.starts_with("personal:") || !learning.active.contains(&concept.id) {
+            if concept.id.starts_with("personal:")
+                || (!learning.active.contains(&concept.id) && !fit_classifier)
+            {
                 if let Some(examples) = Examples::fit(&positives, &rejections) {
                     learning.examples.insert(concept.id.clone(), examples);
                 }
-            } else if positives.len() >= MIN_EXAMPLES && rejections.len() >= MIN_EXAMPLES {
+            } else if fit_classifier {
                 let examples = labelled
                     .iter()
                     .map(|&(embedding, positive)| {
                         (
                             embedding,
-                            score.probability(dot(&concept.vector, embedding)),
+                            if feedback_only {
+                                0.0
+                            } else {
+                                score.probability(dot(&concept.vector, embedding))
+                            },
                             positive,
                         )
                     })
@@ -317,5 +331,7 @@ fn sigmoid(logit: f32) -> f32 {
     1.0 / (1.0 + (-logit).exp())
 }
 
+#[cfg(test)]
+mod public_quality;
 #[cfg(test)]
 mod tests;

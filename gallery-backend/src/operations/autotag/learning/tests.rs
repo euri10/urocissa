@@ -120,6 +120,64 @@ fn classifier_gate_requires_five_explicit_positives_and_negatives() {
     assert!(learning.classifiers.is_empty());
 }
 
+#[test]
+fn only_validated_snow_uses_feedback_only_classifier_after_five_by_five_gate() {
+    let concepts = ["snow", "building"]
+        .into_iter()
+        .map(|id| Concept {
+            id: id.into(),
+            label: id.into(),
+            synonyms: vec![],
+            parents: vec![],
+            threshold: 0.5,
+            vector: vec![0.0, 1.0, 0.0],
+        })
+        .collect();
+    let vocabulary = Vocabulary::new(3, concepts).unwrap();
+    let ids = (0..10).map(|i| i.to_string()).collect::<Vec<_>>();
+    let positive = photo(&[1.0, 0.0, 0.0], &["snow", "building"], &[]);
+    let negative = photo(&[-1.0, 0.0, 0.0], &[], &["snow", "building"]);
+    for (positives, negatives, expected) in
+        [(4, 5, "inactive"), (5, 4, "similarity"), (5, 5, "learned")]
+    {
+        let examples = ids[..positives]
+            .iter()
+            .map(|id| (id.as_str(), positive))
+            .chain(
+                ids[5..5 + negatives]
+                    .iter()
+                    .map(|id| (id.as_str(), negative)),
+            )
+            .collect::<Vec<_>>();
+        let (vocabulary, learning) = Learning::fit(
+            &vocabulary,
+            BTreeSet::new(),
+            ScoreModel::new(10.0, -5.0).unwrap(),
+            &examples,
+        )
+        .unwrap();
+        assert_eq!(learning.method("snow"), expected);
+        assert_eq!(
+            learning.method("building"),
+            if positives >= 5 {
+                "similarity"
+            } else {
+                "inactive"
+            }
+        );
+        if expected == "learned" {
+            assert_eq!(learning.classifiers["snow"].zero_shot_weight, 0.0);
+            let engine = AutoTagEngine::new(vocabulary, ScoreModel::new(10.0, -5.0).unwrap())
+                .with_classifier(learning);
+            let result = engine
+                .tag_photo(&photo(&[1.0, 0.0, 0.0], &[], &["snow"]))
+                .unwrap();
+            assert!(result.iter().all(|tag| tag.concept != "snow"));
+            assert!(result.iter().any(|tag| tag.concept == "building"));
+        }
+    }
+}
+
 /// Unit vector at `angle` radians in the (y, z) plane: cosines between two are cos(Δangle).
 fn at(angle: f32) -> [f32; 3] {
     [0.0, angle.cos(), angle.sin()]
