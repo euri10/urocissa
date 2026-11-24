@@ -114,6 +114,16 @@ fn previous_binary_ignores_additive_review_table() -> Result<()> {
         metadata: ImageMetadata::new(object.id, bytes.len() as u64, 32, 24, "jpg".into()),
         object,
     });
+    let vocabulary = crate::operations::autotag::BuiltinCatalog::embedded()?.alias_vocabulary()?;
+    let mut expected_rejections = vec![
+        "plant".to_owned(),
+        crate::operations::autotag::learning::personal_id("dog"),
+    ];
+    for concept in ["bench", "snow"] {
+        expected_rejections.extend(vocabulary.rejection_keys(concept));
+    }
+    expected_rejections.sort();
+    expected_rejections.dedup();
     let path = data.join("db/index_v6.redb");
     {
         let store = DataStore::initialize_empty(&path)?;
@@ -126,9 +136,10 @@ fn previous_binary_ignores_additive_review_table() -> Result<()> {
         store.update_acceptance("random", |_| Ok(round()))?;
         let write = store.db.begin_write()?;
         {
-            write
-                .open_table(super::super::auto_tags::REJECTIONS)?
-                .insert((hash.as_str(), "plant"), 1)?;
+            let mut rejections = write.open_table(super::super::auto_tags::REJECTIONS)?;
+            for concept in &expected_rejections {
+                rejections.insert((hash.as_str(), concept.as_str()), 1)?;
+            }
         }
         write.commit()?;
     }
@@ -223,6 +234,18 @@ fn previous_binary_ignores_additive_review_table() -> Result<()> {
         .send()?
         .error_for_status()?
         .json()?;
+    for label in ["bench", "snow"] {
+        let response = client
+            .put(format!("{url}/put/concept_candidate_decision"))
+            .header("Cookie", format!("jwt={owner}"))
+            .json(&serde_json::json!({"hash": hash, "label": label, "action": "confirm"}))
+            .send()?;
+        assert_eq!(
+            response.status().as_u16(),
+            409,
+            "Previous binary must honor newly dual-written rejection for {label}"
+        );
+    }
     let resource: serde_json::Value = client
         .get(format!("{url}/get/resource/{hash}"))
         .header("Cookie", format!("jwt={owner}"))
@@ -243,7 +266,7 @@ fn previous_binary_ignores_additive_review_table() -> Result<()> {
     drop(container);
     let store = DataStore::open(&path)?;
     assert!(store.acceptance_round("random")?.is_some());
-    assert_eq!(store.auto_tag_rejections_for(&hash)?, vec!["plant"]);
+    assert_eq!(store.auto_tag_rejections_for(&hash)?, expected_rejections);
     assert!(
         store
             .reader()?
