@@ -6,12 +6,15 @@ in the explicit scratch cache. Missing annotations stay unknown, never negative.
 """
 import argparse
 from collections import Counter
+import concurrent.futures
 import csv
 import hashlib
 import json
+import math
 from pathlib import Path
 import statistics
 import time
+import urllib.error
 
 import calibrate as tool
 
@@ -21,6 +24,16 @@ TEST_SHA = '917d3ca8c0a2e09d652fb3148e9264df6117bfcaccf425a60a29b23269487953'
 
 def ranked(ids, seed):
     return sorted(ids, key=lambda image: tool.digest(f'{seed}:{image}'.encode()))
+
+
+def public_image(url, remaining):
+    for attempt in range(3):
+        try:
+            return tool.fetch(url, timeout=remaining())
+        except (urllib.error.URLError, TimeoutError):
+            if attempt == 2:
+                raise
+            time.sleep(min(1, remaining()))
 
 
 def displayed(catalog, scores):
@@ -68,6 +81,15 @@ def run(args):
     with (args.calibration_cache / 'classes.csv').open(newline='') as source:
         classes = {name: mid for mid, name in csv.reader(source)}
     by_name = {c['id']: c for c in catalog['concepts']}
+    references = tool.read_json(args.references) if args.references else {'heads': {}}
+    if references['heads']:
+        if references['model_id'] != catalog['model_id'] or not set(references['heads']) <= set(by_name):
+            raise ValueError('reference classifier model/Concept mismatch')
+        for name, head in references['heads'].items():
+            if (len(head['weights']) != 768 or not all(math.isfinite(w) for w in head['weights'])
+                    or not math.isfinite(head['bias']) or not 0 < head['threshold'] < 1):
+                raise ValueError('invalid frozen reference classifier')
+            by_name[name]['threshold'] = head['threshold']
     wanted = {classes[c['open_images']] for c in catalog['concepts'] if c['open_images'] in classes}
     labels = tool.annotations(labels_path, wanted)
     selected = {}
@@ -102,19 +124,40 @@ def run(args):
         texts.extend(tool.validate_vector(v, 768) for v in response['embeddings'])
     image_dir = args.cache / 'images'
     image_dir.mkdir(exist_ok=True)
+    embedding_dir = args.cache / tool.digest(json.dumps(info, sort_keys=True).encode())[:16]
+    embedding_dir.mkdir(exist_ok=True)
+
+    def download(image):
+        path = image_dir / f'{image}.jpg'
+        if not path.exists():
+            data = public_image(f'https://open-images-dataset.s3.amazonaws.com/test/{image}.jpg', remaining)
+            temporary = path.with_suffix('.partial')
+            temporary.write_bytes(data)
+            temporary.replace(path)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(download, ids))
+    print(f'Independent public downloads verified: {len(ids)} images', flush=True)
     scores, hashes = {}, {}
     for index, image in enumerate(ids, 1):
         path = image_dir / f'{image}.jpg'
-        if not path.exists():
-            path.write_bytes(tool.fetch(f'https://open-images-dataset.s3.amazonaws.com/test/{image}.jpg', timeout=remaining()))
         data = path.read_bytes()
         hashes[image] = tool.digest(data)
-        response = json.loads(tool.fetch(args.tagger + '/v1/embed/image', data, 'image/jpeg', remaining()))
-        if response['model_id'] != info['model_id']:
+        cached = embedding_dir / f'{image}.json'
+        if cached.exists():
+            response = tool.read_json(cached)
+        else:
+            response = json.loads(tool.fetch(args.tagger + '/v1/embed/image', data, 'image/jpeg', remaining()))
+            response['image_sha256'] = hashes[image]
+            tool.write_json(cached, response)
+        if response['model_id'] != info['model_id'] or response['image_sha256'] != hashes[image]:
             raise ValueError('held-out image model mismatch')
         vector = tool.validate_vector(response['embedding'], 768)
         scores[image] = {c['id']: tool.probability(vector, text, info)
                          for c, text in zip(catalog['concepts'], texts, strict=True)}
+        scores[image].update({name: tool.probability(vector, head['weights'],
+                              {'logit_scale': 1.0, 'logit_bias': head['bias']})
+                              for name, head in references['heads'].items()})
         if index % 25 == 0 or index == len(ids):
             print(f'Independent test: {index}/{len(ids)} public images', flush=True)
     if json.loads(tool.fetch(args.tagger + '/v1/info', timeout=remaining())) != info:
@@ -142,6 +185,7 @@ def run(args):
     report = {'schema_version': 1, 'dataset': {'url': TEST_URL, 'sha256': TEST_SHA},
               'model': info, 'catalog_sha256': tool.digest(args.catalog.read_bytes()),
               'baseline_sha256': tool.digest(args.baseline.read_bytes()),
+              'references_sha256': tool.digest(args.references.read_bytes()) if args.references else None,
               'sample_sha256': tool.digest(json.dumps({'categories': selected, 'random': random_ids}, sort_keys=True).encode()),
               'images_sha256': tool.digest(json.dumps(hashes, sort_keys=True).encode()),
               'calibration_overlap': 0, 'categories': categories, 'coverage': coverage,
@@ -157,5 +201,6 @@ if __name__ == '__main__':
         parser.add_argument('--' + name, required=True, type=Path)
     parser.add_argument('--tagger', required=True)
     parser.add_argument('--concepts', nargs='*', default=[])
+    parser.add_argument('--references', type=Path)
     parser.add_argument('--deadline', type=int, default=7200)
     run(parser.parse_args())
