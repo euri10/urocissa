@@ -110,6 +110,21 @@ impl<C: ConceptClassifier> ConceptClassifier for ReferenceFallback<C> {
         }
         self.base.classify(concept, embedding, zero_shot)
     }
+
+    fn classify_if_fired(
+        &self,
+        concept: &Concept,
+        embedding: &[f32],
+        zero_shot: f32,
+    ) -> Option<Classification> {
+        if self.base.mode(concept) == ConceptMode::Inactive && self.heads.contains_key(&concept.id)
+        {
+            let decision = self.classify(concept, embedding, zero_shot);
+            (decision.probability >= decision.threshold).then_some(decision)
+        } else {
+            self.base.classify_if_fired(concept, embedding, zero_shot)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -247,7 +262,46 @@ mod tests {
             let decision = classifier.classify(&concept, &[1.0], 0.9);
             assert_eq!(decision.threshold.to_bits(), 0.8_f32.to_bits());
             assert_eq!(decision.probability > 0.8, mode == ConceptMode::Inactive);
+            assert_eq!(
+                classifier.classify_if_fired(&concept, &[1.0], 0.9),
+                (decision.probability >= decision.threshold).then_some(decision)
+            );
         }
+    }
+
+    #[test]
+    fn public_fallback_forwards_owner_fast_decisions() {
+        struct FastOwner;
+        impl ConceptClassifier for FastOwner {
+            fn mode(&self, _: &Concept) -> ConceptMode {
+                ConceptMode::Classifier
+            }
+            fn classify(&self, _: &Concept, _: &[f32], _: f32) -> Classification {
+                panic!("materialization must forward the owner's fast decision")
+            }
+            fn classify_if_fired(&self, _: &Concept, _: &[f32], _: f32) -> Option<Classification> {
+                Some(Classification {
+                    probability: 0.75,
+                    threshold: 0.5,
+                })
+            }
+        }
+        let concept = Concept {
+            id: "fixture".into(),
+            label: "fixture".into(),
+            synonyms: vec![],
+            parents: vec![],
+            threshold: 0.5,
+            vector: vec![1.0],
+        };
+        let classifier = ReferenceFallback::new(FastOwner, BTreeMap::new());
+        assert_eq!(
+            classifier.classify_if_fired(&concept, &[1.0], 0.0),
+            Some(Classification {
+                probability: 0.75,
+                threshold: 0.5,
+            })
+        );
     }
 
     #[test]

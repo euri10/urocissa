@@ -377,3 +377,148 @@ fn every_rejection_tightens_example_matching() {
     assert!(!fires(&engine, "cat", &at(0.08), &[]));
     assert!(!fires(&engine, "cat", &at(0.12), &[]));
 }
+
+#[test]
+fn fast_example_decisions_match_complete_scores_at_rounding_boundaries() {
+    let deltas = [
+        -0.1,
+        -f32::EPSILON,
+        -f32::MIN_POSITIVE,
+        0.0,
+        f32::MIN_POSITIVE,
+        f32::EPSILON,
+        0.1,
+    ];
+    for positive in [-1.0, -0.5, 0.0, 0.5, 1.0] {
+        for cutoff_delta in deltas {
+            for rejection_delta in deltas {
+                for rejections in [
+                    vec![],
+                    vec![vec![positive + rejection_delta]],
+                    vec![vec![-1.0], vec![positive + rejection_delta]],
+                ] {
+                    let example = Examples {
+                        positives: vec![vec![positive]],
+                        rejections,
+                        cutoff: positive + cutoff_delta,
+                    };
+                    let full = example.probability(&[1.0]);
+                    let fast = example.firing_probability(&[1.0]);
+                    assert_eq!(fast.is_some(), full >= 0.5);
+                    if let Some(fast) = fast {
+                        assert_eq!(fast.to_bits(), full.to_bits());
+                    }
+                }
+            }
+        }
+    }
+    // A mathematically negative margin can round to exactly 0.5 and still fire.
+    let rounding = Examples {
+        positives: vec![vec![0.0]],
+        rejections: vec![],
+        cutoff: f32::MIN_POSITIVE,
+    };
+    assert_eq!(rounding.probability(&[1.0]).to_bits(), 0.5_f32.to_bits());
+    assert_eq!(
+        rounding.firing_probability(&[1.0]).map(f32::to_bits),
+        Some(0.5_f32.to_bits())
+    );
+}
+
+#[test]
+fn fast_example_decisions_match_full_scores_for_random_vectors() {
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
+
+    let mut rng = StdRng::seed_from_u64(0x51_6c_69_70);
+    for _ in 0..2_000 {
+        let query: Vec<f32> = (0..32).map(|_| rng.random_range(-1.0..1.0)).collect();
+        let positive_count = rng.random_range(1..9);
+        let rejection_count = rng.random_range(0..9);
+        let mut vector = || (0..32).map(|_| rng.random_range(-1.0..1.0)).collect();
+        let positives = (0..positive_count).map(|_| vector()).collect();
+        let rejections = (0..rejection_count).map(|_| vector()).collect();
+        let example = Examples {
+            positives,
+            rejections,
+            cutoff: rng.random_range(-4.0..4.0),
+        };
+        let full = example.probability(&query);
+        let fast = example.firing_probability(&query);
+        assert_eq!(fast.is_some(), full >= 0.5);
+        if let Some(fast) = fast {
+            assert_eq!(fast.to_bits(), full.to_bits());
+        }
+    }
+}
+
+#[test]
+#[ignore = "synthetic release-profile similarity attribution"]
+fn similarity_hotspot_profile() {
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
+    use std::time::{Duration, Instant};
+
+    let queries = std::env::var("UROCISSA_PROFILE_QUERIES")
+        .unwrap_or_else(|_| "1100".into())
+        .parse::<usize>()
+        .unwrap();
+    let samples = std::env::var("UROCISSA_PROFILE_SAMPLES")
+        .unwrap_or_else(|_| "5".into())
+        .parse::<usize>()
+        .unwrap();
+    assert!((1..=1_100).contains(&queries) && samples > 0);
+    let mut rng = StdRng::seed_from_u64(23);
+    let vectors: Vec<Vec<f32>> = (0..1_100)
+        .map(|_| {
+            let mut vector: Vec<f32> = (0..768).map(|_| rng.random_range(-1.0..1.0)).collect();
+            let norm = dot(&vector, &vector).sqrt();
+            for value in &mut vector {
+                *value /= norm;
+            }
+            vector
+        })
+        .collect();
+    let examples: Vec<Examples> = [(29, 8, 0), (68, 9, 100), (59, 29, 200)]
+        .into_iter()
+        .map(|(positive_count, rejection_count, offset)| {
+            let positives = vectors[offset..offset + positive_count]
+                .iter()
+                .map(Vec::as_slice)
+                .collect::<Vec<_>>();
+            let rejections = vectors
+                [offset + positive_count..offset + positive_count + rejection_count]
+                .iter()
+                .map(Vec::as_slice)
+                .collect::<Vec<_>>();
+            Examples::fit(&positives, &rejections).unwrap()
+        })
+        .collect();
+    for sample in 1..=samples {
+        let (mut positive_time, mut rejection_time, mut skippable_time) =
+            (Duration::ZERO, Duration::ZERO, Duration::ZERO);
+        let (mut skippable, mut fired) = (0, 0);
+        for example in &examples {
+            for vector in &vectors[..queries] {
+                let start = Instant::now();
+                let positive = nearest(&example.positives, vector, None);
+                positive_time += start.elapsed();
+                let start = Instant::now();
+                let rejection = nearest(&example.rejections, vector, None);
+                let elapsed = start.elapsed();
+                rejection_time += elapsed;
+                if sigmoid(MARGIN_SLOPE * (positive - example.cutoff)) < 0.5 {
+                    skippable += 1;
+                    skippable_time += elapsed;
+                }
+                let margin = (positive - example.cutoff).min(positive - rejection);
+                fired += usize::from(sigmoid(MARGIN_SLOPE * margin) >= 0.5);
+            }
+        }
+        eprintln!(
+            "sample={sample} positives_ms={:.3} rejections_ms={:.3} skippable_rejections_ms={:.3} skippable={skippable}/{} fired={fired}",
+            positive_time.as_secs_f64() * 1000.0,
+            rejection_time.as_secs_f64() * 1000.0,
+            skippable_time.as_secs_f64() * 1000.0,
+            queries * examples.len(),
+        );
+    }
+}

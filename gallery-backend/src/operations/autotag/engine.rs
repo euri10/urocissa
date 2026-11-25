@@ -275,10 +275,10 @@ impl AutoTagEngine {
         for &index in &self.classified {
             if !excluded(index) {
                 let zero_shot = self.model.probability(dots[index]);
-                let decision =
+                if let Some(decision) =
                     self.classifier
-                        .classify(&concepts[index], photo.embedding, zero_shot);
-                if decision.probability >= decision.threshold {
+                        .classify_if_fired(&concepts[index], photo.embedding, zero_shot)
+                {
                     fired.push((index, decision.probability));
                 }
             }

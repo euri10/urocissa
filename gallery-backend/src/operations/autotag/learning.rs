@@ -138,6 +138,27 @@ impl Examples {
         let rejection = nearest(&self.rejections, embedding, None);
         sigmoid(MARGIN_SLOPE * (positive - self.cutoff).min(positive - rejection))
     }
+
+    fn firing_probability(&self, embedding: &[f32]) -> Option<f32> {
+        let positive = nearest(&self.positives, embedding, None);
+        let cutoff_margin = positive - self.cutoff;
+        // Compare the actual rounded probability: a tiny negative margin can
+        // still round to exactly 0.5 and must remain a firing decision.
+        if sigmoid(MARGIN_SLOPE * cutoff_margin) < 0.5 {
+            return None;
+        }
+        let mut rejection = f32::NEG_INFINITY;
+        for vector in &self.rejections {
+            rejection = rejection.max(dot(vector, embedding));
+            if rejection > positive
+                && sigmoid(MARGIN_SLOPE * cutoff_margin.min(positive - rejection)) < 0.5
+            {
+                return None;
+            }
+        }
+        let probability = sigmoid(MARGIN_SLOPE * cutoff_margin.min(positive - rejection));
+        (probability >= 0.5).then_some(probability)
+    }
 }
 
 /// Highest cosine to any vector in `set` except `skip`; `-inf` for an empty set.
@@ -317,6 +338,24 @@ impl ConceptClassifier for Learning {
                 threshold: 0.8,
             },
         )
+    }
+
+    fn classify_if_fired(
+        &self,
+        concept: &Concept,
+        embedding: &[f32],
+        zero_shot: f32,
+    ) -> Option<Classification> {
+        if let Some(examples) = self.examples.get(&concept.id) {
+            return examples
+                .firing_probability(embedding)
+                .map(|probability| Classification {
+                    probability,
+                    threshold: 0.5,
+                });
+        }
+        let decision = self.classify(concept, embedding, zero_shot);
+        (decision.probability >= decision.threshold).then_some(decision)
     }
 }
 

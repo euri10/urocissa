@@ -40,6 +40,18 @@ pub trait ConceptClassifier: Send + Sync {
             threshold: concept.threshold,
         }
     }
+
+    /// The same decision and confidence as `classify`, or `None` if it does not fire.
+    /// Implementations may avoid work only when they can prove the result is absent.
+    fn classify_if_fired(
+        &self,
+        concept: &Concept,
+        embedding: &[f32],
+        zero_shot: f32,
+    ) -> Option<Classification> {
+        let decision = self.classify(concept, embedding, zero_shot);
+        (decision.probability >= decision.threshold).then_some(decision)
+    }
 }
 
 /// Pure zero-shot scoring for every Concept; the engine default.

@@ -8,8 +8,10 @@
 - Baseline native backend: 353 passed, 8 ignored, serial, Rust 1.97.1. An initial
   isolated-checkout run failed solely because generated frontend assets were absent;
   the unmodified suite passed after linking existing build output.
-- Maximum candidate passes: **3**. Consumed: **3**. Baseline harness development
-  and read-only profiling do not consume a candidate pass.
+- Initial candidate-pass cap: **3**; consumed: **4** after extending the campaign
+  under the owner's explicit instruction to stop only for a real data-loss or
+  secret-exposure risk. The prior passes are not reset. Baseline harness
+  development and read-only profiling do not consume a candidate pass.
 - Workload: deterministic seed 23, normalized synthetic 768-dimensional vectors,
   the embedded vocabulary and reference heads, and synthetic feedback exercising
   zero-shot, reference, learned, and example modes. No photo data or personal
@@ -259,3 +261,175 @@ is distinguishable from the paired trial noise. The three-pass campaign is
 complete; no further optimization candidate is claimed here. The private
 production workload is different, and a real current-model full-pass timing
 strictly below 1,000 ms remains required before closing the issue.
+
+## Continued investigation after the live gate
+
+The owner explicitly directed the task to continue unless a real data-loss or
+secret-exposure risk blocks it. The three-pass default therefore does not end the
+work after deployment: protected job 171619 produced a natural current-model
+6,410-photo full pass of 1,208 ms, down from the previous 2,078 ms observation
+but still above the strict 1,000 ms gate. The accepted pass 3 is now the deployed
+baseline; none of the earlier passes are reset or concealed. Additional profiling
+uses synthetic data and must preserve all decisions and the frozen review round.
+
+Pass 3 full-path synthetic baseline medians/ranges remain 719.909/706.026–729.498
+ms at 6,410 photos and 857.992/851.440–872.347 ms at 8,000. For the next causal
+lever, require at least 10% median improvement over this deployed state at each
+size and more than twice its baseline range (46.944/41.814 ms respectively), no
+correctness or distinguishable resource regression, and the separate live gate.
+The next read-only diagnostic measures positive and rejected-example comparisons
+inside the synthetic similarity classifier; no fourth candidate has been applied.
+
+The diagnostic is the ignored `similarity_hotspot_profile` test. On the
+development workstation, release/LTO/Rust 1.97.1, seed 23 and 1,100 generated
+768-dimensional vectors, it exercises three synthetic example sets sized 29/8,
+68/9 and 59/29. It measures the real `nearest` implementation sequentially;
+these are CPU attributions, not a production latency or quality measurement.
+Each row is positive-comparison ms / rejected-comparison ms / rejected-comparison
+ms on photos already below the positive cutoff:
+
+`82.606/23.928/21.385`, `77.795/22.688/20.244`,
+`74.741/22.042/19.697`, `82.976/24.977/21.529`,
+`80.121/23.407/20.948`. In each sample 2,928 of 3,300 synthetic decisions were
+already below the positive cutoff, and 367 fired after the rejection comparison.
+This supports exploring a decision-only early rejection while retaining the full
+explanation score. The new diagnostic test has no production effect. Its release
+binary SHA-256 is `0bcd83497ae5c030b1217d84eb810e99df6b596f038715c2608494b3c46645df`;
+its test-source patch SHA-256 is
+`be7f45960787133c731a138291c09fdbc6454d202b58b67566a1ec02fee2629a`.
+Capture a fresh full-path baseline with this same binary before applying the next
+candidate; the added diagnostic changes the test binary even though it is ignored.
+
+Refreshed baseline on the same N100, pinned cores 2/3, nice 15, two Rayon threads,
+release/LTO and ext4 scratch, with the diagnostic binary above:
+
+| Photos | Warmup ms | Samples ms | Median ms | Range ms |
+| --- | ---: | --- | ---: | --- |
+| 6,410 | 698.585 | 712.038, 711.560, 711.445, 718.481, 734.398, 706.435, 707.980 | 711.560 | 706.435–734.398 |
+| 8,000 | 842.239 | 890.411, 857.883, 876.396, 854.994, 852.372, 855.515, 852.643 | 855.515 | 852.372–890.411 |
+
+The 6,410-photo reconstructed attribution was input 1.690 ms, learning 131.996,
+reads 28.074, scoring 487.409, previous rows 24.655, commit 28.322 and total
+700.981 ms; at 8,000: 2.337, 131.939, 36.142, 608.684, 32.452, 37.118 and
+847.003 ms. Pass 4 must improve the refreshed median by at least 10% and by more
+than twice its refreshed range: 55.926 ms at 6,410 and 76.078 ms at 8,000.
+
+Pass 4 hypothesis: for example-based classification, avoid comparing Rejections
+when an upper bound computed from the exact positive score already cannot fire.
+Compute the original full probability for explanations and for every firing
+decision; use the same sigmoid comparison at the boundary to preserve rounding,
+including values that round to exactly 0.5. Starting state is deployed source
+`89eb4b2a` plus the ignored diagnostic and this ledger. Rollback is a targeted
+reversal of the decision-only classifier/engine change and its new tests.
+Production patch SHA-256
+`bd2771bbb64860fa3ce806fac248f51b3fb148e3ac8a6b75f79656ea84945013`.
+The focused tests compare the shortcut with the complete probability at
+threshold-rounding boundaries and on 2,000 deterministic random vector sets;
+every firing confidence must match bit-for-bit. Both focused tests pass.
+After tightening the threshold assertion to compare bits, the full serial suite
+passed 355 tests with 10 ignored; format and clippy passed with the pre-existing
+warnings and the unsuppressed benchmark-fixture length warning. The unrelated
+semantic/similar HTTP gate also passed in the first full run at 694.253/645.234 ms.
+
+The initial candidate binary
+`ce866ed66a9941b66495326bdeddaaf42b4cc4da7232176689f306e9e969355a`
+produced 6,410-photo warmup 698.870 ms and samples 729.734, 721.741, 710.315,
+707.052, 708.221, 714.331 and 706.431 ms, median 710.315 ms and range
+706.431–729.734 ms. Reconstructed input/learning/reads/scoring/previous/commit
+were 1.712/141.271/27.709/489.882/24.852/30.642 ms. This did not improve the
+711.560 ms baseline. Investigation found that the production `ReferenceFallback`
+wrapper used the trait's full-score default rather than forwarding the new fast
+decision to its wrapped owner classifier. The intended shortcut was not reached;
+the 8,000-photo timing was not run for this diagnostic build.
+
+Seven alternating memory-gate peak RSS trials, KiB, were baseline
+62,336, 61,156, 62,556, 63,016, 62,592, 63,324, 64,360 and initial candidate
+66,292, 67,492, 67,792, 65,224, 66,824, 65,160, 65,012. The medians differ by
++3,700 KiB with no overlap, although the 128 MiB gate passed. Three further
+paired trials gave initial/peak/final KiB:
+
+- Baseline: 42056/62088/59220, 42444/63912/61276, 42252/62296/61792.
+- Candidate: 45368/66040/62972, 45352/67348/67032, 45524/65724/65272.
+
+For a separate three-pair diagnostic, synthetic test processes were briefly
+paused at their initial measurement and only `/proc/PID/status` RSS aggregates
+were read. Baseline anonymous/file KiB: 29020/13476, 29004/13340, 29000/13136;
+candidate: 29020/16340, 29012/16568, 28992/16392. Thus most of the total-RSS
+difference was file-backed test-binary pages, not anonymous memory; it remains
+a real observed test-process RSS difference and does not prove production memory
+equivalence. The actual fast path was bypassed in this build.
+
+The first local repair tightened an exact threshold test without suppressing a
+lint. The second and final allowed local repair forwards the decision-only hook
+through `ReferenceFallback`, retaining the original full-score behavior for its
+own public fallback heads. A new routing regression failed before this repair;
+the existing fallback test also checks fast and full decisions agree. Rerun all
+affected correctness, memory and performance gates before any acceptance.
+The combined classifier/engine/learning/reference patch (including its routing
+test) SHA-256 is
+`01d42794f57b1b2c604040ae93dcb6ec69230fa0756b29103809fe09e4d7d401`.
+Both fallback-routing/fallback-equivalence tests and both exact-score tests pass
+after the repair.
+The full serial suite passed 356 tests with 10 ignored; format and clippy passed
+with the same existing and fixture-length warnings. Release-mode routing and
+exact-score tests also passed.
+
+Repaired candidate binary SHA-256
+`694c7e26ddf4f46196a0758c7ebf335dab17e108f2716b51e8f362e4962101db`:
+
+| Photos | Warmup ms | Samples ms | Median ms | Range ms | Median gain |
+| --- | ---: | --- | ---: | --- | ---: |
+| 6,410 | 611.858 | 626.524, 622.469, 622.313, 625.183, 672.667, 626.985, 620.414 | 625.183 | 620.414–672.667 | 86.377 ms (12.1%) |
+| 8,000 | 732.825 | 773.427, 760.186, 763.639, 746.598, 747.972, 753.424, 774.549 | 760.186 | 746.598–774.549 | 95.329 ms (11.1%) |
+
+The 6,410-photo reconstructed profile was input 1.669 ms, learning 139.993,
+reads 28.516, scoring 398.578, previous rows 24.194, commit 30.031 and total
+621.877 ms; at 8,000: 2.411, 132.856, 39.138, 516.572, 34.321, 36.059 and
+759.698 ms. Both runs passed the strict synthetic median gate, and each gain
+exceeds its predeclared threshold.
+
+Seven alternating baseline/repaired-candidate memory trials sampled the
+6,500-photo/30-feedback gate. Reported peak RSS KiB:
+
+- Baseline: 62160, 62196, 62256, 62228, 62132, 61976, 61612.
+- Candidate: 65444, 65168, 65304, 66004, 65232, 64964, 65004.
+
+Medians are 62,160 and 65,232 KiB (+3,072 KiB). Independently sampled peak
+anonymous KiB, in the same order: baseline 50964, 51208, 51308, 51268, 50668,
+51012, 50256; candidate 51412, 50792, 51360, 49900, 51448, 50968, 50444.
+Medians are 51,012 and 50,968 KiB. Sampled peak file-backed KiB: baseline
+13664, 13456, 13416, 13428, 13516, 13432, 13568; candidate 16084, 16428,
+15996, 16104, 16228, 16148, 16588. Medians are 13,456 and 16,148 KiB.
+Peaks of components need not occur at the same time. All reported total-RSS
+peaks remain below 131,072 KiB. The differing test executables obscure whether
+the measured total-RSS increase reflects the runtime change or test-code layout;
+a same-binary, test-only full-versus-fast control is required before a decision.
+The separate Suggested-tier app candidate `32c75e0e` and its model load also
+require integration and remeasurement before the issue can be closed.
+
+The same-binary control used a separate temporary worktree, the repaired code,
+and a `cfg(test)`-only flag that selects the original full-classification path
+or the fast path in the same executable. Both modes passed the existing
+chunk-boundary correctness test. Release/LTO control binary SHA-256:
+`2f5a60873027d254ecd2fa4ad4c05f46dc3d8fac0e274c4a7e1a0f5089385e49`.
+Seven alternating 6,500-photo/30-feedback trials, KiB:
+
+| Path | Reported peak RSS | Sampled peak anonymous | Sampled peak file-backed |
+| --- | --- | --- | --- |
+| Full | 65332, 64732, 65884, 65048, 64916, 61892, 67952 | 50796, 50340, 50828, 51180, 50764, 49752, 51856 | 17004, 16772, 17108, 16656, 16620, 14896, 16096 |
+| Fast | 65712, 66380, 66124, 65788, 65196, 65216, 63348 | 50856, 50228, 50872, 50808, 50828, 50796, 49492 | 16884, 16864, 16460, 17032, 16832, 16472, 14848 |
+
+Total-RSS medians/ranges are 65,048/61,892–67,952 and
+65,712/63,348–66,380 KiB; the +664 KiB median difference is within the
+6,060 KiB baseline spread. Median anonymous peaks are 50,796 and 50,808 KiB;
+median file-backed peaks are 16,656 and 16,832 KiB. Sampled component peaks may
+occur at different times. This controlled test finds no distinguishable memory
+regression; it does not establish exact memory equivalence in production.
+
+**Keep pass 4 on the 89eb base:** both synthetic latency gains clear the
+predeclared thresholds, exact-decision and other correctness gates pass, and
+the controlled memory comparison detects no distinguishable increase. This is
+not live acceptance: repeat against the integrated Suggested candidate and its
+coordinated model load, then require a natural current-model production pass
+strictly below 1,000 ms. The first deployment's 1,208 ms observation remains a
+failure, not a waiver.
