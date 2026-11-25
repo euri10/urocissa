@@ -4,7 +4,82 @@ The broad coverage goal is approximately six to eight meaningful tags on typical
 photos, without filler. Tag count, no-tag fraction and correctness are separate
 measurements. Public class-enriched tests cannot establish the owner's precision.
 
+## Reference fallback quarantine, 2026-11-25
+
+The five inactive-only public-reference heads are quarantined: `bookcase`,
+`fence`, `road`, `rose` and `snow` no longer emit Auto tags when the owner has
+no fitted matcher. Their frozen weights, original thresholds and the original
+per-class test report remain unchanged as historical evidence, not active
+quality claims. Other calibrated thresholds and the owner's learned/similarity
+matchers, authored tags, rejections and opt-outs are unchanged. The cache
+version gains `-quarantine-1` so existing embeddings rematerialize with the new
+policy. No image model or database format changes. This deliberately sacrifices
+untrained coverage until representative negatives support requalification;
+it does not address the six-to-eight-tags goal.
+
+The original five heads were class-balanced on explicitly verified positive and
+negative images. On a representative public development sample their scores
+frequently exceeded their cuts on visually unrelated pictures. The wrapper used
+the reference decision whenever the owner's base matcher was inactive without
+requiring the independent text-prompt decision to agree. That supports a negative
+selection/distribution mismatch; prevalence, the precise cause within the learned
+weights, production GPU parity and personal-library accuracy remain unproven.
+The previously released eight-class gates below are unchanged but are not proof
+of random-photo precision. No threshold was lowered or replaced.
+
+The first independently frozen 384-photo test of a four-head quarantine failed:
+95 correct, seven incorrect and seven uncertain of 109 displayed chips (87.16%
+conservative precision). All three `rose` chips were unrelated, so that candidate
+was rejected and `rose` was quarantined too. The separate old `bee` zero-shot
+path produced three incorrect and two correct chips; it remains tracked as
+`infra-urocissa-autotag-sjfz.31`, not silently changed here.
+
+A second, newly frozen 384-photo Open Images V7 test excluded the earlier
+samples, selected IDs before inference, and used the exact pinned tagger CPU
+image with native Rust materialization. Agent visual review counted 106 correct,
+one incorrect and three uncertain among 110 displayed chips: 96.36% correct of
+all chips, above the unchanged 90%/50-prediction screen. The remaining 274 photos
+had no chips; mean 0.286, median 0. These are evaluating-agent judgments, not
+independent-human or owner precision. Per Concept, correct/incorrect/uncertain:
+
+| Concept | Correct | Incorrect | Uncertain |
+| --- | ---: | ---: | ---: |
+| animal | 21 | 0 | 1 |
+| bird | 10 | 1 | 0 |
+| cat | 2 | 0 | 0 |
+| dog | 10 | 0 | 0 |
+| fish | 4 | 0 | 0 |
+| food | 46 | 0 | 1 |
+| fruit | 7 | 0 | 1 |
+| house | 1 | 0 | 0 |
+| insect | 1 | 0 | 0 |
+| mushroom | 1 | 0 | 0 |
+| portrait | 2 | 0 | 0 |
+| skiing | 1 | 0 | 0 |
+
+Concepts absent from this sample have no measured precision or recall. The
+ordered-ID checksum is
+`df76ec8460d09fee654457e58e4511708544206ee33cc4663481bb4d1e5a66c1`;
+the public predictions and visual judgments have SHA-256
+`b482e7572949138217b8ebb1a8fafce64216c9ef6101e7938671967d600681a9` and
+`6d597e8640e29de3e015e77bec8c294dfde6f7a26efd5536c63a877981caeef4`.
+The reproducible native materialization test accepts an explicit public scratch
+fixture and writes public predictions only to an explicitly chosen scratch path.
+The previous held-out replay still checks all original per-Concept gates using
+the historical heads; it does not reactivate them.
+
+The existing owner random round stores its displayed labels at freeze time and
+contains 18 `fence` labels, with no judgments recorded at the last read-only
+check. It remains intact and can judge the older release, not the corrected
+runtime. An owner-chosen new random round after deployment would measure the
+corrected release; no re-freeze or review-flow change is performed here. The
+existing UI does not expose a reset button, so any replacement of the current
+round needs a separately agreed owner-directed operation. Garden was not frozen
+at the last check. Personal photos and raw private outputs remain on the host.
+
 ## Stronger-model round and a fallback warning, 2026-11-25
+
+The sections below document the original pre-quarantine release and its evidence.
 
 The pending owner review is separate and remains frozen. A 2026-11-25 read-only
 recheck matched the earlier fixed private 100-photo sample: 78 photos had no

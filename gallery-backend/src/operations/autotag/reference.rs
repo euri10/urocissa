@@ -71,8 +71,11 @@ impl ReferenceDefaults {
                 "invalid public reference `{id}`"
             );
         }
-        catalog.version = self.vocabulary_version;
-        catalog.references = self.heads;
+        // ponytail: quarantine public heads with observed unrelated-photo false
+        // positives until representative negatives support their requalification.
+        // Owner-fitted classifiers remain independent of these fallback heads.
+        catalog.version = format!("{}-quarantine-1", self.vocabulary_version);
+        catalog.references.clear();
         Ok(())
     }
 }
@@ -142,7 +145,7 @@ mod tests {
         let catalog = BuiltinCatalog::embedded().unwrap();
         assert_eq!(baseline.concepts.len(), 75);
         assert_eq!(catalog.concepts.len(), 82);
-        assert_eq!(catalog.references.len(), 5);
+        assert!(catalog.references.is_empty());
         for original in baseline.concepts {
             let retained = catalog
                 .concepts
@@ -196,7 +199,11 @@ mod tests {
                 BuiltinCatalog::from_json(include_str!("../../../assets/concepts.json")).unwrap();
             assert!(defaults.apply(&mut baseline).is_err());
         }
-        let catalog = BuiltinCatalog::embedded().unwrap();
+        let mut catalog = BuiltinCatalog::embedded().unwrap();
+        // Keep the historic dimension check even though production heads are quarantined.
+        let defaults: ReferenceDefaults =
+            serde_json::from_str(include_str!("../../../assets/concept-defaults.json")).unwrap();
+        catalog.references = defaults.heads;
         let vectors = catalog
             .concepts
             .iter()
@@ -306,7 +313,11 @@ mod tests {
 
     #[test]
     fn reference_defaults_respect_owner_veto_alias_and_off() {
-        let catalog = BuiltinCatalog::embedded().unwrap();
+        let mut catalog = BuiltinCatalog::embedded().unwrap();
+        // Exercise historical fallback precedence without re-enabling it in production.
+        let defaults: ReferenceDefaults =
+            serde_json::from_str(include_str!("../../../assets/concept-defaults.json")).unwrap();
+        catalog.references = defaults.heads;
         let vectors = catalog
             .concepts
             .iter()

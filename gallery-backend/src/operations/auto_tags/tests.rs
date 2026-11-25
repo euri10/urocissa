@@ -21,6 +21,285 @@ impl Embedder for Fake {
 }
 
 #[test]
+fn public_unrelated_photos_do_not_materialize_fence_or_road() -> Result<()> {
+    // Public Open Images V7 dog portrait and camera close-up, embedded by the
+    // pinned production tagger CPU image. These are not owner photographs.
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/reference-public-vectors.json"
+    )))?;
+    let dir = tempfile::tempdir()?;
+    let store = EmbeddingStore::open(&dir.path().join("derived.redb"))?;
+    let tags = AutoTags::new(store.clone())?;
+    let model = ModelInfo {
+        model_id: tags.catalog.model_id.clone(),
+        embedding_dim: 768,
+        device: "CPU".into(),
+        logit_scale: Some(1.0),
+        logit_bias: Some(-100.0),
+    };
+    store.set_model(&model)?;
+    let mut prompt = vec![0.0; 768];
+    prompt[0] = 1.0;
+    store.put_concept_vectors(
+        &model.model_id,
+        &tags.catalog.version,
+        &ConceptVectors {
+            scale: 1.0,
+            bias: -100.0,
+            vectors: tags
+                .catalog
+                .concepts
+                .iter()
+                .map(|c| (c.id.clone(), prompt.clone()))
+                .collect(),
+        },
+    )?;
+    tags.prepare(&model, &Fake(AtomicUsize::new(0)))?;
+    let mut inputs = HashMap::new();
+    for case in fixture["cases"].as_array().unwrap() {
+        let id = case["id"].as_str().unwrap();
+        store.put(
+            id,
+            &model.model_id,
+            0,
+            &StoredEmbedding {
+                thumbnail_version: 1,
+                vector: serde_json::from_value(case["vector"].clone())?,
+            },
+        )?;
+        inputs.insert(
+            id.to_owned(),
+            Input {
+                version: 1,
+                tags: vec![],
+                enabled: true,
+                rejections: vec![],
+            },
+        );
+    }
+    tags.materialize(&inputs, &[])?;
+    for id in inputs.keys() {
+        let actual = tags.status(id, 1, true)?.auto_tags;
+        assert!(
+            !actual.iter().any(|t| t.concept == "fence" && t.displayed),
+            "{id}: fence"
+        );
+        assert!(
+            !actual.iter().any(|t| t.concept == "road" && t.displayed),
+            "{id}: road"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn quarantined_snow_still_learns_from_owner_feedback() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let store = EmbeddingStore::open(&dir.path().join("derived.redb"))?;
+    let tags = AutoTags::new(store.clone())?;
+    assert!(tags.catalog.references.is_empty());
+    let model = ModelInfo {
+        model_id: tags.catalog.model_id.clone(),
+        embedding_dim: 768,
+        device: "CPU".into(),
+        logit_scale: Some(1.0),
+        logit_bias: Some(-100.0),
+    };
+    store.set_model(&model)?;
+    let mut positive = vec![0.0; 768];
+    positive[0] = 1.0;
+    let mut negative = positive.clone();
+    negative[0] = -1.0;
+    store.put_concept_vectors(
+        &model.model_id,
+        &tags.catalog.version,
+        &ConceptVectors {
+            scale: 1.0,
+            bias: -100.0,
+            vectors: tags
+                .catalog
+                .concepts
+                .iter()
+                .map(|c| (c.id.clone(), positive.clone()))
+                .collect(),
+        },
+    )?;
+    tags.prepare(&model, &Fake(AtomicUsize::new(0)))?;
+    let mut inputs = HashMap::new();
+    for index in 0..10 {
+        let id = format!("example-{index}");
+        let is_positive = index < 5;
+        store.put(
+            &id,
+            &model.model_id,
+            0,
+            &StoredEmbedding {
+                thumbnail_version: 1,
+                vector: if is_positive {
+                    positive.clone()
+                } else {
+                    negative.clone()
+                },
+            },
+        )?;
+        inputs.insert(
+            id,
+            Input {
+                version: 1,
+                tags: if is_positive {
+                    vec!["snow".into()]
+                } else {
+                    vec![]
+                },
+                enabled: true,
+                rejections: if is_positive {
+                    vec![]
+                } else {
+                    vec!["snow".into()]
+                },
+            },
+        );
+    }
+    store.put(
+        "target",
+        &model.model_id,
+        0,
+        &StoredEmbedding {
+            thumbnail_version: 1,
+            vector: positive,
+        },
+    )?;
+    inputs.insert(
+        "target".into(),
+        Input {
+            version: 1,
+            tags: vec![],
+            enabled: true,
+            rejections: vec![],
+        },
+    );
+    tags.materialize(&inputs, &[])?;
+    assert_eq!(
+        tags.prepared
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .learning_methods["snow"],
+        "learned"
+    );
+    assert!(
+        tags.status("target", 1, true)?
+            .auto_tags
+            .iter()
+            .any(|tag| tag.concept == "snow" && tag.displayed)
+    );
+    assert!(
+        !tags
+            .status("example-0", 1, true)?
+            .auto_tags
+            .iter()
+            .any(|tag| tag.concept == "snow")
+    );
+    inputs
+        .get_mut("target")
+        .unwrap()
+        .rejections
+        .push("snow".into());
+    tags.materialize(&inputs, &[])?;
+    assert!(
+        !tags
+            .status("target", 1, true)?
+            .auto_tags
+            .iter()
+            .any(|tag| tag.concept == "snow")
+    );
+    Ok(())
+}
+
+#[test]
+#[ignore = "explicit frozen public-only embeddings and scratch output required"]
+fn materialize_public_precision_sample() -> Result<()> {
+    let fixture: serde_json::Value = serde_json::from_slice(&std::fs::read(std::env::var(
+        "UROCISSA_PUBLIC_PRECISION_FIXTURE",
+    )?)?)?;
+    let model: ModelInfo = serde_json::from_value(fixture["info"].clone())?;
+    let prompts = serde_json::from_value(fixture["prompts"].clone())?;
+    let cases = fixture["cases"]
+        .as_array()
+        .context("missing public cases")?;
+    ensure!(
+        cases.len() == 384 && model.embedding_dim == 768,
+        "wrong public sample"
+    );
+    let dir = tempfile::tempdir()?;
+    let store = EmbeddingStore::open(&dir.path().join("derived.redb"))?;
+    let tags = AutoTags::new(store.clone())?;
+    ensure!(
+        model.model_id == tags.catalog.model_id,
+        "wrong public model"
+    );
+    store.set_model(&model)?;
+    store.put_concept_vectors(
+        &model.model_id,
+        &tags.catalog.version,
+        &ConceptVectors {
+            scale: model.logit_scale.context("missing scale")?,
+            bias: model.logit_bias.context("missing bias")?,
+            vectors: prompts,
+        },
+    )?;
+    tags.prepare(&model, &Fake(AtomicUsize::new(0)))?;
+    let mut inputs = HashMap::new();
+    for case in cases {
+        let id = case["id"].as_str().context("missing public id")?;
+        let vector = serde_json::from_value(case["vector"].clone())?;
+        store.put(
+            id,
+            &model.model_id,
+            0,
+            &StoredEmbedding {
+                thumbnail_version: 1,
+                vector,
+            },
+        )?;
+        ensure!(
+            inputs
+                .insert(
+                    id.to_owned(),
+                    Input {
+                        version: 1,
+                        tags: vec![],
+                        enabled: true,
+                        rejections: vec![],
+                    }
+                )
+                .is_none(),
+            "duplicate public id"
+        );
+    }
+    tags.materialize(&inputs, &[])?;
+    let mut predictions = Vec::new();
+    for case in cases {
+        let id = case["id"].as_str().unwrap();
+        let labels = tags
+            .status(id, 1, true)?
+            .auto_tags
+            .into_iter()
+            .filter(|tag| tag.displayed)
+            .map(|tag| tag.concept)
+            .collect::<Vec<_>>();
+        predictions.push(serde_json::json!({"id": id, "labels": labels}));
+    }
+    std::fs::write(
+        std::env::var("UROCISSA_PUBLIC_PRECISION_OUTPUT")?,
+        serde_json::to_vec(&predictions)?,
+    )?;
+    Ok(())
+}
+
+#[test]
 fn cached_concepts_rematerialize_without_photo_or_text_inference() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let store = EmbeddingStore::open(&dir.path().join("derived.redb"))?;

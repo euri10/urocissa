@@ -27,8 +27,13 @@ fn public_default_heldout_quality() {
     let path = std::env::var("UROCISSA_PUBLIC_DEFAULTS_FIXTURE")
         .expect("explicit public fixture is required");
     let fixture: PublicFixture = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
-    let catalog = BuiltinCatalog::embedded().unwrap();
-    assert_eq!(fixture.vocabulary_version, catalog.version);
+    // Replay the original frozen release, including quarantined heads, so the
+    // original per-Concept gates remain checked without reactivating them.
+    let defaults: super::ReferenceDefaults =
+        serde_json::from_str(include_str!("../../../../assets/concept-defaults.json")).unwrap();
+    assert_eq!(fixture.vocabulary_version, defaults.vocabulary_version);
+    let mut catalog = BuiltinCatalog::embedded().unwrap();
+    catalog.references = defaults.heads;
     let engine = catalog
         .into_engine(
             &fixture.model_id,
