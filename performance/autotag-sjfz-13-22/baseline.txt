@@ -1,0 +1,30 @@
+release binary sha256: 245f21aaf2c2e78c70f464c609bdf6a2276589e3d92d5aa78786444e38d71fe1
+N100, taskset -c 2,3, nice -n 15, RAYON_NUM_THREADS=2, /var/tmp ext4
+
+fixture photos=6410 dim=768 concepts=82 reference_heads=5 seed=23 samples=7
+warmup=1141.078 ms
+sample=1158.954 ms
+sample=1150.856 ms
+sample=1170.806 ms
+sample=1145.444 ms
+sample=1153.775 ms
+sample=1162.066 ms
+sample=1145.493 ms
+median=1153.775 ms min=1145.444 ms max=1170.806 ms
+profile_input_ms=1.685
+profile_ms learning=133.319 embedding_reads=28.527 scoring=926.849 previous_and_rows=23.921 commit=33.654 total=1146.793
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 362 filtered out; finished in 37.92s
+
+fixture photos=8000 dim=768 concepts=82 reference_heads=5 seed=23 samples=7
+warmup=1391.024 ms
+sample=1419.980 ms
+sample=1417.689 ms
+sample=1432.097 ms
+sample=1404.823 ms
+sample=1412.470 ms
+sample=1416.144 ms
+sample=1413.795 ms
+median=1416.144 ms min=1404.823 ms max=1432.097 ms
+profile_input_ms=2.367
+profile_ms learning=133.941 embedding_reads=37.147 scoring=1157.269 previous_and_rows=32.068 commit=36.184 total=1397.240
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 362 filtered out; finished in 46.57s

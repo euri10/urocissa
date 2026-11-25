@@ -1,0 +1,9 @@
+Candidate binary sha256: a11be9d3739e42d382a3b5e01f9367e91062dc42a8c537e4359da4096178f3b0
+Development machine, RAYON_NUM_THREADS=2, nice 15, 6500 photos, 30 feedback rounds
+initial KiB: 46760
+rounds 0-29 KiB: 47796, 66968, 66968, 67236, 67296, 67408, 67408, 68036,
+68036, 68372, 68372, 68556, 68556, 68560, 68560, 68588, 68588, 68588,
+68588, 68588, 68588, 68588, 68588, 68628, 68628, 68628, 68628, 68628,
+68628, 68628
+maximum KiB: 68628
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 362 filtered out; finished in 6.04s
