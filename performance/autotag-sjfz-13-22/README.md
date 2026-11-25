@@ -433,3 +433,150 @@ not live acceptance: repeat against the integrated Suggested candidate and its
 coordinated model load, then require a natural current-model production pass
 strictly below 1,000 ms. The first deployment's 1,208 ms observation remains a
 failure, not a waiver.
+
+## Pass 5: independent Concept fitting (rejected)
+
+The 6dd integrated deployment completed a natural live 6,410-photo pass in
+1,046 ms, still above the strict gate. With one Suggested worker active, the
+6dd synthetic medians were 746.033 ms/6,410 and 845.951 ms/8,000. Coverage
+candidate 84d3d372 removes the five inactive reference heads and changes its
+vocabulary version; its current model and library-scale runtime must be measured
+separately. The frozen owner round still describes the prior vocabulary.
+
+An exploratory 84d synthetic run on the development workstation (two pinned
+cores, nice 15, one warmup/seven samples) gave 6,410 median 663.102 ms, range
+567.211–791.837 ms, and one reconstructed learning phase of 139.549 ms. This
+uncontrolled run is only a hotspot diagnostic, not a target-host baseline.
+Pass 5 tests one lever: fit independent Concepts concurrently while preserving
+the original per-Concept photo order, floating-point operations and results.
+Before accepting it, use the final 84d candidate and one natural Suggested
+worker on the N100. At each population, record three alternating baseline/
+candidate runs, each with one warmup and seven samples, and compare the medians
+of their medians. The gain must exceed both 5% and twice the spread between the
+three baseline run medians; if background noise masks that effect, collect a
+new complete paired series rather than select individual samples. This smaller
+minimum is predeclared because the observed live gap is now 4.6%; it does not
+retroactively change the 10% thresholds or decisions for prior passes. Exact
+single- versus two-thread results, full tests and a controlled memory comparison
+remain mandatory. A natural live current-model pass below 1,000 ms is still
+the acceptance gate; synthetic results cannot substitute for it.
+
+The exact 84d release-test binary
+`c3f6eb494c3cdbc1d8fbe1bbe52b34bde80f83316d362bed2abe7abfb173a3f5`
+was measured on the N100 with one natural Suggested backfill worker active:
+6,410 warmup 697.987 ms, samples 744.801, 697.060, 701.029, 768.552,
+679.777, 667.003, 683.158 (median 697.060); 8,000 warmup 800.956 ms,
+samples 825.073, 872.371, 843.936, 829.522, 822.100, 832.292, 809.885
+(median 829.522). Both strict synthetic gates pass. The independently observed
+natural 84d production pass was 1,013 ms for all 6,410 current-model photos,
+which still fails the live gate.
+
+The opt-in test-only serial control and the candidate shared release test binary
+`012661c0456223409b406b8d73ceddaaa2a0d6facf92292b679f73bf724dd2cf`.
+The one-versus-two-thread regression compared the resulting vocabulary and
+serialized learned parameters, including two learned and one personal-example
+Concept, reversed input and a duplicate. On the development workstation only,
+one exploratory 6,410-photo serial run had median 517.289 ms and a reconstructed
+learning phase of 119.469 ms; the parallel run had median 494.635 ms and learning
+64.401 ms. Contention and the wide baseline sample range make these diagnostics,
+not evidence that pass 5 meets its predeclared acceptance threshold.
+
+Seven alternating same-binary 6,500-photo/30-feedback memory trials, reported
+peak RSS KiB, were serial 64268, 65988, 65240, 65456, 64712, 63424, 65328;
+parallel 63716, 65628, 65468, 65748, 66764, 68044, 66088. Their medians are
+65,240 and 65,748 KiB; the 508 KiB difference is within the 2,564 KiB serial
+range. Sampled peak anonymous medians were 48,952 and 49,532 KiB, and all
+reported peaks were below the existing 131,072 KiB gate. These measurements do
+not prove identical production memory use. This binary preceded a local helper
+extraction to address new clippy warnings; the final-binary control follows.
+
+After the helper extraction, the final test binary was
+`e7bf445d25e025d337897d49abeafa2637e9f13a2a5f540372ed17d4c01f5840`.
+Its seven alternating same-binary memory trials reported peak RSS KiB serial
+64632, 64984, 64064, 65800, 64952, 65620, 62976; parallel 66712, 66376,
+67576, 65700, 66768, 66372, 65332. Medians are 64,952 and 66,376 KiB;
+the 1,424 KiB difference is within the 2,824 KiB serial spread. Sampled peak
+anonymous medians were 49,680 and 49,624 KiB, respectively. All reported peaks
+passed the existing 131,072 KiB gate; no distinguishable memory regression was
+detected at this sampling resolution. The post-extraction full backend suite
+passed 364 tests with 11 ignored; format and clippy passed with existing warnings
+and none in the modified fitting file.
+
+On beesslc with the single natural Suggested worker, the final same-binary
+6,410-photo serial run medians were 666.516, 689.484 and 679.724 ms; the
+parallel medians were 659.699, 652.233 and 639.057 ms. The median gain was
+27.491 ms, below the predeclared 45.936 ms threshold (twice the serial-median
+spread, greater than 5%). The 8,000-photo series was stopped after one serial
+run, median 825.018 ms, because the 6,410 gate had already failed. No pass count
+or baseline was reset. The fitting optimization was removed; its correctness and
+memory tests above are retained as experimental evidence, not shipped code.
+
+## Inactive Concept matrix attribution (no candidate)
+
+The public 82-Concept catalog contains 23 threshold-enabled entries; owner
+classifiers can activate additional entries. The current scorer multiplies all
+82 vectors per photo even when a Concept is neither zero-shot nor classified.
+Before changing it, a synthetic property test checks selected-column dot
+products bit-for-bit against the complete matrix across 1–257 rows and seven
+column layouts. A separate ignored release test attributes the cost of a full
+82-column matrix versus a synthetic 28-column selection without using photos or
+model output. These tests are diagnostics, not a production change.
+
+If profiling supports the candidate, the one lever is to omit inactive matrix
+columns while retaining every zero-shot or classified Concept, all exact scores,
+hierarchy/alias/rejection behavior and explanation semantics. Before accepting,
+compare the final test binary's full-versus-selected test-only paths on the N100
+with the then-current production worker load. At each of 6,410 and 8,000 photos,
+use three alternating pairs of one warmup plus seven full-pass samples and compare
+the medians of run medians. Require a gain greater than both 5% and twice the
+spread of the three baseline medians. Record the worker version/load and any
+changed candidate; a source or runtime change requires a fresh comparison.
+The correctness suite must compare decisions and confidence bits across layouts,
+including inactive ancestors, and the controlled memory gate must show no
+distinguishable regression. A natural live complete current-model pass below
+1,000 ms remains mandatory. Pass 5's failed threshold and count are not reset.
+
+The first workstation release attribution, 25 synthetic 256-photo blocks,
+gave seven full-matrix samples 8.963, 9.342, 9.621, 9.295, 8.908, 10.340,
+9.373 ms (median 9.342) and selected-column samples 3.978, 4.053, 4.134,
+3.921, 3.876, 4.299, 4.008 ms (median 4.008). This 5.334 ms difference is
+too small on that machine to justify a production rewrite by itself; target
+host attribution is still needed. No matrix optimization has been applied.
+
+On beesslc, the same release binary passed the bit-for-bit property test.
+The seven full-matrix samples were 23.546, 25.055, 25.477, 22.980, 23.305,
+25.445, 22.943 ms (median 23.546); selected-column samples were 11.304,
+11.325, 10.820, 9.173, 10.280, 10.034, 9.187 ms (median 10.280). The
+13.266 ms stage saving, and even the entire measured 23.546 ms stage, are below
+the predeclared approximately 35 ms full-path threshold. Do not implement the
+matrix rewrite on this evidence. Profiling alone does not consume a candidate
+pass; five candidates have been evaluated, with pass 5 rejected above.
+
+## Bounded similarity prefilter (profiling only)
+
+The earlier similarity attribution showed substantially more time in nearest
+positive-example dot products than in the full Concept matrix. A synthetic-only
+prototype explores an eight-lane dot-product upper bound for 768 dimensions,
+including a conservative error allowance based on the sum of absolute products.
+It may rule out a firing result only when that upper bound itself cannot fire;
+uncertain/non-finite inputs must fall back to the existing exact dot and every
+firing confidence must remain bit-identical. First measure the standalone cost
+and test the bound on normalized, cancellation-heavy, extremely scaled and
+rounding-boundary inputs. No runtime change is justified by the prototype alone.
+
+If a candidate follows, predeclare the same N100 paired protocol as above:
+three alternating full/fast pairs, one warmup/seven samples each, at 6,410 and
+8,000 under the final actual worker configuration; require a gain above both 5%
+and twice the baseline-median spread at each size. Full decision/score equality,
+the existing memory gate, and a natural current-model live pass below 1,000 ms
+remain mandatory. The pass-5 rejection and all prior results remain recorded.
+
+The profiling-only release/LTO binary
+`fee8d4fa5d417ab37b5dc2253787c927cb73d8aa0cec29d6039e342bdb5b7f75`
+ran 171,600 synthetic 768-dimensional products per sample on the development
+workstation. Exact-dot samples were 87.814, 85.882, 92.128, 83.783, 96.284 ms
+(median 87.814); conservative upper-bound samples were 35.246, 56.790, 37.953,
+38.191, 40.464 ms (median 38.191). This component-level improvement does not
+establish a full-library gain. The prototype bound covered exact results for
+2,500 randomized pairs across extreme reciprocal scales, and non-finite
+arithmetic fell back; additional adversarial and end-to-end tests are required.

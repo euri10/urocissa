@@ -131,3 +131,80 @@ pub(super) fn dot_products(
     }
     dots
 }
+
+#[cfg(test)]
+mod matrix_tests {
+    use super::dot_products;
+
+    const DIM: usize = 768;
+    const CONCEPTS: usize = 82;
+
+    fn values(len: usize, seed: usize) -> Vec<f32> {
+        (0..len)
+            .map(|index| {
+                let value = u8::try_from((index * 37 + seed * 19) % 251).unwrap();
+                (f32::from(value) - 125.0) / 1_250.0
+            })
+            .collect()
+    }
+
+    fn selected_matrix(matrix: &[f32], count: usize) -> (Vec<usize>, Vec<f32>) {
+        let mut indices = (0..count)
+            .map(|index| index * 37 % CONCEPTS)
+            .collect::<Vec<_>>();
+        indices.sort_unstable();
+        let selected = indices
+            .iter()
+            .flat_map(|&index| matrix[index * DIM..(index + 1) * DIM].iter().copied())
+            .collect();
+        (indices, selected)
+    }
+
+    #[test]
+    fn selected_columns_match_full_matrix_bit_for_bit() {
+        let matrix = values(CONCEPTS * DIM, 17);
+        for rows in [1, 7, 31, 255, 256, 257] {
+            let embeddings = values(rows * DIM, 23);
+            let full = dot_products(&embeddings, rows, &matrix, CONCEPTS, DIM);
+            for count in [1, 3, 7, 23, 28, 31, 43] {
+                let (indices, selected) = selected_matrix(&matrix, count);
+                let compact = dot_products(&embeddings, rows, &selected, count, DIM);
+                for row in 0..rows {
+                    for (position, &index) in indices.iter().enumerate() {
+                        assert_eq!(
+                            full[row * CONCEPTS + index].to_bits(),
+                            compact[row * count + position].to_bits(),
+                            "row {row}, Concept {index}, compact position {position}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "synthetic release-profile matrix attribution"]
+    fn selected_columns_matrix_profile() {
+        use std::{hint::black_box, time::Instant};
+
+        let rows = 256;
+        let embeddings = values(rows * DIM, 23);
+        let matrix = values(CONCEPTS * DIM, 17);
+        let (indices, selected) = selected_matrix(&matrix, 28);
+        for round in 0..=7 {
+            for (name, data, count) in [
+                ("full", matrix.as_slice(), CONCEPTS),
+                ("selected", selected.as_slice(), indices.len()),
+            ] {
+                let start = Instant::now();
+                for _ in 0..25 {
+                    black_box(dot_products(&embeddings, rows, data, count, DIM));
+                }
+                eprintln!(
+                    "{name} round={round} ms={:.3}",
+                    start.elapsed().as_secs_f64() * 1000.0
+                );
+            }
+        }
+    }
+}

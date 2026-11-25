@@ -451,6 +451,88 @@ fn fast_example_decisions_match_full_scores_for_random_vectors() {
     }
 }
 
+// Profiling-only prototype: production decisions still use the exact dot.
+fn profile_dot_upper_bound(left: &[f32], right: &[f32]) -> Option<f32> {
+    if left.len() != 768 || right.len() != 768 {
+        return None;
+    }
+    let mut sums = [0.0_f32; 8];
+    let mut magnitudes = [0.0_f32; 8];
+    for (left, right) in left.chunks_exact(8).zip(right.chunks_exact(8)) {
+        for index in 0..8 {
+            let product = left[index] * right[index];
+            sums[index] += product;
+            magnitudes[index] += product.abs();
+        }
+    }
+    let approximate = sums.into_iter().sum::<f32>();
+    let magnitude = magnitudes.into_iter().sum::<f32>();
+    let upper = approximate + (magnitude + 1.0) * 0.001;
+    upper.is_finite().then_some(upper)
+}
+
+#[test]
+fn profile_dot_upper_bound_covers_exact_dot() {
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
+
+    let mut rng = StdRng::seed_from_u64(0x51_6c_69_70);
+    for scale in [1e-25_f32, 1e-10, 1.0, 1e10, 1e18] {
+        for _ in 0..500 {
+            let left = (0..768)
+                .map(|_| rng.random_range(-1.0..1.0) * scale)
+                .collect::<Vec<_>>();
+            let right = (0..768)
+                .map(|_| rng.random_range(-1.0..1.0) / scale)
+                .collect::<Vec<_>>();
+            if let Some(upper) = profile_dot_upper_bound(&left, &right) {
+                assert!(upper >= dot(&left, &right));
+            }
+        }
+    }
+    assert!(profile_dot_upper_bound(&[1.0], &[1.0]).is_none());
+    assert!(profile_dot_upper_bound(&[f32::MAX; 768], &[f32::MAX; 768]).is_none());
+}
+
+#[test]
+#[ignore = "synthetic release-profile bounded similarity attribution"]
+fn bounded_similarity_profile() {
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
+    use std::{hint::black_box, time::Instant};
+
+    let mut rng = StdRng::seed_from_u64(23);
+    let vectors = (0..1_100)
+        .map(|_| {
+            let mut vector = (0..768)
+                .map(|_| rng.random_range(-1.0..1.0))
+                .collect::<Vec<f32>>();
+            let norm = dot(&vector, &vector).sqrt();
+            for value in &mut vector {
+                *value /= norm;
+            }
+            vector
+        })
+        .collect::<Vec<_>>();
+    for round in 0..=5 {
+        for bounded in [false, true] {
+            let start = Instant::now();
+            for query in &vectors[..1_100] {
+                for positive in &vectors[..156] {
+                    if bounded {
+                        black_box(profile_dot_upper_bound(query, positive).unwrap());
+                    } else {
+                        black_box(dot(query, positive));
+                    }
+                }
+            }
+            eprintln!(
+                "{} round={round} ms={:.3}",
+                if bounded { "bounded" } else { "exact" },
+                start.elapsed().as_secs_f64() * 1_000.0
+            );
+        }
+    }
+}
+
 #[test]
 #[ignore = "synthetic release-profile similarity attribution"]
 fn similarity_hotspot_profile() {
