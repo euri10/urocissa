@@ -4,6 +4,77 @@ The broad coverage goal is approximately six to eight meaningful tags on typical
 photos, without filler. Tag count, no-tag fraction and correctness are separate
 measurements. Public class-enriched tests cannot establish the owner's precision.
 
+## Stronger-model round and a fallback warning, 2026-11-25
+
+The pending owner review is separate and remains frozen. A 2026-11-25 read-only
+recheck matched the earlier fixed private 100-photo sample: 78 photos had no
+displayed Auto tags, 19 had one and three had two, for a mean of 0.25. It was
+**not** an owner precision judgment. This round made no production model,
+feedback, review, or persistent-data changes.
+
+On 64 hash-ranked Open Images V7 test photos, excluding the earlier fixed public
+coverage sample, the following frozen, no-feedback candidates were independently
+screened against the public annotations and visually inspected by the evaluating
+agent. The visual inspection is not an independent human or owner review. Each
+prediction was classified as clearly correct, incorrect, or uncertain; the
+conservative precision divides correct by **all** predictions, including uncertain
+ones. It is not an estimate of owner-library precision.
+
+| Public candidate | Mean tags/photo | Correct / incorrect / uncertain | Conservative precision |
+| --- | ---: | ---: | ---: |
+| Florence-2-large-ft INT8, expanded reviewed nouns | 2.98 | 146 / 14 / 31 | 76.4% |
+| Florence-2-large-ft INT8, existing reviewed nouns | 2.28 | 114 / 8 / 24 | 78.1% |
+| RAM++ INT8, expanded reviewed nouns | 1.91 | 94 / 7 / 21 | 77.0% |
+| RAM++ INT8, existing reviewed nouns | 1.48 | 79 / 3 / 13 | 83.2% |
+
+The pre-registered public screen required at least 50 predictions and 90%
+conservative precision. All four configurations failed; no threshold was lowered
+and no candidate was shipped. The original per-Concept precision, equal-prior
+precision, recall and support gates, and the owner's >=85% review requirement,
+remain separate and unchanged. On this set the official exact-name annotations
+for the expanded Florence result were 86 positive, four negative and 101 unknown;
+for expanded RAM++ they were 70 positive, three negative and 49 unknown. Missing
+annotations are not negatives or proof of correctness.
+
+The Florence pilot used deterministic object detection, dense region captions
+and detailed captions. The pinned INT8 large-ft conversion was tested; the
+owner-requested large model was also piloted, and AutoTagger was found to wrap
+large-ft object detection. A grammar-constrained local Qwen3-VL-2B pilot produced
+4.94 tags/photo but only 49 of 79 suggestions were clearly supported, with five
+incorrect and 25 uncertain; valid JSON did not prevent hallucination. This small
+validation pilot was not a held-out quality or owner-acceptance result.
+
+On beesslc's four-thread Intel N100, five public validation images at two CPU
+cores took a median 25.40 seconds each for Florence object detection **alone**,
+or about 45.2 hours extrapolated to 6,400 images before other tasks or overhead.
+RAM++ took a median 5.07 seconds, about nine hours, and peaked at 5,224 MiB RSS,
+above the present 4 GiB worker limit. Five samples do not establish sustained
+service impact. Neither model was accepted for production on this evidence.
+
+An additional public no-feedback baseline exposed a quality risk in existing
+reference fallbacks. In the same 64-photo public sample, the pinned SigLIP model
+and current defaults produced 58 chips: 19 clearly correct, 34 incorrect and
+five uncertain in the agent's visual review. The `fence` head fired 27 times,
+with two clearly correct, 23 incorrect and two uncertain; `road` fired 11 times,
+with one clearly correct, seven incorrect and three uncertain. Native Rust
+replay confirmed that the fallback displays `fence` on a public dog portrait
+and `fence` and `road` on a public camera close-up. This is a CPU no-feedback
+reproduction, **not** a measurement of the owner's trained matchers or GPU
+results. Track the unresolved defect as `infra-urocissa-autotag-sjfz.30`; do
+not interpret earlier class-enriched gate passes below as a random-photo
+precision guarantee.
+
+For future public-only evaluations, `tools/concepts/visual_precision.py` reports
+coverage and conservative precision without emitting photo IDs. It requires an
+explicit judgment for every predicted label and enforces this round's fixed
+50-prediction/90% aggregate screen. Its inputs are a prediction list of
+`{"id": "PUBLIC_ID", "labels": ["..."]}` objects and a review object mapping
+each public ID to every predicted label and one of `correct`, `incorrect` or
+`uncertain`. Empty-label photos require an empty review object. Keep public
+images, IDs, predictions and judgments in an explicit local scratch directory;
+the output contains aggregates only. Passing this screen alone never authorizes
+deployment or substitutes for the per-Concept and owner gates.
+
 ## Snow feedback classifier
 
 Only `snow` gains feedback-only logistic fitting after at least five distinct
