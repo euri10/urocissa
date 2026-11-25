@@ -1,0 +1,16 @@
+
+running 1 test
+test operations::auto_tags::memory_tests::full_library_benchmark ... fixture photos=6410 dim=768 concepts=82 reference_heads=0 seed=23 samples=7
+synthetic_fingerprint=bf093a3847d31887fbd4d2528f7964d3491ffa5179b9f81de3f9196681e24612
+warmup=640.298 ms
+sample=592.873 ms
+sample=592.817 ms
+sample=551.144 ms
+sample=564.202 ms
+sample=573.701 ms
+sample=557.713 ms
+sample=553.697 ms
+median=564.202 ms min=551.144 ms max=592.873 ms
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 382 filtered out; finished in 31.92s

@@ -48,6 +48,18 @@ fn eligible(
         && filter.matches(record, slot.index(), audience))
 }
 
+fn compile_filter<'a>(
+    filter: &Expression,
+    tree: &'a TreeState,
+) -> AppResult<CompiledExpression<'a>> {
+    if filter.contains_tag_search() {
+        let tags = crate::operations::tag_search::OwnerTagIndex::read(tree)?;
+        Ok(CompiledExpression::owner(filter, tree, &tags))
+    } else {
+        Ok(tree.compile_expression(filter, None, false))
+    }
+}
+
 fn select(
     search: &SemanticSearch,
     expression: &Expression,
@@ -96,8 +108,7 @@ fn select(
     } else {
         &text_vector.as_ref().unwrap().embedding
     };
-    let tags = crate::operations::tag_search::OwnerTagIndex::read(&tree)?;
-    let compiled = crate::public::db::tree::state::CompiledExpression::owner(filter, &tree, &tags);
+    let compiled = compile_filter(filter, &tree)?;
     let audience_filtered = expression.contains_audience();
     let mut scores = Vec::new();
     let mut indexed = 0;
@@ -155,8 +166,7 @@ pub(super) fn execute(
         .state
         .read()
         .map_err(|_| AppError::new(ErrorKind::Internal, "Cannot read the photo library"))?;
-    let tags = crate::operations::tag_search::OwnerTagIndex::read(&tree)?;
-    let compiled = crate::public::db::tree::state::CompiledExpression::owner(&filter, &tree, &tags);
+    let compiled = compile_filter(&filter, &tree)?;
     let audience_filtered = expression.contains_audience();
     let mut matches = Vec::new();
     for (id, version) in &selection.photos {

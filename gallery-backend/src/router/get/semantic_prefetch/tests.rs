@@ -300,6 +300,7 @@ fn http_child() {
         .data_length,
         0
     );
+    check_owner_tag_filters(&client);
     fake.0.store(false, Ordering::Relaxed);
     assert_eq!(
         request("sort=relevance", body)
@@ -317,12 +318,47 @@ fn http_child() {
     benchmark_full_request(&client, &cache, &fake);
 }
 
+fn check_owner_tag_filters(client: &Client) {
+    let mut tagged = photo(1, 0);
+    let AbstractData::Image(ref mut image) = tagged else {
+        unreachable!()
+    };
+    image.object.tags.insert("dog".into());
+    *TREE.state.write().unwrap() =
+        TreeState::from_records([tagged, photo(2, 0), photo(3, 7), photo(4, 0)]);
+    for (body, expected) in [
+        (
+            r#"{"And":[{"Semantic":"bird"},{"Tag":"dog"},{"Source":"user"}]}"#,
+            1,
+        ),
+        (
+            r#"{"And":[{"Semantic":"bird"},{"Tag":"dog"},{"Source":"auto"}]}"#,
+            0,
+        ),
+        (r#"{"And":[{"Semantic":"bird"},{"Not":{"Tag":"dog"}}]}"#, 3),
+        (r#"{"And":[{"Semantic":"bird"},{"Any":"dog"}]}"#, 1),
+    ] {
+        let response = client
+            .post("/get/prefetch?sort=relevance")
+            .header(ContentType::JSON)
+            .cookie(Cookie::new("jwt", Claims::new_admin().encode()))
+            .body(body)
+            .dispatch();
+        assert_eq!(response.status(), Status::Ok);
+        let result: PrefetchReturn = response.into_json().unwrap();
+        assert_eq!(result.prefetch.data_length, expected, "{body}");
+    }
+}
+
 fn benchmark_full_request(client: &Client, cache: &EmbeddingStore, fake: &Fake) {
     fake.0.store(true, Ordering::Relaxed);
     fake.1.store(768, Ordering::Relaxed);
     cache.set_model(&fake.info().unwrap()).unwrap();
     let vector = vec![1.0 / 768.0_f32.sqrt(); 768];
-    for number in 1..=10_000 {
+    let count = std::env::var("UROCISSA_SEMANTIC_PROFILE_PHOTOS")
+        .ok()
+        .map_or(10_000, |value| value.parse::<u32>().unwrap());
+    for number in 1..=count {
         cache
             .put(
                 &format!("{number:064x}"),
@@ -336,7 +372,7 @@ fn benchmark_full_request(client: &Client, cache: &EmbeddingStore, fake: &Fake) 
             .unwrap();
     }
     *TREE.state.write().unwrap() =
-        TreeState::from_records((1..=10_000).map(|number| photo(number, 0)));
+        TreeState::from_records((1..=count).map(|number| photo(number, 0)));
     for body in [
         r#"{"Semantic":"ten thousand photo benchmark"}"#.to_owned(),
         format!(r#"{{"Similar":"{:064x}"}}"#, 1),
@@ -351,14 +387,14 @@ fn benchmark_full_request(client: &Client, cache: &EmbeddingStore, fake: &Fake) 
         assert_eq!(response.status(), Status::Ok);
         let result: PrefetchReturn = response.into_json().unwrap();
         let elapsed = start.elapsed();
-        eprintln!("10k × 768 complete ranked request ({body}): {elapsed:?}");
+        eprintln!("{count} × 768 complete ranked request ({body}): {elapsed:?}");
         assert_eq!(result.prefetch.data_length, 200);
         assert_eq!(
             result.semantic_search.as_ref().unwrap().indexed_photos,
             if body.contains("Similar") {
-                9_999
+                count as usize - 1
             } else {
-                10_000
+                count as usize
             }
         );
         if body.contains("Similar") {
@@ -367,6 +403,91 @@ fn benchmark_full_request(client: &Client, cache: &EmbeddingStore, fake: &Fake) 
         assert!(
             elapsed < Duration::from_millis(if cfg!(debug_assertions) { 1000 } else { 200 }),
             "full request budget exceeded: {elapsed:?}"
+        );
+    }
+    if std::env::var_os("UROCISSA_SEMANTIC_PROFILE_PHOTOS").is_some() {
+        profile_synthetic_search(client, cache, count);
+    }
+}
+
+fn profile_synthetic_search(client: &Client, cache: &EmbeddingStore, count: u32) {
+    use crate::{
+        operations::{auto_tags::AutoTags, autotag::BuiltinCatalog, tag_search::OwnerTagIndex},
+        storage::auto_tags::{MaterializedTags, StoredAutoTag},
+    };
+    let vocabulary = BuiltinCatalog::embedded().unwrap().version;
+    let rows = (1..=count)
+        .map(|number| {
+            let tags = if number % 10 == 0 {
+                vec![StoredAutoTag {
+                    concept: "dog".into(),
+                    label: "dog".into(),
+                    confidence: 0.9,
+                    displayed: true,
+                }]
+            } else {
+                vec![]
+            };
+            (
+                format!("{number:064x}"),
+                MaterializedTags {
+                    enabled: true,
+                    model_id: "test-model".into(),
+                    vocabulary_version: vocabulary.clone(),
+                    thumbnail_version: 0,
+                    tags,
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    cache.put_auto_tags(&rows).unwrap();
+    assert!(
+        embedding::service()
+            .unwrap()
+            .auto_tags
+            .set(AutoTags::new(cache.clone()).unwrap())
+            .is_ok()
+    );
+    let query = vec![1.0 / 768.0_f32.sqrt(); 768];
+    for sample in 0..=7 {
+        let started = Instant::now();
+        let embeddings = cache.embeddings("test-model").unwrap();
+        let loaded = Instant::now();
+        let tree = TREE.state.read().unwrap();
+        let index = OwnerTagIndex::read(&tree).unwrap();
+        let indexed = Instant::now();
+        drop(index);
+        drop(tree);
+        let scores = embeddings
+            .iter()
+            .map(|(id, row)| {
+                crate::operations::autotag::check_vector(&row.vector, 768).unwrap();
+                let score = row.vector.iter().zip(&query).map(|(a, b)| a * b).sum();
+                (id.clone(), score)
+            })
+            .collect();
+        let scoring_done = Instant::now();
+        let ranked = crate::operations::semantic::rank(scores);
+        assert_eq!(ranked.len(), 200);
+        let ranked_at = Instant::now();
+        let body = format!(r#"{{"Semantic":"synthetic benchmark {sample}"}}"#);
+        let response = client
+            .post("/get/prefetch?sort=relevance")
+            .header(ContentType::JSON)
+            .cookie(Cookie::new("jwt", Claims::new_admin().encode()))
+            .body(body)
+            .dispatch();
+        assert_eq!(response.status(), Status::Ok);
+        let result: PrefetchReturn = response.into_json().unwrap();
+        assert_eq!(result.prefetch.data_length, 200);
+        let finished = Instant::now();
+        eprintln!(
+            "semantic-profile sample={sample} photos={count} store_ms={:.3} owner_index_ms={:.3} score_ms={:.3} rank_ms={:.3} request_ms={:.3}",
+            loaded.duration_since(started).as_secs_f64() * 1000.0,
+            indexed.duration_since(loaded).as_secs_f64() * 1000.0,
+            scoring_done.duration_since(indexed).as_secs_f64() * 1000.0,
+            ranked_at.duration_since(scoring_done).as_secs_f64() * 1000.0,
+            finished.duration_since(ranked_at).as_secs_f64() * 1000.0,
         );
     }
 }

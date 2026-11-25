@@ -1,0 +1,15 @@
+
+running 1 test
+10k × 768 complete ranked request ({"Semantic":"ten thousand photo benchmark"}): 83.4299ms
+10k × 768 complete ranked request ({"Similar":"0000000000000000000000000000000000000000000000000000000000000001"}): 49.686129ms
+semantic-profile sample=0 photos=6410 store_ms=38.872 owner_index_ms=121.567 score_ms=14.446 rank_ms=0.832 request_ms=51.227
+semantic-profile sample=1 photos=6410 store_ms=26.213 owner_index_ms=115.199 score_ms=15.498 rank_ms=1.225 request_ms=44.852
+semantic-profile sample=2 photos=6410 store_ms=25.824 owner_index_ms=117.553 score_ms=13.868 rank_ms=0.937 request_ms=43.995
+semantic-profile sample=3 photos=6410 store_ms=26.924 owner_index_ms=119.326 score_ms=13.823 rank_ms=0.943 request_ms=44.007
+semantic-profile sample=4 photos=6410 store_ms=26.193 owner_index_ms=115.876 score_ms=13.960 rank_ms=0.882 request_ms=44.757
+semantic-profile sample=5 photos=6410 store_ms=25.876 owner_index_ms=117.466 score_ms=14.012 rank_ms=0.908 request_ms=51.048
+semantic-profile sample=6 photos=6410 store_ms=26.505 owner_index_ms=118.214 score_ms=13.963 rank_ms=0.888 request_ms=45.752
+semantic-profile sample=7 photos=6410 store_ms=29.542 owner_index_ms=114.965 score_ms=13.906 rank_ms=0.841 request_ms=56.244
+test router::get::semantic_prefetch::tests::http_child ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 382 filtered out; finished in 30.38s
