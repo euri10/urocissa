@@ -284,6 +284,7 @@ fn full_library_benchmark() -> Result<()> {
             assert_eq!(fingerprint, expected, "predictions changed between passes");
             assert_eq!((changes.added, changes.removed), (0, 0));
         } else {
+            eprintln!("synthetic_fingerprint={fingerprint}");
             expected = Some(fingerprint);
         }
         eprintln!(

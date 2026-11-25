@@ -8,7 +8,7 @@
 - Baseline native backend: 353 passed, 8 ignored, serial, Rust 1.97.1. An initial
   isolated-checkout run failed solely because generated frontend assets were absent;
   the unmodified suite passed after linking existing build output.
-- Initial candidate-pass cap: **3**; consumed: **4** after extending the campaign
+- Initial candidate-pass cap: **3**; consumed: **6** after extending the campaign
   under the owner's explicit instruction to stop only for a real data-loss or
   secret-exposure risk. The prior passes are not reset. Baseline harness
   development and read-only profiling do not consume a candidate pass.
@@ -580,3 +580,84 @@ workstation. Exact-dot samples were 87.814, 85.882, 92.128, 83.783, 96.284 ms
 establish a full-library gain. The prototype bound covered exact results for
 2,500 randomized pairs across extreme reciprocal scales, and non-finite
 arithmetic fell back; additional adversarial and end-to-end tests are required.
+
+Candidate pass 6 uses the standard floating-dot bound described by
+[Rump, section 4](https://www.tuhh.de/ti3/paper/rump/Ru11.pdf): for 768
+single-precision terms, unit roundoff is 2^-24 and gamma_768 is about
+0.00004578. Allowing for both summation orders gives less than 0.000092 times
+the absolute-product sum before the additional guard for summing that magnitude.
+The implementation uses the more conservative `0.001 * (magnitude + 1)`;
+the additive term dominates subnormal absolute error, and non-finite values,
+absolute-product sums above 2, or other dimensions fall back to the original
+exact calculation. This bound is
+used only to reject impossible matches; a possible match is scored exactly.
+Synthetic tests cover random reciprocal scales, cancellation, near-cutoff
+decisions and non-finite fallback; the full benchmark additionally emits a
+synthetic-only output fingerprint for exact-versus-bounded comparison.
+
+An exploratory development-workstation 6,410-photo full-path run gave exact
+median 546.152 ms and bounded median 311.382 ms with identical synthetic output
+fingerprints. These uncontrolled, separate runs support target-host measurement
+but are not the predeclared paired comparison or live acceptance evidence.
+
+The parallel Suggested rollout subsequently deployed application ed1e129c and
+the same model on a three-CPU/nice-15 worker. Its natural current-model 6,410
+photo pass was 1,718 ms. The paired comparison must use this actual load;
+synthetic low-priority timing is interpreted comparatively, since it competes
+with the low-priority three-core worker. The live `<1 s` gate is unchanged.
+
+The final test executable
+`d39c76e2f5aa7e17a4c23b835d9e6cffaa1da8d735e077cfbd3ffe71945b412d`
+passed the release learning tests on the N100. Seven alternating same-binary
+6,500-photo/30-feedback memory trials reported peak RSS KiB: exact 64832,
+63844, 63992, 63488, 65764, 62972, 65356; bounded 65916, 64628, 62584,
+65988, 65640, 64796, 63908. Medians were 63,992 and 64,796 KiB, a difference
+of 804 KiB within the exact-path range of 2,792 KiB. Sampled peak anonymous
+medians were 49,072 and 49,324 KiB. All peaks passed the 131,072 KiB gate; no
+distinguishable memory increase was detected at this sampling resolution.
+
+First local repair: while the initial paired run was underway, a review found
+that malformed, extremely large inputs might overflow in the original order
+even if an alternate order happened to remain finite. Although validated unit
+vectors cannot reach that case, the helper now refuses an absolute-product sum
+above 2 and falls back to the original dot. The old 6,410 series had exact
+medians 1002.455, 1087.533, 1018.699 ms and bounded medians 881.659, 828.806,
+811.995 ms (gain 189.893 ms, threshold 170.156 ms); all synthetic fingerprints
+matched. The 8,000 series was interrupted because it used the pre-repair binary.
+Those results do not accept the repaired candidate: repeat the entire paired
+timing, fingerprint and controlled memory gates on the final code without
+resetting the candidate count.
+
+The repaired test binary is
+`8d1fd3cda1068f626779feb4b196ece2995a81674eeb4fa7edc8986a88c738e5`.
+It passed the release learning tests on beesslc and the full backend suite
+(368 passed, 13 ignored). Seven alternating same-binary 6,500-photo/30-feedback
+memory trials reported peak RSS KiB: exact 65072, 64240, 62768, 64940, 66028,
+64636, 66112; bounded 65656, 63728, 65204, 64524, 64532, 65336, 63564.
+Medians were 64,940 and 64,532 KiB, within the 3,344 KiB exact-path range;
+sampled peak anonymous medians were 48,956 and 48,676 KiB. All reported peaks
+passed the 131,072 KiB gate, with no distinguishable memory increase in this
+controlled comparison.
+
+The complete repaired-binary paired series ran on beesslc under the deployed
+three-core/nice-15 Suggested worker, with the synthetic process pinned to two
+cores/nice-15 and two Rayon threads. Each run used one warmup and seven timed
+samples. These are comparative measurements, not the live acceptance gate.
+
+| Photos | Mode | Warmups (ms) | Three sets of seven samples (ms) |
+| --- | --- | --- | --- |
+| 6,410 | exact | 904.019, 993.317, 998.699 | 1068.345, 870.738, 980.361, 915.458, 1009.260, 953.918, 973.327; 946.813, 977.163, 1046.197, 1133.724, 1062.270, 916.858, 1030.677; 1035.647, 963.822, 1047.339, 1063.841, 1063.000, 1061.909, 1113.671 |
+| 6,410 | bounded | 531.295, 546.312, 559.611 | 580.891, 523.628, 570.901, 561.718, 571.380, 575.367, 541.363; 576.835, 523.721, 570.225, 571.319, 566.493, 632.483, 562.770; 694.388, 688.623, 653.350, 630.442, 613.975, 623.680, 560.723 |
+| 8,000 | exact | 1260.653, 1114.818, 1256.669 | 1275.171, 1263.943, 1172.029, 1079.627, 1229.005, 1412.839, 1370.115; 1186.024, 1391.001, 1127.725, 1321.714, 1158.095, 1273.674, 1244.298; 1246.082, 1310.275, 1288.940, 1245.150, 1246.873, 1185.071, 1311.282 |
+| 8,000 | bounded | 590.691, 729.100, 674.562 | 667.783, 636.550, 651.092, 576.509, 632.397, 638.436, 599.605; 648.697, 768.334, 601.298, 624.930, 637.409, 672.480, 648.992; 683.807, 681.495, 662.583, 664.902, 690.707, 672.106, 661.501 |
+
+At 6,410, exact-run medians were 973.327, 1030.677 and 1061.909 ms;
+bounded-run medians were 570.901, 570.225 and 630.442 ms. The 459.776 ms
+median-of-medians gain exceeds the predeclared 177.164 ms threshold. At 8,000,
+exact medians were 1263.943, 1244.298 and 1246.873 ms; bounded medians were
+636.550, 648.697 and 672.106 ms. The 598.176 ms gain exceeds the 62.344 ms
+threshold. Every exact/bounded run at each size had the same synthetic output
+fingerprint: `62635b3a0eeadd646dcb59f6d94129e855f4ffe73e3145984aba736238736a9d`
+at 6,410 and `dcbe2d3804cc72d7b3f573559f253d36ad259f91b887f81878ee678c8d7e1116`
+at 8,000. The natural full-library live timing and deployment verification are
+still required.

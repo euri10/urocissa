@@ -140,6 +140,26 @@ impl Examples {
     }
 
     fn firing_probability(&self, embedding: &[f32]) -> Option<f32> {
+        // Tests can compare the exact and bounded paths in one executable;
+        // production always enables the conservative precheck.
+        #[cfg(test)]
+        let precheck = {
+            static EXACT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+            !*EXACT.get_or_init(|| std::env::var_os("UROCISSA_BENCH_EXACT_EXAMPLES").is_some())
+        };
+        #[cfg(not(test))]
+        let precheck = true;
+        if precheck {
+            let upper = self
+                .positives
+                .iter()
+                .try_fold(f32::NEG_INFINITY, |max, vector| {
+                    dot_upper_bound(vector, embedding).map(|bound| max.max(bound))
+                });
+            if upper.is_some_and(|bound| sigmoid(MARGIN_SLOPE * (bound - self.cutoff)) < 0.5) {
+                return None;
+            }
+        }
         let positive = nearest(&self.positives, embedding, None);
         let cutoff_margin = positive - self.cutoff;
         // Compare the actual rounded probability: a tiny negative margin can
@@ -361,6 +381,37 @@ impl ConceptClassifier for Learning {
 
 fn dot(left: &[f32], right: &[f32]) -> f32 {
     left.iter().zip(right).map(|(a, b)| a * b).sum()
+}
+
+/// A conservative upper bound on the exact 768-term `dot`, or None when
+/// its assumptions cannot be checked. It is never used as a firing score.
+fn dot_upper_bound(left: &[f32], right: &[f32]) -> Option<f32> {
+    if left.len() != 768 || right.len() != 768 {
+        return None;
+    }
+    let mut sums = [0.0_f32; 8];
+    let mut magnitudes = [0.0_f32; 8];
+    for (left, right) in left.chunks_exact(8).zip(right.chunks_exact(8)) {
+        for index in 0..8 {
+            let product = left[index] * right[index];
+            sums[index] += product;
+            magnitudes[index] += product.abs();
+        }
+    }
+    let approximate = sums.into_iter().sum::<f32>();
+    let magnitude = magnitudes.into_iter().sum::<f32>();
+    // Normalized inputs have an absolute-product sum near or below one.
+    // Reject larger or non-finite sums so even malformed inputs cannot hide
+    // overflow in a different summation order.
+    if !magnitude.is_finite() || magnitude > 2.0 {
+        return None;
+    }
+    // For 768 f32 products, the usual worst-case rounding bounds for both
+    // summation orders are below 0.0002 times the absolute product sum.
+    // A 0.001 allowance also covers rounding in that sum; +1 dominates
+    // subnormal absolute error. Non-finite arithmetic falls back to `dot`.
+    let upper = approximate + (magnitude + 1.0) * 0.001;
+    upper.is_finite().then_some(upper)
 }
 
 fn sigmoid(logit: f32) -> f32 {

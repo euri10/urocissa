@@ -451,26 +451,6 @@ fn fast_example_decisions_match_full_scores_for_random_vectors() {
     }
 }
 
-// Profiling-only prototype: production decisions still use the exact dot.
-fn profile_dot_upper_bound(left: &[f32], right: &[f32]) -> Option<f32> {
-    if left.len() != 768 || right.len() != 768 {
-        return None;
-    }
-    let mut sums = [0.0_f32; 8];
-    let mut magnitudes = [0.0_f32; 8];
-    for (left, right) in left.chunks_exact(8).zip(right.chunks_exact(8)) {
-        for index in 0..8 {
-            let product = left[index] * right[index];
-            sums[index] += product;
-            magnitudes[index] += product.abs();
-        }
-    }
-    let approximate = sums.into_iter().sum::<f32>();
-    let magnitude = magnitudes.into_iter().sum::<f32>();
-    let upper = approximate + (magnitude + 1.0) * 0.001;
-    upper.is_finite().then_some(upper)
-}
-
 #[test]
 fn profile_dot_upper_bound_covers_exact_dot() {
     use rand::{RngExt, SeedableRng, rngs::StdRng};
@@ -482,15 +462,68 @@ fn profile_dot_upper_bound_covers_exact_dot() {
                 .map(|_| rng.random_range(-1.0..1.0) * scale)
                 .collect::<Vec<_>>();
             let right = (0..768)
-                .map(|_| rng.random_range(-1.0..1.0) / scale)
+                .map(|_| rng.random_range(-1.0..1.0) / scale / 768.0)
                 .collect::<Vec<_>>();
-            if let Some(upper) = profile_dot_upper_bound(&left, &right) {
-                assert!(upper >= dot(&left, &right));
+            let upper = dot_upper_bound(&left, &right).unwrap();
+            assert!(upper >= dot(&left, &right));
+        }
+    }
+    assert!(dot_upper_bound(&[1.0], &[1.0]).is_none());
+    assert!(dot_upper_bound(&[0.1; 768], &[0.1; 768]).is_none());
+    assert!(dot_upper_bound(&[f32::MAX; 768], &[f32::MAX; 768]).is_none());
+}
+
+#[test]
+fn bounded_precheck_preserves_example_decisions_near_cutoff() {
+    use rand::{RngExt, SeedableRng, rngs::StdRng};
+
+    let mut rng = StdRng::seed_from_u64(0x70_72_6f_6f_66);
+    for _ in 0..200 {
+        let mut vector = || {
+            let mut values = (0..768)
+                .map(|_| rng.random_range(-1.0..1.0))
+                .collect::<Vec<f32>>();
+            let norm = dot(&values, &values).sqrt();
+            for value in &mut values {
+                *value /= norm;
+            }
+            values
+        };
+        let query = vector();
+        let positives = (0..5).map(|_| vector()).collect::<Vec<_>>();
+        let rejections = (0..3).map(|_| vector()).collect::<Vec<_>>();
+        let positive = nearest(&positives, &query, None);
+        for offset in [-0.01, -0.001, -f32::EPSILON, 0.0, f32::EPSILON, 0.001, 0.01] {
+            let example = Examples {
+                positives: positives.clone(),
+                rejections: rejections.clone(),
+                cutoff: positive + offset,
+            };
+            let actual = example.firing_probability(&query);
+            let full = example.probability(&query);
+            assert_eq!(actual.is_some(), full >= 0.5);
+            if let Some(value) = actual {
+                assert_eq!(value.to_bits(), full.to_bits());
             }
         }
     }
-    assert!(profile_dot_upper_bound(&[1.0], &[1.0]).is_none());
-    assert!(profile_dot_upper_bound(&[f32::MAX; 768], &[f32::MAX; 768]).is_none());
+    let left = (0..768)
+        .map(|index| if index % 2 == 0 { 1e18_f32 } else { -1e18 })
+        .collect::<Vec<_>>();
+    let right = vec![1e-21_f32; 768];
+    assert!(dot_upper_bound(&left, &right).unwrap() >= dot(&left, &right));
+
+    // Non-finite intermediate arithmetic must use the original exact path.
+    let extreme = Examples {
+        positives: vec![vec![f32::MAX; 768]],
+        rejections: vec![],
+        cutoff: 0.0,
+    };
+    let query = [f32::MAX; 768];
+    assert_eq!(
+        extreme.firing_probability(&query).map(f32::to_bits),
+        Some(extreme.probability(&query).to_bits())
+    );
 }
 
 #[test]
@@ -518,7 +551,7 @@ fn bounded_similarity_profile() {
             for query in &vectors[..1_100] {
                 for positive in &vectors[..156] {
                     if bounded {
-                        black_box(profile_dot_upper_bound(query, positive).unwrap());
+                        black_box(dot_upper_bound(query, positive).unwrap());
                     } else {
                         black_box(dot(query, positive));
                     }
