@@ -32,6 +32,8 @@ impl Catalog {
             id: id.into(),
             thumbnail_version: version,
             thumbnail,
+            timestamp: 0,
+            favorite: false,
         });
     }
 }

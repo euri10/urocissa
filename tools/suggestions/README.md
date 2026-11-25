@@ -29,8 +29,10 @@ thumbnail version and this frozen model/mapping version. Existing User tags
 and durable Rejections suppress matching suggestions when read or searched.
 Confirm and Reject reuse the ordinary Concept feedback path; neither changes
 the frozen Auto-tag review. Pending work is reconstructed after restart, and
-new uploads take priority over the remaining backfill. Turning Auto tags off
-for a photo also prevents suggestions for that photo.
+new uploads take priority over the remaining backfill. The remaining queue
+alternates between the newest favorite and the newest non-favorite, updating
+the order when favorite or date metadata changes. Turning Auto tags off for a
+photo also prevents suggestions for that photo.
 Gallery shutdown interrupts an in-flight socket request and joins its cache
 writer before the stopped-volume backup; the worker does not mount the data.
 

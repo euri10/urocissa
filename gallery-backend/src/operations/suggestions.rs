@@ -1,5 +1,6 @@
 //! Owner-only Florence suggestions. Authored feedback and Auto tags remain separate.
 use std::{
+    cmp::Reverse,
     collections::{HashMap, HashSet},
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -104,6 +105,7 @@ struct Pending {
 #[derive(Default)]
 struct Queue {
     initialized: bool,
+    prefer_favorite: bool,
     seen: HashMap<String, u32>,
     pending: HashMap<String, Pending>,
 }
@@ -124,12 +126,15 @@ impl Queue {
             }
             let urgent =
                 self.initialized && self.seen.get(&photo.id) != Some(&photo.thumbnail_version);
-            self.pending.entry(photo.id.clone()).or_insert(Pending {
-                photo,
-                urgent,
-                failures: 0,
-                retry_at: now,
-            });
+            self.pending
+                .entry(photo.id.clone())
+                .and_modify(|item| item.photo = photo.clone())
+                .or_insert(Pending {
+                    photo,
+                    urgent,
+                    failures: 0,
+                    retry_at: now,
+                });
         }
         self.seen = current;
         self.initialized = true;
@@ -139,7 +144,15 @@ impl Queue {
         self.pending
             .iter()
             .filter(|(_, item)| item.retry_at <= now)
-            .min_by_key(|(id, item)| (!item.urgent, item.retry_at, *id))
+            .min_by_key(|(id, item)| {
+                (
+                    !item.urgent,
+                    item.photo.favorite != self.prefer_favorite,
+                    Reverse(item.photo.timestamp),
+                    item.retry_at,
+                    *id,
+                )
+            })
             .map(|(_, item)| item.photo.clone())
     }
 }
@@ -204,6 +217,9 @@ fn run(socket: &Path, service: &Service) {
                 thread::park_timeout(Duration::from_secs(5));
                 return Ok(());
             };
+            // Interleave newest favorites and newest other photos so neither
+            // owner's favorites nor recent uploads wait behind an entire class.
+            queue.prefer_favorite = !photo.favorite;
             service.status.lock().unwrap().processing = true;
             let analyzed = (|| -> Result<bool> {
                 if !catalog.is_current(&photo)? {
@@ -311,7 +327,49 @@ mod tests {
             id: id.into(),
             thumbnail_version: version,
             thumbnail: PathBuf::new(),
+            timestamp: 0,
+            favorite: false,
         }
+    }
+
+    fn prioritized(id: &str, timestamp: i64, favorite: bool) -> Photo {
+        Photo {
+            timestamp,
+            favorite,
+            ..photo(id, 1)
+        }
+    }
+
+    #[test]
+    fn queue_interleaves_recent_and_favorites_and_refreshes_metadata() {
+        let now = Instant::now();
+        let mut queue = Queue::default();
+        let photos = vec![
+            prioritized("old-favorite", 10, true),
+            prioritized("new-favorite", 20, true),
+            prioritized("old-other", 30, false),
+            prioritized("new-other", 40, false),
+        ];
+        queue.reconcile(photos.clone(), &HashMap::new(), now);
+        // Initial default is recent; after each choice prefer the other class.
+        for expected in ["new-other", "new-favorite", "old-other", "old-favorite"] {
+            let next = queue.next(now).unwrap();
+            assert_eq!(next.id, expected);
+            queue.prefer_favorite = !next.favorite;
+            queue.pending.remove(&next.id);
+        }
+
+        // A favorite/date edit on a still-pending photo must replace its old
+        // priority metadata without treating the unchanged photo as an upload.
+        queue.reconcile(photos.clone(), &HashMap::new(), now);
+        let mut changed = photos;
+        changed[0].favorite = false;
+        changed[0].timestamp = 50;
+        queue.reconcile(changed, &HashMap::new(), now);
+        queue.prefer_favorite = false;
+        assert_eq!(queue.next(now).unwrap().id, "old-favorite");
+        queue.pending.get_mut("old-favorite").unwrap().retry_at = now + Duration::from_secs(1);
+        assert_eq!(queue.next(now).unwrap().id, "new-other");
     }
 
     #[test]

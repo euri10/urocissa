@@ -9,7 +9,7 @@ env.allowLocalModels = true
 const root = '/opt/florence-model'
 const model = await Florence2ForConditionalGeneration.from_pretrained(root, {
   dtype: 'q8', device: 'cpu', local_files_only: true,
-  session_options: { intraOpNumThreads: 2, interOpNumThreads: 1 },
+  session_options: { intraOpNumThreads: 3, interOpNumThreads: 1 },
 })
 const processor = await AutoProcessor.from_pretrained(root, { local_files_only: true })
 

@@ -86,6 +86,30 @@ fn judgments_survive_reopen_without_touching_records_or_feedback() -> Result<()>
     Ok(())
 }
 
+#[test]
+fn replaced_random_round_remains_retrievable_by_id_after_reopen() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let path = root.path().join("index_v6.redb");
+    let mut original = round();
+    original.photos[0].before[0].judgment = Some(Judgment::No);
+    original.photos[0].seen_before = true;
+    let expected = serde_json::to_value(&original)?;
+    {
+        let store = DataStore::initialize_empty(&path)?;
+        store.update_acceptance("random", |_| Ok(original))?;
+        let mut replacement = round();
+        replacement.id = "new-round".into();
+        store.update_acceptance("random", |_| Ok(replacement))?;
+    }
+    let store = DataStore::open(&path)?;
+    assert_eq!(store.acceptance_round("random")?.unwrap().id, "new-round");
+    assert_eq!(
+        serde_json::to_value(store.acceptance_round("fixture-round")?.unwrap())?,
+        expected
+    );
+    Ok(())
+}
+
 /// Opt-in actual previous executable, on generated disposable data only.
 #[test]
 fn previous_binary_ignores_additive_review_table() -> Result<()> {

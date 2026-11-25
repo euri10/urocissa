@@ -16,6 +16,8 @@ pub struct Photo {
     pub id: String,
     pub thumbnail_version: u32,
     pub thumbnail: PathBuf,
+    pub timestamp: i64,
+    pub favorite: bool,
 }
 
 /// A snapshot is small metadata only; thumbnail reads and inference never hold the tree lock.
@@ -35,11 +37,13 @@ impl PhotoCatalog for GalleryCatalog {
         Ok(state
             .order
             .iter()
-            .filter_map(|slot| state.get(*slot))
-            .filter(|record| record.object_type == ObjectType::Image)
-            .map(|record| Photo {
+            .filter_map(|slot| state.get(*slot).map(|record| (*slot, record)))
+            .filter(|(_, record)| record.object_type == ObjectType::Image)
+            .map(|(slot, record)| Photo {
                 id: record.id.to_string(),
                 thumbnail_version: record.cache_version,
+                timestamp: record.timestamp,
+                favorite: state.query.favorite.contains(slot.index()),
                 thumbnail: get_data_path().join(thumbnail_relative_path(
                     VIEWER_TIER,
                     record.id.as_str(),
