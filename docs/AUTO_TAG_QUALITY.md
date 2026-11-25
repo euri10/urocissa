@@ -4,6 +4,35 @@ The broad coverage goal is approximately six to eight meaningful tags on typical
 photos, without filler. Tag count, no-tag fraction and correctness are separate
 measurements. Public class-enriched tests cannot establish the owner's precision.
 
+## Bee zero-shot quarantine, 2026-11-25
+
+The bee zero-shot fallback is inactive after it fired on three unrelated public
+cat and dog portraits. Its original stored calibration threshold and owner-fitted
+classifier remain unchanged; User tags, rejections, opt-outs and aliases still
+take precedence. The version advances to `-quarantine-2`, rematerializing cached
+decisions. This sacrifices untrained bee recall until the fallback is separately
+qualified; it does not claim an owner precision result.
+
+An untouched, separately frozen 384-photo Open Images V7 test used the pinned
+production tagger on CPU and native materialization. The evaluating agent judged
+85 correct, three incorrect and four uncertain of 92 displayed chips on 90 photos:
+92.39% correct of all chips, above the unchanged 90%/50-chip screen. All three
+incorrect chips were pre-existing `insect` decisions on spiders or a centipede,
+tracked separately as `infra-urocissa-autotag-sjfz.32`. Comparing identical inputs
+before and after found no other removed or wrong new chips: one `insect` parent
+became visible on a real bee when its more specific bee chip was quarantined.
+There were no displayed bee chips, so this screen cannot establish bee precision
+or recall. These are agent judgments, not independent-human or owner judgments.
+
+The ordered-ID checksum is
+`3feea07a8cba82ca3ca2b2d3dfb2794276890df216686254364da994e3896206`;
+public prediction and review checksums are
+`757a5131d6f2487ddb5cb02586ce572b70b1416e101180d41d959d41e6cc2ef0` and
+`9bb72cf6595d2c93c02307ae424c6e0309c6274b830cd53bfed3d3214d8d8edb`.
+The public-only fixture regression failed on the three portraits before the
+quarantine and passed afterward. It accepts an explicit local scratch fixture;
+no raw model output or owner data is published.
+
 ## Reference fallback quarantine, 2026-11-25
 
 The five inactive-only public-reference heads are quarantined: `bookcase`,

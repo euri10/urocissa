@@ -94,7 +94,14 @@ fn public_unrelated_photos_do_not_materialize_fence_or_road() -> Result<()> {
 }
 
 #[test]
-fn quarantined_snow_still_learns_from_owner_feedback() -> Result<()> {
+fn quarantined_defaults_still_learn_from_owner_feedback() -> Result<()> {
+    for concept in ["snow", "bee"] {
+        check_quarantined_concept_learns_from_owner_feedback(concept)?;
+    }
+    Ok(())
+}
+
+fn check_quarantined_concept_learns_from_owner_feedback(concept: &str) -> Result<()> {
     let dir = tempfile::tempdir()?;
     let store = EmbeddingStore::open(&dir.path().join("derived.redb"))?;
     let tags = AutoTags::new(store.clone())?;
@@ -148,7 +155,7 @@ fn quarantined_snow_still_learns_from_owner_feedback() -> Result<()> {
             Input {
                 version: 1,
                 tags: if is_positive {
-                    vec!["snow".into()]
+                    vec![concept.into()]
                 } else {
                     vec![]
                 },
@@ -156,7 +163,7 @@ fn quarantined_snow_still_learns_from_owner_feedback() -> Result<()> {
                 rejections: if is_positive {
                     vec![]
                 } else {
-                    vec!["snow".into()]
+                    vec![concept.into()]
                 },
             },
         );
@@ -186,34 +193,34 @@ fn quarantined_snow_still_learns_from_owner_feedback() -> Result<()> {
             .unwrap()
             .as_ref()
             .unwrap()
-            .learning_methods["snow"],
+            .learning_methods[concept],
         "learned"
     );
     assert!(
         tags.status("target", 1, true)?
             .auto_tags
             .iter()
-            .any(|tag| tag.concept == "snow" && tag.displayed)
+            .any(|tag| tag.concept == concept && tag.displayed)
     );
     assert!(
         !tags
             .status("example-0", 1, true)?
             .auto_tags
             .iter()
-            .any(|tag| tag.concept == "snow")
+            .any(|tag| tag.concept == concept)
     );
     inputs
         .get_mut("target")
         .unwrap()
         .rejections
-        .push("snow".into());
+        .push(concept.into());
     tags.materialize(&inputs, &[])?;
     assert!(
         !tags
             .status("target", 1, true)?
             .auto_tags
             .iter()
-            .any(|tag| tag.concept == "snow")
+            .any(|tag| tag.concept == concept)
     );
     Ok(())
 }
@@ -281,6 +288,8 @@ fn materialize_public_precision_sample() -> Result<()> {
     }
     tags.materialize(&inputs, &[])?;
     let mut predictions = Vec::new();
+    let mut bee_regression_cases = 0;
+    let mut bee_regression_failures = 0;
     for case in cases {
         let id = case["id"].as_str().unwrap();
         let labels = tags
@@ -290,7 +299,23 @@ fn materialize_public_precision_sample() -> Result<()> {
             .filter(|tag| tag.displayed)
             .map(|tag| tag.concept)
             .collect::<Vec<_>>();
+        // Public Open Images cat/dog portraits, not owner photos. Keep vectors
+        // in local scratch; this check runs through native materialization.
+        if ["5a659bd701b156e5", "db38f975c9970bde", "1b626af328643fb5"].contains(&id) {
+            bee_regression_cases += 1;
+            bee_regression_failures += usize::from(labels.iter().any(|label| label == "bee"));
+        }
         predictions.push(serde_json::json!({"id": id, "labels": labels}));
+    }
+    if std::env::var_os("UROCISSA_BEE_REGRESSION").is_some() {
+        ensure!(
+            bee_regression_cases == 3,
+            "missing public bee regression cases"
+        );
+        ensure!(
+            bee_regression_failures == 0,
+            "bee fires on unrelated public photos"
+        );
     }
     std::fs::write(
         std::env::var("UROCISSA_PUBLIC_PRECISION_OUTPUT")?,
