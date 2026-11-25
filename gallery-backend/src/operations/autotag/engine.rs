@@ -156,7 +156,7 @@ impl AutoTagEngine {
     /// Auto tags for one photo (incremental updates). Runs the same code as
     /// [`Self::tag_library`], so the result is identical to that photo's library result.
     pub fn tag_photo(&self, photo: &PhotoInput<'_>) -> PhotoResult<'_> {
-        self.tag_chunk(std::slice::from_ref(photo))
+        self.tag_chunk(std::slice::from_ref(photo), false)
             .pop()
             .expect("one result per photo")
     }
@@ -164,9 +164,12 @@ impl AutoTagEngine {
     /// Auto tags for every photo, in input order, scored in parallel on the current rayon pool.
     /// An invalid embedding fails only its own photo.
     pub fn tag_library(&self, photos: &[PhotoInput<'_>]) -> Vec<PhotoResult<'_>> {
+        // Materialization supplies one chunk at a time; use the pool for its
+        // independent per-photo decisions instead of duplicating packed inputs.
+        let parallel_resolution = photos.len() <= CHUNK && rayon::current_num_threads() > 1;
         photos
             .par_chunks(CHUNK)
-            .flat_map_iter(|chunk| self.tag_chunk(chunk))
+            .flat_map_iter(|chunk| self.tag_chunk(chunk, parallel_resolution))
             .collect()
     }
 
@@ -186,7 +189,11 @@ impl AutoTagEngine {
         }
     }
 
-    fn tag_chunk(&self, photos: &[PhotoInput<'_>]) -> Vec<PhotoResult<'_>> {
+    fn tag_chunk(
+        &self,
+        photos: &[PhotoInput<'_>],
+        parallel_resolution: bool,
+    ) -> Vec<PhotoResult<'_>> {
         let dim = self.vocabulary.dim();
         let concepts = self.cuts.len();
         let mut results: Vec<PhotoResult<'_>> = photos
@@ -211,9 +218,23 @@ impl AutoTagEngine {
             concepts,
             dim,
         );
-        for (row, &index) in scored.iter().enumerate() {
-            let dots = &dots[row * concepts..(row + 1) * concepts];
-            results[index] = Ok(self.resolve(&photos[index], dots));
+        if parallel_resolution {
+            drop(block);
+            let resolved: Vec<_> = scored
+                .par_iter()
+                .enumerate()
+                .map(|(row, &index)| {
+                    self.resolve(&photos[index], &dots[row * concepts..(row + 1) * concepts])
+                })
+                .collect();
+            for (&index, tags) in scored.iter().zip(resolved) {
+                results[index] = Ok(tags);
+            }
+        } else {
+            for (row, &index) in scored.iter().enumerate() {
+                let dots = &dots[row * concepts..(row + 1) * concepts];
+                results[index] = Ok(self.resolve(&photos[index], dots));
+            }
         }
         results
     }
