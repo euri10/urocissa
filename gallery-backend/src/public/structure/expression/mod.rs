@@ -21,6 +21,7 @@ pub enum AlbumFilterValue {
 pub enum TagSource {
     User,
     Auto,
+    Suggested,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]

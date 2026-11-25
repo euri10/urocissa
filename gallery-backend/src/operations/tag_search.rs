@@ -1,5 +1,5 @@
 //! Request-local owner tag membership. Public/share paths keep their authored indexes.
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use anyhow::Result;
 
@@ -24,12 +24,14 @@ struct Members {
     value: String,
     user: OrdinalSet,
     auto: OrdinalSet,
+    suggested: OrdinalSet,
 }
 
 pub struct OwnerTagIndex {
     vocabulary: Vocabulary,
     members: HashMap<String, Members>,
     universe: usize,
+    suggestions_enabled: bool,
 }
 
 impl OwnerTagIndex {
@@ -55,6 +57,7 @@ impl OwnerTagIndex {
             vocabulary,
             members: HashMap::new(),
             universe: state.arena.capacity(),
+            suggestions_enabled: super::suggestions::service().is_some(),
         };
         let mut user_aliases = HashMap::<String, OrdinalSet>::new();
         let personal = personal_names(
@@ -136,7 +139,73 @@ impl OwnerTagIndex {
                 }
             }
         }
+        index.add_suggestions(state, &aliases, &user_aliases, &personal)?;
         Ok(index)
+    }
+
+    fn add_suggestions(
+        &mut self,
+        state: &TreeState,
+        aliases: &AliasIndex,
+        user_aliases: &HashMap<String, OrdinalSet>,
+        personal: &BTreeMap<String, String>,
+    ) -> Result<()> {
+        if let Some(suggestions) = super::suggestions::service() {
+            let settings = TREE.store.auto_tag_settings()?;
+            let rejected = super::tag_feedback::all_rejections()?;
+            for (id, row) in suggestions.store.all()? {
+                let Some(slot) = state.find(&id) else {
+                    continue;
+                };
+                let record = state.get(slot).unwrap();
+                if row.version != super::suggestions::VERSION
+                    || record.object_type != ObjectType::Image
+                    || record.cache_version != row.thumbnail_version
+                    || !settings.enabled(&id)?
+                {
+                    continue;
+                }
+                let member = OrdinalSet::from_ordinals([slot.index()], self.universe);
+                for label in row.labels {
+                    let concept_id = super::tag_feedback::concept_id(&label);
+                    if user_aliases
+                        .get(&concept_id)
+                        .is_some_and(|members| members.contains(slot.index()))
+                        || rejected
+                            .get(&id)
+                            .is_some_and(|ids| ids.contains(&concept_id))
+                    {
+                        continue;
+                    }
+                    let ids = if let Some(concept) = self.vocabulary.concept_named(&label) {
+                        std::iter::once(concept)
+                            .chain(self.vocabulary.ancestors(&concept.id))
+                            .map(|concept| {
+                                (
+                                    concept.id.clone(),
+                                    aliases
+                                        .alias(&concept.id)
+                                        .unwrap_or(&concept.label)
+                                        .to_owned(),
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                    } else {
+                        let display = personal.get(&concept_id).cloned().unwrap_or(label);
+                        vec![(concept_id, display)]
+                    };
+                    for (id, label) in ids {
+                        self.add(
+                            format!("concept:{id}"),
+                            label,
+                            &member,
+                            TagSource::Suggested,
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn add(&mut self, key: String, value: String, members: &OrdinalSet, source: TagSource) {
@@ -145,6 +214,7 @@ impl OwnerTagIndex {
         let target = match source {
             TagSource::User => &mut entry.user,
             TagSource::Auto => &mut entry.auto,
+            TagSource::Suggested => &mut entry.suggested,
         };
         target.union_with(members, self.universe, |_| {});
     }
@@ -163,11 +233,14 @@ impl OwnerTagIndex {
             .iter()
             .filter(|(k, _)| key.as_ref().is_none_or(|key| key == *k))
         {
-            if source != Some(TagSource::Auto) {
+            if source.is_none_or(|source| source == TagSource::User) {
                 result.union_with(&entry.user, self.universe, |_| {});
             }
-            if source != Some(TagSource::User) {
+            if source.is_none_or(|source| source == TagSource::Auto) {
                 result.union_with(&entry.auto, self.universe, |_| {});
+            }
+            if source.is_none_or(|source| source == TagSource::Suggested) {
+                result.union_with(&entry.suggested, self.universe, |_| {});
             }
         }
         result
@@ -189,12 +262,16 @@ impl OwnerTagIndex {
             .filter_map(|entry| {
                 let mut union = entry.user.clone();
                 union.union_with(&entry.auto, self.universe, |_| {});
+                union.union_with(&entry.suggested, self.universe, |_| {});
                 let count = union.iter().filter(|&o| in_scope(o)).count();
                 (count > 0).then(|| FacetValueInfo {
                     value: entry.value.clone(),
                     count,
                     user_count: Some(entry.user.iter().filter(|&o| in_scope(o)).count()),
                     auto_count: Some(entry.auto.iter().filter(|&o| in_scope(o)).count()),
+                    suggested_count: self
+                        .suggestions_enabled
+                        .then(|| entry.suggested.iter().filter(|&o| in_scope(o)).count()),
                 })
             })
             .collect::<Vec<_>>();

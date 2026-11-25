@@ -4972,6 +4972,7 @@ dependencies = [
  "rust-embed",
  "serde",
  "serde_json",
+ "socket2 0.6.5",
  "superconsole",
  "sysinfo",
  "tempfile",

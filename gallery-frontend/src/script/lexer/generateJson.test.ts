@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { generateJsonString } from './generateJson'
 
 describe('tag provenance expressions', () => {
-  it.each(['user', 'auto'])('parses quoted and bare %s source', (source) => {
+  it.each(['user', 'auto', 'suggested'])('parses quoted and bare %s source', (source) => {
     for (const value of [source, JSON.stringify(source)]) {
       expect(JSON.parse(generateJsonString(`and(tag:"stork",source:${value})`))).toEqual({
         And: [{ Tag: 'stork' }, { Source: source }]

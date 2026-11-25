@@ -11,6 +11,7 @@ pub mod initialization;
 pub mod open_db;
 pub mod public_metadata;
 pub mod semantic;
+pub mod suggestions;
 pub mod tag_feedback;
 pub mod tag_search;
 pub mod transitor;

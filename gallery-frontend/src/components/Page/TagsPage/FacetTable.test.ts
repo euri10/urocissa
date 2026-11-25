@@ -25,7 +25,7 @@ describe('tag facets', () => {
   })
   it('preserves owner split counts and renders ordinary visitor counts', async () => {
     const facets = searchFacetsSchema.parse({ tags: [
-      { value: 'stork', count: 29, userCount: 8, autoCount: 23 },
+      { value: 'stork', count: 29, userCount: 8, autoCount: 23, suggestedCount: 2 },
       { value: 'holiday', count: 3 }
     ], makes: [], models: [] })
     const app = createSSRApp(FacetTable, { valueLabel: 'Tag', items: facets.tags, emptyText: 'No tags' })
@@ -34,6 +34,7 @@ describe('tag facets', () => {
     app.component('VTable', stub)
     const html = await renderToString(app)
     expect(html).toContain('8 yours + 23 auto')
+    expect(html).toContain('2 suggested')
     expect(html).toContain('29 matching items')
     expect(html).toContain('>3<')
   })

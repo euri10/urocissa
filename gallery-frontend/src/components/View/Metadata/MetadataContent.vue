@@ -14,6 +14,7 @@ import ItemPath from './ItemPath.vue'
 import ItemDate from './ItemDate.vue'
 import ItemTag from './ItemTag.vue'
 import ItemAutoTags from './ItemAutoTags.vue'
+import ItemSuggestedTags from './ItemSuggestedTags.vue'
 import ConceptBuilder from './ConceptBuilder.vue'
 import ItemAlbum from './ItemAlbum.vue'
 import ItemTitle from './ItemTitle.vue'
@@ -149,6 +150,11 @@ watch(
           />
           <ItemAutoTags
             v-if="configStore.isAdmin && !isShareMode && configStore.config?.embeddingEnabled && abstractData.type === 'image'"
+            :photo="abstractData"
+            :isolation-id="props.isolationId"
+          />
+          <ItemSuggestedTags
+            v-if="configStore.isAdmin && !isShareMode && abstractData.type === 'image'"
             :photo="abstractData"
             :isolation-id="props.isolationId"
           />

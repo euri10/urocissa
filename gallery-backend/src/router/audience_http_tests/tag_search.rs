@@ -302,6 +302,7 @@ pub(super) async fn checks(client: &Client, store: &EmbeddingStore) {
                     vec![PUBLIC, PRIVATE, MISSING]
                 }
                 Some(TagSource::Auto) => vec![PUBLIC, MISSING],
+                Some(TagSource::Suggested) => vec![],
             }
             .into_iter()
             .map(str::to_owned)

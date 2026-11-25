@@ -16,6 +16,8 @@ pub struct FacetValueInfo {
     pub user_count: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_count: Option<usize>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

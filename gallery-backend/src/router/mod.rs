@@ -11,6 +11,7 @@ pub mod put;
 pub mod saved_searches;
 pub mod selection;
 pub mod strip_video_metadata;
+pub mod suggestions;
 pub use crate::public::error::{AppError, ErrorKind};
 pub type AppResult<T> = Result<T, AppError>;
 pub type GuardResult<T> = Result<T, AppError>;

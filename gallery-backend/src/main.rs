@@ -117,6 +117,7 @@ fn main() {
             eprintln!("performance startup: logical tree ready");
             let write_behind_worker = INDEX_RUNTIME.spawn(WRITE_BEHIND.run_worker());
             let embedding_worker = operations::embedding::start();
+            let suggestion_worker = operations::suggestions::start();
             if tree_ready_tx.send(()).is_err() {
                 error!("Failed to signal initial tree readiness.");
                 return;
@@ -150,7 +151,12 @@ fn main() {
                 );
             }
             write_behind_worker.abort();
+            operations::suggestions::stop();
             operations::embedding::stop();
+            if let Some(worker) = suggestion_worker {
+                worker.thread().unpark();
+                let _ = worker.join();
+            }
             if let Some(worker) = embedding_worker {
                 let _ = worker.join();
             }

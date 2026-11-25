@@ -22,6 +22,7 @@ mod media;
 mod mutations;
 mod recalculation;
 mod search;
+mod suggestions;
 mod tag_feedback;
 mod tag_search;
 
@@ -703,6 +704,8 @@ async fn http_child() {
                 crate::router::embeddings::get_auto_tags,
                 crate::router::embeddings::get_auto_tag_status,
                 crate::router::embeddings::recalculate_auto_tags,
+                crate::router::suggestions::get,
+                crate::router::suggestions::status,
                 upload,
             ],
         ),
@@ -725,6 +728,10 @@ async fn http_child() {
     }
     search::checks(&client).await;
     auto_tags::checks(&client).await;
+    if std::env::var("UROCISSA_OWNER_CHECKS").as_deref() == Ok("suggestions") {
+        suggestions::checks(&client).await;
+        return;
+    }
     if std::env::var("UROCISSA_OWNER_CHECKS").as_deref() == Ok("review") {
         concept_review::checks(&client).await;
         return;
@@ -834,6 +841,12 @@ fn public_audience_http() {
 fn authored_feedback_http() {
     isolated_mode(true, false, Some("feedback"));
     isolated_mode(false, false, Some("feedback"));
+}
+
+#[test]
+fn suggested_tags_http() {
+    isolated_mode(true, false, Some("suggestions"));
+    isolated_mode(false, false, Some("suggestions"));
 }
 
 #[test]

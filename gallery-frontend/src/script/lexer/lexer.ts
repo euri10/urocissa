@@ -61,7 +61,7 @@ const AudienceValue: TokenType = createToken({
   pattern: /(?:private|public)\b/
 })
 
-const SourceValue: TokenType = createToken({ name: 'SourceValue', pattern: /(?:user|auto)\b/ })
+const SourceValue: TokenType = createToken({ name: 'SourceValue', pattern: /(?:user|auto|suggested)\b/ })
 
 const Identifier: TokenType = createToken({
   name: 'Identifier',
@@ -421,7 +421,7 @@ export class MyVisitor extends BaseVisitor {
     const value = children.Identifier
       ? unescapeAndUnwrap(getArrayValue(children.Identifier, 0).image)
       : getArrayValue(children.SourceValue ?? [], 0).image
-    if (value !== 'user' && value !== 'auto') throw new Error('Source must be "user" or "auto"')
+    if (value !== 'user' && value !== 'auto' && value !== 'suggested') throw new Error('Source must be "user", "auto" or "suggested"')
     return { Source: value }
   }
 }

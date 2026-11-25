@@ -55,6 +55,7 @@ function selectValue(value: string): void {
         <td class="text-end" :title="`${item.count} matching items`">
           <template v-if="item.userCount !== undefined && item.autoCount !== undefined">
             {{ item.userCount }} yours + {{ item.autoCount }} auto
+            <template v-if="item.suggestedCount !== undefined"> + {{ item.suggestedCount }} suggested</template>
           </template>
           <template v-else>{{ item.count }}</template>
         </td>

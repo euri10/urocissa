@@ -159,6 +159,16 @@ fn previous_binary_review_fixture(read_only: bool) -> Result<()> {
     drop(crate::storage::embeddings::EmbeddingStore::open(
         &data.join("db/embeddings.redb"),
     )?);
+    let suggestion_path = data.join("db/suggestions.redb");
+    let suggestion = crate::storage::suggestions::SuggestedTags {
+        version: crate::operations::suggestions::VERSION.into(),
+        thumbnail_version: 7,
+        labels: vec!["umbrella".into()],
+    };
+    {
+        let cache = crate::storage::suggestions::SuggestionStore::open(&suggestion_path)?;
+        cache.put(&hash, &suggestion)?;
+    }
     let password = "acceptance-disposable-rollback-fixture"; // betterleaks:allow -- generated disposable database only
     std::fs::write(
         data.join("config.json"),
@@ -296,6 +306,8 @@ fn previous_binary_review_fixture(read_only: bool) -> Result<()> {
         .bytes()?;
     assert_eq!(&read[..], bytes);
     drop(container);
+    let cache = crate::storage::suggestions::SuggestionStore::open(&suggestion_path)?;
+    assert_eq!(cache.get(&hash)?, Some(suggestion));
     let store = DataStore::open(&path)?;
     assert!(store.acceptance_round("random")?.is_some());
     assert_eq!(store.auto_tag_rejections_for(&hash)?, expected_rejections);

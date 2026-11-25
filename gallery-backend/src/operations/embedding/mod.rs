@@ -1,6 +1,6 @@
 //! Background photo embeddings. The authoritative queue is the durable photo library minus
 //! current cached vectors, so losing this derived file or a process never loses pending work.
-mod catalog;
+pub(crate) mod catalog;
 pub mod client;
 mod worker;
 
