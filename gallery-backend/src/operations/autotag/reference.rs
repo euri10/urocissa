@@ -74,7 +74,7 @@ impl ReferenceDefaults {
         // ponytail: quarantine public heads with observed unrelated-photo false
         // positives until representative negatives support their requalification.
         // Owner-fitted classifiers remain independent of these fallback heads.
-        catalog.version = format!("{}-quarantine-2", self.vocabulary_version);
+        catalog.version = format!("{}-quarantine-3", self.vocabulary_version);
         catalog.references.clear();
         Ok(())
     }
@@ -94,9 +94,16 @@ impl<C> ReferenceFallback<C> {
 impl<C: ConceptClassifier> ConceptClassifier for ReferenceFallback<C> {
     fn mode(&self, concept: &Concept) -> ConceptMode {
         match self.base.mode(concept) {
-            // ponytail: unrelated public cat/dog photos invalidate bee's
-            // zero-shot fallback; preserve owner-fitted classifiers unchanged.
-            ConceptMode::ZeroShot if concept.id == "bee" => ConceptMode::Inactive,
+            // ponytail: only labels with representative precision evidence stay
+            // zero-shot; owner-fitted classifiers retain their existing paths.
+            ConceptMode::ZeroShot
+                if !matches!(
+                    concept.id.as_str(),
+                    "animal" | "bird" | "cat" | "dog" | "food"
+                ) =>
+            {
+                ConceptMode::Inactive
+            }
             ConceptMode::Inactive if self.heads.contains_key(&concept.id) => {
                 ConceptMode::Classifier
             }
@@ -240,8 +247,8 @@ mod tests {
             }
         }
         let concept = Concept {
-            id: "snow".into(),
-            label: "snow".into(),
+            id: "animal".into(),
+            label: "animal".into(),
             synonyms: vec![],
             parents: vec![],
             threshold: 0.9,
@@ -259,7 +266,7 @@ mod tests {
         ] {
             let classifier = ReferenceFallback {
                 base: Owner(mode),
-                heads: [("snow".into(), head.clone())].into(),
+                heads: [("animal".into(), head.clone())].into(),
             };
             assert_eq!(
                 classifier.mode(&concept),
@@ -280,7 +287,7 @@ mod tests {
     }
 
     #[test]
-    fn bee_quarantine_only_blocks_zero_shot() {
+    fn quarantine_only_blocks_unsupported_zero_shot() {
         struct Owner(ConceptMode);
         impl ConceptClassifier for Owner {
             fn mode(&self, _: &Concept) -> ConceptMode {
@@ -293,36 +300,41 @@ mod tests {
                 }
             }
         }
-        let mut concept = Concept {
-            id: "bee".into(),
-            label: "bee".into(),
-            synonyms: vec![],
-            parents: vec![],
-            threshold: 0.5,
-            vector: vec![1.0],
-        };
-        for (base, expected) in [
-            (ConceptMode::Inactive, ConceptMode::Inactive),
-            (ConceptMode::ZeroShot, ConceptMode::Inactive),
-            (ConceptMode::Classifier, ConceptMode::Classifier),
-        ] {
-            let classifier = ReferenceFallback::new(Owner(base), BTreeMap::new());
-            assert_eq!(classifier.mode(&concept), expected);
-            if base == ConceptMode::Classifier {
-                assert_eq!(
-                    classifier.classify_if_fired(&concept, &[1.0], 0.1),
-                    Some(Classification {
-                        probability: 0.9,
-                        threshold: 0.8,
-                    })
-                );
+        for definition in BuiltinCatalog::embedded().unwrap().concepts {
+            let concept = Concept {
+                id: definition.id,
+                label: definition.label_en,
+                synonyms: definition.synonyms,
+                parents: definition.parents,
+                threshold: 0.5,
+                vector: vec![1.0],
+            };
+            let supported = ["animal", "bird", "cat", "dog", "food"].contains(&concept.id.as_str());
+            for (base, expected) in [
+                (ConceptMode::Inactive, ConceptMode::Inactive),
+                (
+                    ConceptMode::ZeroShot,
+                    if supported {
+                        ConceptMode::ZeroShot
+                    } else {
+                        ConceptMode::Inactive
+                    },
+                ),
+                (ConceptMode::Classifier, ConceptMode::Classifier),
+            ] {
+                let classifier = ReferenceFallback::new(Owner(base), BTreeMap::new());
+                assert_eq!(classifier.mode(&concept), expected, "{}", concept.id);
+                if base == ConceptMode::Classifier {
+                    assert_eq!(
+                        classifier.classify_if_fired(&concept, &[1.0], 0.1),
+                        Some(Classification {
+                            probability: 0.9,
+                            threshold: 0.8,
+                        })
+                    );
+                }
             }
         }
-        concept.id = "butterfly".into();
-        assert_eq!(
-            ReferenceFallback::new(Owner(ConceptMode::ZeroShot), BTreeMap::new()).mode(&concept),
-            ConceptMode::ZeroShot
-        );
     }
 
     #[test]

@@ -95,7 +95,7 @@ fn public_unrelated_photos_do_not_materialize_fence_or_road() -> Result<()> {
 
 #[test]
 fn quarantined_defaults_still_learn_from_owner_feedback() -> Result<()> {
-    for concept in ["snow", "bee"] {
+    for concept in ["snow", "bee", "fish", "insect", "fruit"] {
         check_quarantined_concept_learns_from_owner_feedback(concept)?;
     }
     Ok(())

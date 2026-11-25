@@ -1,8 +1,28 @@
 use std::collections::HashMap;
 
 use crate::operations::autotag::{
-    BuiltinCatalog, BuiltinConcept, PhotoInput, Placement, ScoreModel,
+    BuiltinCatalog, BuiltinConcept, Classification, Concept, ConceptClassifier, ConceptMode,
+    PhotoInput, Placement, ScoreModel,
 };
+
+struct OwnerMatch(&'static str);
+
+impl ConceptClassifier for OwnerMatch {
+    fn mode(&self, concept: &Concept) -> ConceptMode {
+        if concept.id == self.0 {
+            ConceptMode::Classifier
+        } else {
+            ConceptMode::Inactive
+        }
+    }
+
+    fn classify(&self, _: &Concept, _: &[f32], _: f32) -> Classification {
+        Classification {
+            probability: 1.0,
+            threshold: 0.8,
+        }
+    }
+}
 
 fn source() -> serde_json::Value {
     serde_json::from_str(include_str!("../../../../assets/concepts.json")).unwrap()
@@ -143,8 +163,8 @@ fn fixture() -> BuiltinCatalog {
         "schema_version":2,"version":"fixture","model_id":"fixture-model",
         "prompt_template":"a photo of {label}","concepts":[
         {"id":"animal","label_en":"animal","parents":[],"threshold":null,"open_images":"Animal"},
-        {"id":"bird","label_en":"bird","parents":["animal"],"threshold":null,"open_images":"Bird"},
-        {"id":"stork","label_en":"stork","parents":["bird"],"threshold":0.8,"open_images":"Stork"}
+        {"id":"bird","label_en":"bird","parents":["animal"],"threshold":0.8,"open_images":"Bird"},
+        {"id":"stork","label_en":"stork","parents":["bird"],"threshold":null,"open_images":"Stork"}
         ]}"#,
     )
     .unwrap()
@@ -183,10 +203,10 @@ fn dropped_concepts_never_fire_but_still_expand_parents() {
     );
     assert!(
         tags.iter()
-            .any(|t| t.concept == "bird" && t.placement == Placement::Implied)
+            .any(|t| t.concept == "animal" && t.placement == Placement::Implied)
     );
     let mut catalog = fixture();
-    catalog.concepts[2].threshold = None;
+    catalog.concepts[1].threshold = None;
     let engine = catalog
         .into_engine(
             "fixture-model",
@@ -212,6 +232,7 @@ fn dropped_concepts_never_fire_but_still_expand_parents() {
 fn snail_predictions_respect_hierarchy_and_owner_choices() {
     let mut catalog = BuiltinCatalog::embedded().unwrap();
     catalog.references.clear(); // This test deliberately supplies 2-D prompt vectors.
+    let trained = catalog.with_references(OwnerMatch("snail"));
     let model_id = catalog.model_id.clone();
     let vectors = catalog
         .concepts
@@ -234,6 +255,14 @@ fn snail_predictions_respect_hierarchy_and_owner_choices() {
         rejections,
         auto_tags_off,
     };
+    assert!(
+        !engine
+            .tag_photo(&photo(&[], &[], false))
+            .unwrap()
+            .iter()
+            .any(|tag| tag.concept == "snail")
+    );
+    let engine = engine.with_classifier(trained);
     let tags = engine.tag_photo(&photo(&[], &[], false)).unwrap();
     assert!(
         tags.iter()
@@ -265,6 +294,7 @@ fn everyday_predictions_respect_owner_choices() {
     for concept_name in ["fish", "mushroom"] {
         let mut catalog = BuiltinCatalog::embedded().unwrap();
         catalog.references.clear(); // This test deliberately supplies 2-D prompt vectors.
+        let trained = catalog.with_references(OwnerMatch(concept_name));
         let model_id = catalog.model_id.clone();
         let vectors = catalog
             .concepts
@@ -289,6 +319,14 @@ fn everyday_predictions_respect_owner_choices() {
         };
         let owner_tag = [concept_name];
         let rejection = [concept_name];
+        assert!(
+            !engine
+                .tag_photo(&photo(&[], &[], false))
+                .unwrap()
+                .iter()
+                .any(|tag| tag.concept == concept_name)
+        );
+        let engine = engine.with_classifier(trained);
         assert!(
             engine
                 .tag_photo(&photo(&[], &[], false))

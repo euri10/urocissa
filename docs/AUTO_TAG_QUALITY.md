@@ -1,8 +1,36 @@
 # Bounded Auto tag quality changes, 2026-11-24
 
-The broad coverage goal is approximately six to eight meaningful tags on typical
-photos, without filler. Tag count, no-tag fraction and correctness are separate
+The owner decided on 2026-11-25 that zero-shot Auto should be rare but right;
+Suggested is the main coverage channel while it backfills, followed by
+owner-taught Concepts. Tag count, no-tag fraction and correctness remain separate
 measurements. Public class-enriched tests cannot establish the owner's precision.
+
+## Conservative zero-shot quarantine, 2026-11-25
+
+The only retained zero-shot labels are `animal`, `bird`, `cat`, `dog` and
+`food`. The owner's frozen review gave incorrect verdicts to `fish` and
+`insect`; their zero-shot decisions are inactive. The earlier `bee` and public
+reference quarantines remain. The remaining previously calibrated zero-shot
+labels are also inactive: `fruit` had less than 85% correct in one public
+sample, while the others lacked five predictions in either representative public
+sample. Every retained label had at least five predictions in one sample and at
+least 85% correct in each sample where it appeared, counting uncertain as wrong.
+Class-enriched calibration alone is not treated as representative evidence.
+
+The gate changes only zero-shot decisions. Owner-trained Concepts, User tags,
+aliases, rejections and opt-outs retain their existing precedence. The vocabulary
+version changes to `-quarantine-3` so cached decisions rematerialize. Suggested
+continues using its independently frozen Florence mapping; it does not promise
+every quarantined name (for example, `fish`) as a suggestion.
+
+The same native materializer was replayed on the two earlier, separately frozen
+384-photo public samples. No previously displayed retained label disappeared.
+Removing more specific labels exposed nine broader labels: an agent judged eight
+correct and one uncertain. The resulting samples were 92 correct, one incorrect
+and two uncertain of 95 labels (96.84%), and 73 correct, zero incorrect and
+three uncertain of 76 (96.05%). These samples informed label selection, so they
+are regression checks, not independent estimates of owner-library precision.
+No owner photos or per-photo owner judgments were inspected or exported.
 
 ## Bee zero-shot quarantine, 2026-11-25
 

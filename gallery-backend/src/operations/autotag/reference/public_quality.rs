@@ -48,9 +48,15 @@ fn public_default_heldout_quality() {
         let mut counts = [0_usize; 4];
         for (vector, label) in case.photos {
             check_vector(&vector, 768).unwrap();
-            let (_, decision) = engine.explain_score(concept, &vector);
-            let decision = decision.expect("qualified default is active");
-            let predicted = decision.probability >= decision.threshold;
+            let (zero_shot, decision) = engine.explain_score(concept, &vector);
+            let predicted = decision.map_or_else(
+                || {
+                    // Replay these historical thresholds without activating them today.
+                    assert!(["bench", "insect", "spider"].contains(&name.as_str()));
+                    zero_shot >= concept.threshold
+                },
+                |decision| decision.probability >= decision.threshold,
+            );
             counts[match (predicted, label) {
                 (true, true) => 0,
                 (false, true) => 1,
