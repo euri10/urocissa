@@ -2,7 +2,7 @@
 use super::{
     AliasIndex, AutoTagEngine, AutoTags, HashMap, PhotoInput, PhotoInputs, Prepared, Result,
 };
-use crate::operations::autotag::learning::Learning;
+use crate::operations::autotag::{ConceptClassifier, ConceptMode, learning::Learning};
 
 impl AutoTags {
     pub(super) fn refresh_learning(
@@ -72,22 +72,27 @@ impl AutoTags {
             Learning::fit(&prepared.base, active, prepared.score, &photos)?;
         self.store
             .put_learning(&prepared.model, &self.catalog.version, &learning)?;
+        let methods = vocabulary
+            .concepts()
+            .iter()
+            .map(|concept| learning.method(&concept.id))
+            .collect::<Vec<_>>();
+        let classifier = self.catalog.with_references(learning);
         prepared.learning_methods = vocabulary
             .concepts()
             .iter()
-            .map(|concept| {
-                let method = learning.method(&concept.id);
-                let method =
-                    if method == "inactive" && self.catalog.references.contains_key(&concept.id) {
-                        "builtin"
-                    } else {
-                        method
-                    };
+            .zip(methods)
+            .map(|(concept, method)| {
+                let method = match classifier.mode(concept) {
+                    ConceptMode::Inactive => "inactive",
+                    _ if method == "inactive" => "builtin",
+                    _ => method,
+                };
                 (concept.id.clone(), method.to_owned())
             })
             .collect();
-        prepared.engine = AutoTagEngine::new(vocabulary, prepared.score)
-            .with_classifier(self.catalog.with_references(learning));
+        prepared.engine =
+            AutoTagEngine::new(vocabulary, prepared.score).with_classifier(classifier);
         prepared.feedback = feedback;
         prepared.learning_dirty = false;
         prepared.aliases = AliasIndex::default();

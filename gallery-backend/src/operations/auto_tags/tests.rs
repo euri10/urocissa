@@ -95,9 +95,76 @@ fn public_unrelated_photos_do_not_materialize_fence_or_road() -> Result<()> {
 
 #[test]
 fn quarantined_defaults_still_learn_from_owner_feedback() -> Result<()> {
-    for concept in ["snow", "bee", "fish", "insect", "fruit"] {
+    for concept in ["snow", "bee", "fish", "insect", "fruit", "bridge"] {
         check_quarantined_concept_learns_from_owner_feedback(concept)?;
     }
+    Ok(())
+}
+
+#[test]
+fn review_reports_the_effective_quarantined_mode() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let store = EmbeddingStore::open(&dir.path().join("derived.redb"))?;
+    let mut tags = AutoTags::test_without_references(store.clone())?;
+    // A synthetic reference checks reporting without reactivating public heads.
+    tags.catalog.references.insert(
+        "bookcase".into(),
+        serde_json::from_value(serde_json::json!({
+            "weights": [1.0, 0.0], "bias": 0.0, "threshold": 0.8
+        }))?,
+    );
+    let model = ModelInfo {
+        model_id: tags.catalog.model_id.clone(),
+        embedding_dim: 2,
+        device: "CPU".into(),
+        logit_scale: Some(1.0),
+        logit_bias: Some(-100.0),
+    };
+    store.set_model(&model)?;
+    tags.prepare(&model, &Fake(AtomicUsize::new(0)))?;
+    tags.materialize(&HashMap::new(), &[])?;
+    let guard = tags.prepared.lock().unwrap();
+    let prepared = guard.as_ref().unwrap();
+    let photo = PhotoInput {
+        embedding: &[1.0, 0.0],
+        user_tags: &[],
+        rejections: &[],
+        auto_tags_off: false,
+    };
+    for concept in ["bridge", "insect"] {
+        assert_eq!(
+            prepared.engine.explain(&photo, concept)?.unwrap().decision,
+            "inactive"
+        );
+        assert_eq!(prepared.learning_methods[concept], "inactive", "{concept}");
+    }
+    for concept in ["animal", "bird", "cat", "dog", "food", "bookcase"] {
+        assert_eq!(prepared.learning_methods[concept], "builtin", "{concept}");
+    }
+    let inherited = PhotoInput {
+        user_tags: &["bee"],
+        ..photo
+    };
+    assert_eq!(
+        prepared
+            .engine
+            .explain(&inherited, "insect")?
+            .unwrap()
+            .decision,
+        "implied"
+    );
+    let rejected = PhotoInput {
+        rejections: &["insect"],
+        ..inherited
+    };
+    assert_eq!(
+        prepared
+            .engine
+            .explain(&rejected, "insect")?
+            .unwrap()
+            .decision,
+        "rejected"
+    );
     Ok(())
 }
 
