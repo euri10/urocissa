@@ -73,6 +73,7 @@ impl AutoTags {
     pub(crate) fn test_without_references(store: EmbeddingStore) -> Result<Self> {
         let mut tags = Self::new(store)?;
         tags.catalog.references.clear();
+        tags.catalog.insect_guard = None;
         Ok(tags)
     }
 

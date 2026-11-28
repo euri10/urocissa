@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
 
-use super::reference::{ReferenceDefaults, ReferenceFallback, ReferenceHead};
+use super::reference::{InsectGuard, ReferenceDefaults, ReferenceFallback, ReferenceHead};
 use super::{AutoTagEngine, Concept, ConceptClassifier, ConceptMode, ScoreModel, Vocabulary};
 
 // Explicit review is required to extend this allow-list. It prevents an imported
@@ -58,6 +58,8 @@ pub struct BuiltinCatalog {
     // Only the separately validated public supplement may populate these.
     #[serde(skip)]
     pub(crate) references: BTreeMap<String, ReferenceHead>,
+    #[serde(skip)]
+    pub(crate) insect_guard: Option<InsectGuard>,
 }
 
 impl BuiltinCatalog {
@@ -133,8 +135,13 @@ impl BuiltinCatalog {
         Ok(())
     }
 
-    pub fn with_references<C: ConceptClassifier>(&self, classifier: C) -> ReferenceFallback<C> {
+    pub fn with_references<C: ConceptClassifier>(
+        &self,
+        classifier: C,
+        score: ScoreModel,
+    ) -> ReferenceFallback<C> {
         ReferenceFallback::new(classifier, self.references.clone())
+            .with_insect_guard(self.insect_guard.clone(), score)
     }
 
     /// Prompts in definition order. The text tower embeds these once per cache key.
@@ -168,6 +175,12 @@ impl BuiltinCatalog {
                 .all(|head| head.weights.len() == dim),
             "public reference embedding dimension mismatch"
         );
+        ensure!(
+            self.insect_guard
+                .as_ref()
+                .is_none_or(|guard| guard.dim() == dim),
+            "insect guard embedding dimension mismatch"
+        );
         let concepts = self
             .concepts
             .iter()
@@ -184,7 +197,7 @@ impl BuiltinCatalog {
             .filter(|c| c.threshold.is_some())
             .map(|c| c.id.clone())
             .collect();
-        let classifier = self.with_references(CalibratedOnly(active));
+        let classifier = self.with_references(CalibratedOnly(active), score_model);
         Ok(
             AutoTagEngine::new(Vocabulary::new(dim, concepts)?, score_model)
                 .with_classifier(classifier),

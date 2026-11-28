@@ -77,7 +77,7 @@ impl AutoTags {
             .iter()
             .map(|concept| learning.method(&concept.id))
             .collect::<Vec<_>>();
-        let classifier = self.catalog.with_references(learning);
+        let classifier = self.catalog.with_references(learning, prepared.score);
         prepared.learning_methods = vocabulary
             .concepts()
             .iter()

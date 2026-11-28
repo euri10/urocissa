@@ -34,6 +34,7 @@ fn public_default_heldout_quality() {
     assert_eq!(fixture.vocabulary_version, defaults.vocabulary_version);
     let mut catalog = BuiltinCatalog::embedded().unwrap();
     catalog.references = defaults.heads;
+    catalog.insect_guard = None;
     let engine = catalog
         .into_engine(
             &fixture.model_id,

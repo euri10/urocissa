@@ -232,7 +232,9 @@ fn dropped_concepts_never_fire_but_still_expand_parents() {
 fn snail_predictions_respect_hierarchy_and_owner_choices() {
     let mut catalog = BuiltinCatalog::embedded().unwrap();
     catalog.references.clear(); // This test deliberately supplies 2-D prompt vectors.
-    let trained = catalog.with_references(OwnerMatch("snail"));
+    catalog.insect_guard = None;
+    let trained =
+        catalog.with_references(OwnerMatch("snail"), ScoreModel::new(100.0, 0.0).unwrap());
     let model_id = catalog.model_id.clone();
     let vectors = catalog
         .concepts
@@ -294,7 +296,11 @@ fn everyday_predictions_respect_owner_choices() {
     for concept_name in ["fish", "mushroom"] {
         let mut catalog = BuiltinCatalog::embedded().unwrap();
         catalog.references.clear(); // This test deliberately supplies 2-D prompt vectors.
-        let trained = catalog.with_references(OwnerMatch(concept_name));
+        catalog.insect_guard = None;
+        let trained = catalog.with_references(
+            OwnerMatch(concept_name),
+            ScoreModel::new(100.0, 0.0).unwrap(),
+        );
         let model_id = catalog.model_id.clone();
         let vectors = catalog
             .concepts

@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 use super::{
     BuiltinCatalog, BuiltinConcept, Classification, Concept, ConceptClassifier, ConceptMode,
+    ScoreModel, check_vector,
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -14,6 +15,51 @@ pub struct ReferenceHead {
     pub weights: Vec<f32>,
     pub bias: f32,
     pub threshold: f32,
+}
+
+/// Public text-prompt vectors for the exact model; never replace owner feedback.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InsectGuard {
+    schema_version: u32,
+    model_id: String,
+    spider_prompt: String,
+    centipede_prompt: String,
+    crab_prompt: String,
+    spider: Vec<f32>,
+    centipede: Vec<f32>,
+    crab: Vec<f32>,
+}
+
+impl InsectGuard {
+    fn embedded(model_id: &str) -> Result<Self> {
+        let guard: Self = serde_json::from_str(include_str!("../../../assets/insect-guard.json"))?;
+        ensure!(
+            guard.schema_version == 1
+                && guard.model_id == model_id
+                && guard.spider_prompt == "a photo of spider"
+                && guard.centipede_prompt == "a photo of centipede"
+                && guard.crab_prompt == "a photo of crab"
+                && check_vector(&guard.spider, 768).is_ok()
+                && check_vector(&guard.centipede, 768).is_ok()
+                && check_vector(&guard.crab, 768).is_ok(),
+            "invalid insect guard"
+        );
+        Ok(guard)
+    }
+
+    pub(super) fn dim(&self) -> usize {
+        self.spider.len()
+    }
+
+    fn accepts(&self, score: ScoreModel, embedding: &[f32], insect: f32) -> bool {
+        let probability = |vector: &[f32]| {
+            score.probability(embedding.iter().zip(vector).map(|(a, b)| a * b).sum())
+        };
+        insect > probability(&self.spider)
+            && insect > probability(&self.centipede)
+            && insect > probability(&self.crab)
+    }
 }
 
 #[derive(Deserialize)]
@@ -74,8 +120,9 @@ impl ReferenceDefaults {
         // ponytail: quarantine public heads with observed unrelated-photo false
         // positives until representative negatives support their requalification.
         // Owner-fitted classifiers remain independent of these fallback heads.
-        catalog.version = format!("{}-quarantine-3", self.vocabulary_version);
+        catalog.version = format!("{}-quarantine-4", self.vocabulary_version);
         catalog.references.clear();
+        catalog.insect_guard = Some(InsectGuard::embedded(&catalog.model_id)?);
         Ok(())
     }
 }
@@ -83,17 +130,34 @@ impl ReferenceDefaults {
 pub struct ReferenceFallback<C> {
     base: C,
     heads: BTreeMap<String, ReferenceHead>,
+    insect_guard: Option<(InsectGuard, ScoreModel)>,
 }
 
 impl<C> ReferenceFallback<C> {
     pub(super) fn new(base: C, heads: BTreeMap<String, ReferenceHead>) -> Self {
-        Self { base, heads }
+        Self {
+            base,
+            heads,
+            insect_guard: None,
+        }
+    }
+
+    pub(super) fn with_insect_guard(
+        mut self,
+        guard: Option<InsectGuard>,
+        score: ScoreModel,
+    ) -> Self {
+        self.insect_guard = guard.map(|guard| (guard, score));
+        self
     }
 }
 
 impl<C: ConceptClassifier> ConceptClassifier for ReferenceFallback<C> {
     fn mode(&self, concept: &Concept) -> ConceptMode {
         match self.base.mode(concept) {
+            ConceptMode::ZeroShot if concept.id == "insect" && self.insect_guard.is_some() => {
+                ConceptMode::Classifier
+            }
             // ponytail: only labels with representative precision evidence stay
             // zero-shot; owner-fitted classifiers retain their existing paths.
             ConceptMode::ZeroShot
@@ -112,6 +176,19 @@ impl<C: ConceptClassifier> ConceptClassifier for ReferenceFallback<C> {
     }
 
     fn classify(&self, concept: &Concept, embedding: &[f32], zero_shot: f32) -> Classification {
+        if concept.id == "insect"
+            && self.base.mode(concept) == ConceptMode::ZeroShot
+            && let Some((guard, score)) = &self.insect_guard
+        {
+            return Classification {
+                probability: if guard.accepts(*score, embedding, zero_shot) {
+                    zero_shot
+                } else {
+                    0.0
+                },
+                threshold: concept.threshold,
+            };
+        }
         if self.base.mode(concept) == ConceptMode::Inactive
             && let Some(head) = self.heads.get(&concept.id)
         {
@@ -130,6 +207,16 @@ impl<C: ConceptClassifier> ConceptClassifier for ReferenceFallback<C> {
         embedding: &[f32],
         zero_shot: f32,
     ) -> Option<Classification> {
+        if concept.id == "insect"
+            && self.base.mode(concept) == ConceptMode::ZeroShot
+            && self.insect_guard.is_some()
+        {
+            if zero_shot < concept.threshold {
+                return None;
+            }
+            let decision = self.classify(concept, embedding, zero_shot);
+            return (decision.probability >= decision.threshold).then_some(decision);
+        }
         if self.base.mode(concept) == ConceptMode::Inactive && self.heads.contains_key(&concept.id)
         {
             let decision = self.classify(concept, embedding, zero_shot);
@@ -147,6 +234,111 @@ mod public_quality;
 mod tests {
     use super::*;
     use crate::operations::autotag::{AutoTagEngine, BuiltinCatalog, PhotoInput, ScoreModel};
+
+    #[test]
+    fn insect_guard_respects_owner_feedback_and_hierarchy() {
+        struct Owner(ConceptMode);
+        impl ConceptClassifier for Owner {
+            fn mode(&self, concept: &Concept) -> ConceptMode {
+                if concept.id == "insect" {
+                    self.0
+                } else {
+                    ConceptMode::Inactive
+                }
+            }
+            fn classify(&self, _: &Concept, _: &[f32], _: f32) -> Classification {
+                Classification {
+                    probability: 0.9,
+                    threshold: 0.8,
+                }
+            }
+        }
+        let guard = InsectGuard {
+            schema_version: 1,
+            model_id: "fixture".into(),
+            spider_prompt: "a photo of spider".into(),
+            centipede_prompt: "a photo of centipede".into(),
+            crab_prompt: "a photo of crab".into(),
+            spider: vec![0.0, 1.0, 0.0, 0.0],
+            centipede: vec![0.0, 0.0, 1.0, 0.0],
+            crab: vec![0.0, 0.0, 0.0, 1.0],
+        };
+        let concept = |id: &str, parents: &[&str]| Concept {
+            id: id.into(),
+            label: id.into(),
+            synonyms: vec![],
+            parents: parents.iter().map(|p| (*p).into()).collect(),
+            threshold: 0.002_214_877,
+            vector: vec![1.0, 0.0, 0.0, 0.0],
+        };
+        let vocabulary = super::super::Vocabulary::new(
+            4,
+            vec![concept("animal", &[]), concept("insect", &["animal"])],
+        )
+        .unwrap();
+        let score = ScoreModel::new(10.0, -5.0).unwrap();
+        let engine = |mode| {
+            AutoTagEngine::new(vocabulary.clone(), score).with_classifier(
+                ReferenceFallback::new(Owner(mode), BTreeMap::new())
+                    .with_insect_guard(Some(guard.clone()), score),
+            )
+        };
+        let photo = |embedding, user_tags, rejections, auto_tags_off| PhotoInput {
+            embedding,
+            user_tags,
+            rejections,
+            auto_tags_off,
+        };
+        let fallback = engine(ConceptMode::ZeroShot);
+        let result = fallback
+            .tag_photo(&photo(&[1.0, 0.0, 0.0, 0.0], &[], &[], false))
+            .unwrap();
+        assert!(result.iter().any(|t| t.concept == "insect" && t.placement == super::super::Placement::Displayed));
+        assert!(
+            result
+                .iter()
+                .any(|t| t.concept == "animal" && t.placement == super::super::Placement::Implied)
+        );
+        for vector in [
+            &[0.0, 1.0, 0.0, 0.0][..],
+            &[0.0, 0.0, 1.0, 0.0][..],
+            &[0.0, 0.0, 0.0, 1.0][..],
+        ] {
+            assert!(
+                fallback
+                    .tag_photo(&photo(vector, &[], &[], false))
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(
+                engine(ConceptMode::Classifier)
+                    .tag_photo(&photo(vector, &[], &[], false))
+                    .unwrap()
+                    .iter()
+                    .any(|t| t.concept == "insect")
+            );
+        }
+        assert!(
+            !fallback
+                .tag_photo(&photo(&[1.0, 0.0, 0.0, 0.0], &[], &["insect"], false))
+                .unwrap()
+                .iter()
+                .any(|t| t.concept == "insect")
+        );
+        assert!(
+            !fallback
+                .tag_photo(&photo(&[1.0, 0.0, 0.0, 0.0], &["insect"], &[], false))
+                .unwrap()
+                .iter()
+                .any(|t| t.concept == "insect")
+        );
+        assert!(
+            fallback
+                .tag_photo(&photo(&[1.0, 0.0, 0.0, 0.0], &[], &[], true))
+                .unwrap()
+                .is_empty()
+        );
+    }
 
     #[test]
     fn supplement_retains_every_original_threshold_and_quarantine() {
@@ -264,10 +456,8 @@ mod tests {
             ConceptMode::ZeroShot,
             ConceptMode::Classifier,
         ] {
-            let classifier = ReferenceFallback {
-                base: Owner(mode),
-                heads: [("animal".into(), head.clone())].into(),
-            };
+            let classifier =
+                ReferenceFallback::new(Owner(mode), [("animal".into(), head.clone())].into());
             assert_eq!(
                 classifier.mode(&concept),
                 if mode == ConceptMode::Inactive {
@@ -426,7 +616,7 @@ mod tests {
             engine.vocabulary().clone(),
             ScoreModel::new(1.0, -100.0).unwrap(),
         )
-        .with_classifier(catalog.with_references(inactive));
+        .with_classifier(catalog.with_references(inactive, ScoreModel::new(1.0, -100.0).unwrap()));
         assert!(
             engine
                 .tag_photo(&photo(&[], &[], false))

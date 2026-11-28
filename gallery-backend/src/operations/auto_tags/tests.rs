@@ -357,6 +357,8 @@ fn materialize_public_precision_sample() -> Result<()> {
     let mut predictions = Vec::new();
     let mut bee_regression_cases = 0;
     let mut bee_regression_failures = 0;
+    let mut insect_regression_cases = 0;
+    let mut insect_regression_failures = 0;
     for case in cases {
         let id = case["id"].as_str().unwrap();
         let labels = tags
@@ -372,6 +374,20 @@ fn materialize_public_precision_sample() -> Result<()> {
             bee_regression_cases += 1;
             bee_regression_failures += usize::from(labels.iter().any(|label| label == "bee"));
         }
+        // Public spider/centipede/crab negatives and a bee positive. These are
+        // regression cases, not independent acceptance data.
+        let insect_expected = match id {
+            "c971dc7b579a4c8d" | "a78853ab893df8ce" | "a311bdffb7c32780" | "6b7d1a48d1b4f80d" => {
+                Some(false)
+            }
+            "c85a9b5b8d81268b" => Some(true),
+            _ => None,
+        };
+        if let Some(expected) = insect_expected {
+            insect_regression_cases += 1;
+            insect_regression_failures +=
+                usize::from(labels.iter().any(|label| label == "insect") != expected);
+        }
         predictions.push(serde_json::json!({"id": id, "labels": labels}));
     }
     if std::env::var_os("UROCISSA_BEE_REGRESSION").is_some() {
@@ -382,6 +398,16 @@ fn materialize_public_precision_sample() -> Result<()> {
         ensure!(
             bee_regression_failures == 0,
             "bee fires on unrelated public photos"
+        );
+    }
+    if std::env::var_os("UROCISSA_INSECT_REGRESSION").is_some() {
+        ensure!(
+            insect_regression_cases == 5,
+            "missing public insect regression cases"
+        );
+        ensure!(
+            insect_regression_failures == 0,
+            "public insect regression failed"
         );
     }
     std::fs::write(

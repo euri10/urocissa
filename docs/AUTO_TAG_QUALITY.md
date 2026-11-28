@@ -5,6 +5,34 @@ Suggested is the main coverage channel while it backfills, followed by
 owner-taught Concepts. Tag count, no-tag fraction and correctness remain separate
 measurements. Public class-enriched tests cannot establish the owner's precision.
 
+## Insect fallback candidate, 2026-11-28
+
+The source candidate restores the existing untrained `insect` threshold only
+when its score is higher than the pinned model's `spider`, `centipede` and
+`crab` prompt scores. The three public text vectors use the exact catalog model;
+no additional image model, inference service or owner feedback is needed. Owner
+classifiers, User tags, rejections and opt-outs retain their existing precedence.
+The vocabulary cache suffix changes to `-quarantine-4` so this change can
+rematerialize existing embeddings. Building, bridge and snow scoring are unchanged.
+
+The initial two-prompt experiment added an incorrect insect chip on a crab in a
+public representative sample. That sample informed the third prompt and is
+therefore development evidence, not validation of the revised candidate. On a
+new disjoint 120-photo class-enriched Open Images test, an agent visually judged
+photos before scoring; native materialization produced 42 true positives, four
+false negatives, one false positive, 71 true negatives and two unpredicted
+uncertain cases. Conservative observed precision was 42/43 (97.67%) and recall
+was 42/46 (91.30%). Repeating the same public images on the production GPU
+changed zero of the 120 decisions. This is not an owner-library estimate.
+
+A separate disjoint 384-photo public representative screen yielded 92 correct
+and one incorrect of 93 displayed labels. The sole added insect label was
+correct, but one prediction is insufficient to establish representative insect
+precision. No non-insect labels changed. Public fixture regression and owner
+feedback precedence checks pass; the owner-held-out quality review and a
+production rollout remain pending. See `infra-urocissa-autotag-sjfz.32` for
+the frozen protocols, hashes and limitations.
+
 ## Conservative zero-shot quarantine, 2026-11-25
 
 The only retained zero-shot labels are `animal`, `bird`, `cat`, `dog` and
