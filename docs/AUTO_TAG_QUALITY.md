@@ -22,8 +22,11 @@ new disjoint 120-photo class-enriched Open Images test, an agent visually judged
 photos before scoring; native materialization produced 42 true positives, four
 false negatives, one false positive, 71 true negatives and two unpredicted
 uncertain cases. Conservative observed precision was 42/43 (97.67%) and recall
-was 42/46 (91.30%). Repeating the same public images on the production GPU
-changed zero of the 120 decisions. This is not an owner-library estimate.
+was 42/46 (91.30%). Repeating the same public images on the production GPU,
+with the application's catalog prompt batching, changed zero of the 120
+decisions. Prompt embeddings can vary with batch composition; a single-prompt
+GPU replay is not an exact substitute for that check. This is not an
+owner-library estimate.
 
 A separate disjoint 384-photo public representative screen yielded 92 correct
 and one incorrect of 93 displayed labels. The sole added insect label was
